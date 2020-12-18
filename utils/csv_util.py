@@ -24,8 +24,11 @@
 # 
 ##############################################################################
 
+import csv
+
 from . import common
 from . import utils
+from . import eodms
 
 class EODMS_CSV:
     
@@ -63,6 +66,7 @@ class EODMS_CSV:
             self.coll_id = rec['Collection ID']
             
             return self.coll_id
+            
         elif 'Satellite' in rec.keys():
             # Get the satellite name
             satellite = rec['Satellite']
@@ -91,7 +95,7 @@ class EODMS_CSV:
             if h in img.get_fields():
                 val = str(img.get_metadata(h))
                 if val.find(',') > -1:
-                    val = '"%s"' % val
+                    val = '"%s"' % val.replace('"', '""')
                 out_vals.append(val)
             else:
                 out_vals.append('')
@@ -99,9 +103,10 @@ class EODMS_CSV:
         out_vals = [str(i) for i in out_vals]
         self.open_csv.write('%s\n' % ','.join(out_vals))
         
-    def import_csv(self):
+    def import_eodmsCSV(self):
+        
         """
-        Imports the rows from the CSV file into a dictionary of 
+        Imports the rows from the EODMS CSV file into a dictionary of 
             records.
             
         @rtype:  list
@@ -162,6 +167,30 @@ class EODMS_CSV:
         out_recs = query_obj.query_csvRecords(records)
         
         return out_recs
+        
+    def import_csv(self, required=[]):
+        """
+        Imports the rows from the CSV file into a dictionary of 
+            records.
+            
+        @rtype:  list
+        @return: A list of records extracted from the CSV file.
+        """
+        
+        query_obj = utils.Query(self.session)
+        
+        reader = csv.reader(open(self.csv_fn, 'r'))
+        records = []
+        for idx, row in enumerate(reader):
+            if idx == 0:
+                header = row
+            else:
+                rec = {}
+                for i, c in enumerate(row):
+                    rec[header[i]] = c
+                records.append(rec)
+            
+        return records
         
     def close(self):
         if self.open_csv is not None:

@@ -40,6 +40,12 @@ RAPI_DOMAIN = 'https://www.eodms-sgdot.nrcan-rncan.gc.ca'
 RAPI_COLLECTIONS = {}
 UNSUPPORT_COLLECTIONS = {}
 INDENT = 3
+SILENT = False
+DOWNLOAD_PATH = "downloads"
+RESULTS_PATH = "results"
+TIMEOUT_QUERY = 60.0
+TIMEOUT_ORDER = 180.0
+ATTEMPTS = 4
 
 def get_fullCollId(coll_id, unsupported=False):
     """
@@ -74,8 +80,20 @@ def convert_date(in_date):
     @return: The date converted to ISO format.
     """
     
-    out_date = '%s-%s-%sT00:00:00Z' % (in_date[:4], in_date[4:6], \
-                in_date[6:])
+    if in_date.lower().find('t') > -1:
+        date, tme = in_date.lower().split('t')
+        year = date[:4]
+        mth = date[4:6]
+        day = date[6:]
+        hour = tme[:2]
+        minute = tme[2:4]
+        sec = tme[4:]
+        out_date = '%s-%s-%sT%s:%s:%sZ' % (year, mth, day, hour, minute, sec)
+    else:
+        year = in_date[:4]
+        mth = in_date[4:6]
+        day = in_date[6:]
+        out_date = '%s-%s-%sT00:00:00Z' % (year, mth, day)
                 
     return out_date
     
@@ -183,7 +201,6 @@ def get_collections(session, as_list=False):
     coll_json = coll_res.json()
     
     # Create the collections dictionary
-    #collections = {}
     for coll in coll_json:
         for child in coll['children']:
             if child['collectionId'] in ignore_collNames:
@@ -218,7 +235,6 @@ def get_collIdByName(in_title, unsupported=False):
     """
     
     if unsupported:
-        print("UNSUPPORT_COLLECTIONS: %s" % UNSUPPORT_COLLECTIONS)
         for k, v in UNSUPPORT_COLLECTIONS.items():
             if v.find(in_title) > -1 or in_title.find(v) > -1 \
                 or in_title.find(k) > -1 or k.find(in_title) > -1:
@@ -315,7 +331,6 @@ def is_json(my_json):
     try:
         json_object = json.loads(my_json)
     except (ValueError, TypeError) as e:
-        #print("e: %s" % e)
         return False
     return True
     
@@ -361,8 +376,8 @@ def print_support(err_str=None):
         print("\nFor help, please contact the EODMS Support Team at " \
                 "nrcan.eodms-sgdot.rncan@canada.ca")
     
-def send_query(query_url, session=None, timeout=60.0, attempts=4, 
-                record_name=None, quiet=True):
+def send_query(query_url, session=None, timeout=60.0, record_name=None, 
+                quiet=True):
     """
     Send a query to the RAPI.
     
@@ -372,8 +387,6 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
     @param session:     The current session with authentication.
     @type  timeout:     float
     @param timeout:     The length of the timeout in seconds.
-    @type  attempts:    int
-    @param attempts:    The maximum number of attempts for query the RAPI.
     @type  record_name: str
     @param record_name: A string used to supply information for the record 
                         in a print statement.
@@ -393,7 +406,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
     attempt = 1
     err = None
     # Get the entry records from the RAPI using the downlink segment ID
-    while res is None and attempt <= attempts:
+    while res is None and attempt <= ATTEMPTS:
         # Continue to attempt if timeout occurs
         try:
             if record_name is None:
@@ -415,7 +428,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
                 err = msg
                 attempt = 4
             
-            if attempt < attempts:
+            if attempt < ATTEMPTS:
                 print_msg("WARNING: %s; attempting to connect again..." % msg)
                 res = None
             else:
@@ -423,7 +436,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
             attempt += 1
         except requests.exceptions.ConnectionError as errc:
             msg = "Connection Error: %s" % errc
-            if attempt < attempts:
+            if attempt < ATTEMPTS:
                 print_msg("WARNING: %s; attempting to connect again..." % msg)
                 res = None
             else:
@@ -431,7 +444,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
             attempt += 1
         except requests.exceptions.Timeout as errt:
             msg = "Timeout Error: %s" % errt
-            if attempt < attempts:
+            if attempt < ATTEMPTS:
                 print_msg("WARNING: %s; attempting to connect again..." % msg)
                 res = None
             else:
@@ -439,7 +452,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
             attempt += 1
         except requests.exceptions.RequestException as err:
             msg = "Exception: %s" % err
-            if attempt < attempts:
+            if attempt < ATTEMPTS:
                 print_msg("WARNING: %s; attempting to connect again..." % msg)
                 res = None
             else:
@@ -451,7 +464,7 @@ def send_query(query_url, session=None, timeout=60.0, attempts=4,
             sys.exit(1)
         except:
             msg = "Unexpected error: %s" % sys.exc_info()[0]
-            if attempt < attempts:
+            if attempt < ATTEMPTS:
                 print_msg("WARNING: %s; attempting to connect again..." % msg)
                 res = None
             else:

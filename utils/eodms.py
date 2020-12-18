@@ -24,23 +24,21 @@
 # 
 ##############################################################################
 
+import json
+import os
+
 from . import csv_util
 from . import geo
 from . import utils
+from . import common
 
 class Image:
+    """
+    The class to store information for an EODMS image.
+    """
     
     def __init__(self, record_id=None, coll_id=None):
-        # self.record_id = record_id
-        # self.coll_id = coll_id
-        # self.title = ''
-        # self.coll_title = ''
-        # self.url = ''
-        # self.mappings = {'recordId': 'record_id', 
-                         # 'title': 'title', 
-                         # 'collectionId': 'coll_id', 
-                         # 'collectionTitle': 'coll_title', 
-                         # 'thisRecordUrl': 'url'}
+    
         self.metadata = {}
         self.geometry = {'array': None,  
                         'geom': None, 
@@ -58,6 +56,12 @@ class Image:
     def get_collTitle(self):
         return self.metadata['collectionTitle']
         
+    def get_date(self):
+        if 'Acquisition Start Date' in self.metadata.keys():
+            return self.metadata['Acquisition Start Date']
+        else:
+            return self.metadata['Date']
+    
     def get_url(self):
         return self.metadata['thisRecordUrl']
         
@@ -108,6 +112,10 @@ class Image:
                 self.metadata[k] = v
         
 class ImageList:
+    """
+    Class used to hold multiple Image objects and contain methods for 
+        accessing the list of objects.
+    """
     
     def __init__(self):
         self.img_lst = []
@@ -180,6 +188,9 @@ class ImageList:
         self.img_lst = self.img_lst[:val]
     
 class OrderItem:
+    """
+    Class used to hold information for an EODMS order item.
+    """
 
     def __init__(self, image=None, item_id=None, order_id=None):
         self.image = image
@@ -201,6 +212,7 @@ class OrderItem:
         return self.metadata['itemId']
         
     def get_orderId(self):
+        # print("self.metadata: %s" % self.metadata)
         return self.metadata['orderId']
         
     def get_metadata(self, entry=None):
@@ -208,7 +220,22 @@ class OrderItem:
         if entry is None:
             return self.metadata
         
-        return self.metadata[entry]
+        if entry in self.metadata.keys():
+            return self.metadata[entry]
+            
+    def get_downloadPath(self, relpath=False):
+        
+        if 'download_paths' not in self.metadata.keys(): return None
+        
+        paths = self.metadata['download_paths']
+        path_json = json.loads(paths)
+        
+        download_path = path_json[0]['local_destination']
+        
+        if relpath:
+            return os.path.relpath(download_path)
+        else:
+            return download_path
         
     def add_image(self, in_image):
         image = in_image
@@ -217,17 +244,41 @@ class OrderItem:
             image.parse_record(in_image)
         self.image = image
         
+        fields = common.RAPI_COLLECTIONS[self.image.get_collId()]['fields']
+        
+        self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
+        self.metadata['imageStartDate'] = self.image.get_date()
+        
     def parse_record(self, in_rec):
         self.metadata = {}
         for k, v in in_rec.items():
             if k == 'parameters':
-                for m in v:
-                    self.metadata[m[0]] = m[1]
+                for m, mv in v.items():
+                    self.metadata[m] = mv
             else:
                 self.metadata[k] = v
-            
+                
+        if self.image is not None:
+            self.metadata['imageUrl'] = self.image.get_metadata(\
+                                        'thisRecordUrl')
+            self.metadata['imageStartDate'] = self.image.get_date()
+    
+    def print_item(self, tabs=1):
+        print("\n\tOrder Item ID: %s" % self.metadata['itemId'])
+        print("\tOrder ID: %s" % self.metadata['orderId'])
+        print("\tRecord ID: %s" % self.metadata['recordId'])
+        for m, v in self.metadata.items():
+            if m == 'itemId' or m == 'orderId' or m == 'recordId': continue
+            print("%s%s: %s" % (str('\t' * tabs), m, v))
+    
+    def set_metadata(self, key, val):
+        self.metadata[key] = val
 
 class Order:
+    """
+    Class used to hold information for an EODMS order. The class also 
+        contains a list of order items for the order.
+    """
 
     def __init__(self, order_id):
         self.order_items = []
@@ -237,7 +288,13 @@ class Order:
         return len(self.order_items)
         
     def get_fields(self):
-        return self.order_items[0].get_fields()
+        fields = []
+        for items in self.order_items:
+            fields += items.get_fields()
+            
+        fields = list(set(fields))
+        
+        return fields
         
     def get_orderId(self):
         return self.order_id
@@ -248,22 +305,76 @@ class Order:
     def get_items(self):
         return self.order_items
         
+    def get_item(self, item_id):
+        for item in self.order_items:
+            if item.get_itemId() == item_id:
+                return item
+                
+    def get_itemByImageId(self, record_id):
+        for item in self.order_items:
+            img = item.get_image()
+            if img.get_itemId() == record_id:
+                return item
+                
+    def get_image(self, record_id):
+        for item in self.order_items:
+            img = item.get_image()
+            if img is None: return None
+            if img.get_recordId() == record_id:
+                return img
+                
+    def get_imageByItemId(self, item_id):
+        for item in self.order_items:
+            if item.get_itemId() == item_id:
+                return item.get_image()
+        
     def get_recordIds(self):
         record_ids = []
         for item in self.order_items:
-            img = item.get_image()
-            record_ids.append(img.get_recordId())
+            record_ids.append(item.get_recordId())
             
         return record_ids
+        
+    def print_items(self, tabs=1):
+        for item in self.order_items:
+            item.print_item(tabs)
+        
+    def replace_item(self, in_item):
+        lst_idx = -1
+        for idx, item in enumerate(self.order_items):
+            rec_id = item.get_recordId()
+            if int(rec_id) == int(in_item.get_recordId()):
+                lst_idx = idx
+                break
+        
+        if lst_idx > -1:
+            self.order_items[lst_idx] = in_item
+            
+    def trim_items(self, val):
+        self.order_items = self.order_items[:val]
 
 class OrderList:
+    
+    """
+    Class used to hold a list of Order objects and methods to access the 
+        order list.
+    """
     
     def __init__(self, img_lst=None):
         self.order_lst = []
         self.img_lst = img_lst
         
+    def check_downloaded(self):
+        for o in self.order_lst:
+            for item in o.get_items():
+                mdata = item.get_metadata()
+                if 'downloaded' in mdata.keys():
+                    if str(mdata['downloaded']) == 'True':
+                        return True
+                            
+        return False
+        
     def count(self):
-        #print("self.order_lst: %s" % self.order_lst)
         return len(self.order_lst)
         
     def count_items(self):
@@ -281,14 +392,16 @@ class OrderList:
         @param res_bname: The base filename for the CSV file.
         """
         
+        if not os.path.exists(common.RESULTS_PATH):
+            os.mkdir(common.RESULTS_PATH)
+        
         # Create the query results CSV
-        csv_fn = "%s_OrderResults.csv" % res_bname
+        csv_fn = "%s\\%s_Results.csv" % (common.RESULTS_PATH, res_bname)
         out_csv = csv_util.EODMS_CSV(csv_fn)
         out_csv.open()
         
         # Add header based on the results
-        header = self.order_lst[0].get_fields()
-        #print("header: %s" % header)
+        header = self.get_fields()
         out_csv.add_header(header)
         
         # Export the results to the file
@@ -298,6 +411,24 @@ class OrderList:
             
         # Close the CSV
         out_csv.close()
+        
+    def get_fields(self):
+        
+        fields = []
+        for order in self.order_lst:
+            fields += order.get_fields()
+            
+        fields = list(set(fields))
+        
+        field_order = ['recordId', 'orderId', 'itemId', 'collectionId']
+        
+        out_fields = field_order
+        
+        for f in fields:
+            if f not in field_order:
+                out_fields.append(f)
+        
+        return out_fields
         
     def get_latest(self):
         
@@ -321,9 +452,6 @@ class OrderList:
             for k, v in dups_sort.items():
                 for d in v[1:]:
                     self.remove_order(d)
-                
-        # for o in self.order_lst:
-            # print(o.get_orderId())
         
     def get_order(self, order_id):
         for o in self.order_lst:
@@ -332,17 +460,24 @@ class OrderList:
                 
     def get_orders(self):
         return self.order_lst
+        
+    def get_orderItem(self, itemId):
+        for o in self.order_lst:
+            return o.get_item(itemId)
     
     def ingest_results(self, results):
         
         for r in results:
             # First get the image from the ImageList
             record_id = r['recordId']
-            image = self.img_lst.get_image(record_id)
+            image = None
+            if self.img_lst is not None:
+                image = self.img_lst.get_image(record_id)
             
             # Create the OrderItem
             order_item = OrderItem()
-            order_item.add_image(image)
+            if image is not None:
+                order_item.add_image(image)
             order_item.parse_record(r)
             
             # Update or create Order
@@ -354,14 +489,23 @@ class OrderList:
                 self.order_lst.append(order)
             else:
                 order.add_item(order_item)
-                
+    
+    def print_orderItems(self, tabs=1):
+        
+        print("Number of orders: %s" % len(self.order_lst))
+        
+        for o in self.order_lst:
+            ord_id = o.get_orderId()
+            item_count = o.count()
+            o.print_items()
+    
     def print_orders(self, as_var=False, tabs=1):
         
         out_str = ''
         for o in self.order_lst:
             ord_id = o.get_orderId()
             item_count = o.count()
-            out_str += "%sOrder ID: %s\n" % (str('\t' * tabs), ord_id)
+            out_str += "\n%sOrder ID: %s\n" % (str('\t' * tabs), ord_id)
             
         if as_var: return out_str
         
@@ -373,4 +517,35 @@ class OrderList:
                 rem_idx = idx
                 
         self.order_lst.pop(rem_idx)
+        
+    def replace_item(self, order_id, item_obj):
+        
+        for order in self.order_lst:
+            if int(order.get_orderId()) == int(order_id):
+                order.replace_item(item_obj)
+                
+    def trim_items(self, max_images):
+        
+        if max_images is not None:
+            counter = int(max_images)
+            for order in self.order_lst:
+                items = order.get_items()
+                if len(items) < counter:
+                    trim_val = len(items)
+                    order.trim_items(trim_val)
+                    counter -= trim_val
+                else:
+                    order.trim_items(counter)
+                    counter = 0
+                    
+    def update_order(self, orderId, order_item):
+        
+        for order in self.order_lst:
+            if int(order.get_orderId()) == int(orderId):
+                order.add_item(order_item)
+                return None
+                
+        new_order = Order(orderId)
+        new_order.add_item(order_item)
+        self.order_lst.append(new_order)
         

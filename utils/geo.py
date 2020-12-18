@@ -26,8 +26,16 @@
 
 import os
 import sys
-import ogr
-import osr
+from xml.etree import ElementTree
+import json
+try:
+    import ogr
+    import osr
+    GDAL_INCLUDED = True
+except ImportError:
+    GDAL_INCLUDED = False
+    
+from . import common
 
 class Geo:
     """
@@ -64,25 +72,38 @@ class Geo:
         pnt3 = coords[0][2]
         pnt4 = coords[0][3]
         
-        # Create ring
-        ring = ogr.Geometry(ogr.wkbLinearRing)
-        ring.AddPoint(pnt1[0], pnt1[1])
-        ring.AddPoint(pnt2[0], pnt2[1])
-        ring.AddPoint(pnt3[0], pnt3[1])
-        ring.AddPoint(pnt4[0], pnt4[1])
-        ring.AddPoint(pnt1[0], pnt1[1])
-
-        # Create polygon
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
+        pnt_array = [pnt1, pnt2, pnt3, pnt4]
         
-        # Send specified output
-        if output == 'wkt':
-            return poly.ExportToWkt()
-        elif output == 'geom':
-            return poly
+        if GDAL_INCLUDED:
+            # Create ring
+            ring = ogr.Geometry(ogr.wkbLinearRing)
+            ring.AddPoint(pnt1[0], pnt1[1])
+            ring.AddPoint(pnt2[0], pnt2[1])
+            ring.AddPoint(pnt3[0], pnt3[1])
+            ring.AddPoint(pnt4[0], pnt4[1])
+            ring.AddPoint(pnt1[0], pnt1[1])
+
+            # Create polygon
+            poly = ogr.Geometry(ogr.wkbPolygon)
+            poly.AddGeometry(ring)
+            
+            # Send specified output
+            if output == 'wkt':
+                return poly.ExportToWkt()
+            elif output == 'geom':
+                return poly
+            else:
+                return pnt_array
+                
         else:
-            return [pnt1, pnt2, pnt3, pnt4]
+            if output == 'wkt':
+                # Convert values in point array to strings
+                pnt_array = [[str(p[0]), str(p[1])] for p in pnt_array]
+                
+                return "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
+                    for pnt in pnt_array])
+            else:
+                return pnt_array
             
     def convert_fromWKT(self, in_feat):
         """
@@ -95,7 +116,8 @@ class Geo:
         @return: The polygon geometry of the input WKT.
         """
         
-        out_poly = ogr.CreateGeometryFromWkt(in_feat)
+        if GDAL_INCLUDED:
+            out_poly = ogr.CreateGeometryFromWkt(in_feat)
         
         return out_poly
             
@@ -111,45 +133,46 @@ class Geo:
         if os.path.exists(out_fn):
             os.remove(out_fn)
         
-        # Create the output Driver
-        driver = ogr.GetDriverByName('GeoJSON')
+        if GDAL_INCLUDED:
+            # Create the output Driver
+            driver = ogr.GetDriverByName('GeoJSON')
 
-        # Create the output GeoJSON
-        ds = driver.CreateDataSource(out_fn)
-        lyr = ds.CreateLayer(out_fn.replace('.geojson', ''), \
-                geom_type=ogr.wkbPolygon)
+            # Create the output GeoJSON
+            ds = driver.CreateDataSource(out_fn)
+            lyr = ds.CreateLayer(out_fn.replace('.geojson', ''), \
+                    geom_type=ogr.wkbPolygon)
 
-        # Get the output Layer's Feature Definition
-        featureDefn = lyr.GetLayerDefn()
-        
-        fields = img_lst.get_fields()
-        for f in fields:
-            field_name = ogr.FieldDefn(f, ogr.OFTString)
-            field_name.SetWidth(256)
-            lyr.CreateField(field_name)
-        
-        for r in img_lst.get_images():
-            record_id = r.get_recordId()
-            poly = r.get_geometry('geom')
-
-            # Create a new feature
-            feat = ogr.Feature(featureDefn)
+            # Get the output Layer's Feature Definition
+            featureDefn = lyr.GetLayerDefn()
             
-            # Add field values
+            fields = img_lst.get_fields()
             for f in fields:
-                feat.SetField(f, str(r.get_metadata(f)))
+                field_name = ogr.FieldDefn(f, ogr.OFTString)
+                field_name.SetWidth(256)
+                lyr.CreateField(field_name)
+            
+            for r in img_lst.get_images():
+                record_id = r.get_recordId()
+                poly = r.get_geometry('geom')
 
-            # Set new geometry
-            feat.SetGeometry(poly)
+                # Create a new feature
+                feat = ogr.Feature(featureDefn)
+                
+                # Add field values
+                for f in fields:
+                    feat.SetField(f, str(r.get_metadata(f)))
 
-            # Add new feature to output Layer
-            lyr.CreateFeature(feat)
+                # Set new geometry
+                feat.SetGeometry(poly)
 
-        # Dereference the feature
-        feat = None
+                # Add new feature to output Layer
+                lyr.CreateFeature(feat)
 
-        # Save and close DataSources
-        ds = None
+            # Dereference the feature
+            feat = None
+
+            # Save and close DataSources
+            ds = None
         
     def get_polygon(self):
         """
@@ -159,51 +182,100 @@ class Geo:
         @return: The AOI in WKT format.
         """
         
-        # Determine the OGR driver of the input AOI
-        if self.aoi_fn.find('.gml') > -1:
-            ogr_driver = 'GML'
-        elif self.aoi_fn.find('.kml') > -1:
-            ogr_driver = 'KML'
-        elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
-            ogr_driver = 'GeoJSON'
-        elif self.aoi_fn.find('.shp') > -1:
-            ogr_driver = 'ESRI Shapefile'
+        if GDAL_INCLUDED:
+            # Determine the OGR driver of the input AOI
+            if self.aoi_fn.find('.gml') > -1:
+                ogr_driver = 'GML'
+            elif self.aoi_fn.find('.kml') > -1:
+                ogr_driver = 'KML'
+            elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
+                ogr_driver = 'GeoJSON'
+            elif self.aoi_fn.find('.shp') > -1:
+                ogr_driver = 'ESRI Shapefile'
+            else:
+                common.print_support("The AOI file type could not be determined.")
+                sys.exit(1)
+                
+            # Open AOI file and extract AOI
+            driver = ogr.GetDriverByName(ogr_driver)
+            ds = driver.Open(self.aoi_fn, 0)
+            
+            # Get the layer from the file
+            lyr = ds.GetLayer()
+            
+            # Set the target spatial reference to WGS84
+            t_crs = osr.SpatialReference()
+            t_crs.ImportFromEPSG(4326)
+            
+            for feat in lyr:
+                # Create the geometry
+                geom = feat.GetGeometryRef()
+                
+                # Convert the geometry to WGS84
+                s_crs = geom.GetSpatialReference()
+                
+                # Get the EPSG codes from the spatial references
+                epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
+                epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
+                
+                if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
+                    # Create the CoordinateTransformation
+                    coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
+                    geom.Transform(coordTrans)
+                
+                # Convert multipolygon to polygon (if applicable)
+                if geom.GetGeometryType() == 6:
+                    geom = geom.UnionCascaded()
+                
+                # Convert to WKT
+                aoi_feat = geom.ExportToWkt()
+                
         else:
-            common.print_support("The AOI file type could not be determined.")
-            sys.exit(1)
-            
-        # Open AOI file and extract AOI
-        driver = ogr.GetDriverByName(ogr_driver)
-        ds = driver.Open(self.aoi_fn, 0)
-        
-        # Get the layer from the file
-        lyr = ds.GetLayer()
-        
-        # Set the target spatial reference to WGS84
-        t_crs = osr.SpatialReference()
-        t_crs.ImportFromEPSG(4326)
-        
-        for feat in lyr:
-            # Create the geometry
-            geom = feat.GetGeometryRef()
-            
-            # Convert the geometry to WGS84
-            s_crs = geom.GetSpatialReference()
-            
-            # Get the EPSG codes from the spatial references
-            epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
-            epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
-            
-            if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
-                # Create the CoordinateTransformation
-                coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
-                geom.Transform(coordTrans)
-            
-            # Convert multipolygon to polygon (if applicable)
-            if geom.GetGeometryType() == 6:
-                geom = geom.UnionCascaded()
-            
-            # Convert to WKT
-            aoi_feat = geom.ExportToWkt()
+            # Determine the OGR driver of the input AOI
+            if self.aoi_fn.find('.gml') > -1 or self.aoi_fn.find('.kml') > -1:
+                
+                with open(self.aoi_fn, 'rt') as f:
+                    tree = ElementTree.parse(f)
+                    root = tree.getroot()
+                
+                if self.aoi_fn.find('.gml') > -1:
+                    for coords in root.findall('.//{http://www.opengis.net/' \
+                        'gml}coordinates'):
+                        coords = coords.text
+                else:
+                    for coords in root.findall('.//{http://www.opengis.net/' \
+                        'kml/2.2}coordinates'):
+                        coords = coords.text
+                
+                pnts_array = [pnt.split(',') for pnt in coords.split(' ')]
+                
+                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
+                    for pnt in pnts_array])
+                
+            elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
+                with open(self.aoi_fn) as f:
+                    data = json.load(f)
+                
+                feats = data['features']
+                for f in feats:
+                    geo_type = f['geometry']['type']
+                    if geo_type == 'MultiPolygon':
+                        coords = f['geometry']['coordinates'][0][0]
+                    else:
+                        coords = f['geometry']['coordinates'][0]
+                
+                # Convert values in point array to strings
+                coords = [[str(p[0]), str(p[1])] for p in coords]
+                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
+                            for pnt in coords])
+                            
+            elif self.aoi_fn.find('.shp') > -1:
+                msg = "Could not open shapefile. The GDAL Python Package " \
+                        "must be installed to use shapefiles."
+                common.print_support(msg)
+                sys.exit(1)
+            else:
+                common.print_support("The AOI file type could not be determined.")
+                sys.exit(1)
             
         return aoi_feat
