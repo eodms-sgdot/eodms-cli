@@ -27,9 +27,15 @@ The **eodms-orderdownload.py** script is used to search, order and download imag
 
 ### Requirements
 
+#### Python
+
 The eodms-orderdownload.py was designed using **Python 3.7** so it's best to have this version or higher installed.
 
-The **GDAL Python Package** is required if you would like to use shapefiles for AOIs.
+#### Python Packages
+
+The [Requests package](https://pypi.org/project/requests/) will need to be installed before using this script.
+
+The [GDAL Python Package](https://pypi.org/project/GDAL/) is required if you would like to use shapefiles for AOIs.
 
 ### Options
 
@@ -93,7 +99,7 @@ Also, the items can take a while to become available so please be patient and le
 
 1. Start the process by dragging-and-dropping an AOI (shapefile, GML, KML or GeoJSON) onto the **eodms-orderdownload.bat** batch file.
 
-	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering the date range (after Step 5).
+	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering step 3.
 	- If you would like to use a shapefile, install the **GDAL Python package** before running the script.
 
 2. Enter your username and password when prompted.
@@ -155,7 +161,7 @@ Also, the items can take a while to become available so please be patient and le
 
 1. Start the process by dragging-and-dropping an AOI (shapefile, GML, KML or GeoJSON) onto the **eodms-orderdownload.bat** batch file.
 
-	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering the date range (after Step 5).
+	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering step 3.
 	- If you would like to use a shapefile, install the **GDAL Python package** before running the script.
 	
 2. Enter your username and password when prompted.

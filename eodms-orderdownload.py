@@ -108,8 +108,11 @@ def get_config():
     config = configparser.ConfigParser()
     
     config_fn = '%s\\config.ini' % os.path.dirname(os.path.abspath(__file__))
+    #print("config_fn: %s" % config_fn)
     
     config.read(config_fn)
+    
+    # sections = config.sections()
     
     return config
 
@@ -222,10 +225,19 @@ def search_orderDownload(params, no_order=False):
             "file. Exiting process.")
         sys.exit(1)
     
+    # FOR DEBUG ONLY
+    size_limit = None
+    if 'size' in params.keys():
+        size_limit = params['size']
+    
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
     fn_str = start_time.strftime("%Y%m%d_%H%M%S")
     folder_str = start_time.strftime("%Y-%m-%d")
+    # res_folder = os.path.abspath("info\\%s" % folder_str)
+    # res_bname = "%s\\%s" % (res_folder, fn_str)
+    # if not os.path.exists(res_folder):
+        # os.mkdir(res_folder)
         
     if not common.RAPI_COLLECTIONS:
         common.get_collections(session)
@@ -272,12 +284,24 @@ def search_orderDownload(params, no_order=False):
         common.print_support("No results found for given AOI.")
         sys.exit(1)
     
+    # Export the query results to the CSV info file
+    # query_imgs.export_csv(res_bname)
+    
     msg = "%s images returned from search results.\n" % \
             query_imgs.count()
     common.print_footer('Query Results', msg)
     
+    # if max_images is not None and not max_images == '':
+        # if (order_only and not download_only) \
+            # or (not order_only and not download_only):
+            # common.print_msg("Maximum images set to %s. Proceeding with the " \
+                # "first %s images.\n" % (max_images, max_images))
+            # query_imgs.trim(max_images)
+    
     # # Inform the user of the total number of found images and ask if 
     # #   they'd like to continue
+    # if (order_only and not download_only) \
+    #    or (not order_only and not download_only):
     if max_images is None or max_images == '':
         if not no_order:
             if not common.SILENT:
@@ -295,6 +319,13 @@ def search_orderDownload(params, no_order=False):
         common.print_msg("Proceeding to download the first %s images." % \
             max_images)
         query_imgs.trim(max_images)
+    # else:
+        # common.print_msg("Using these results to extract the existing " \
+            # "order items.")
+    # else:
+        # # If the input file is a CSV (from EODMS UI), import it
+        # eodms_csv = csv_util.EODMS_CSV(csv_fn, session)
+        # query_imgs = eodms_csv.import_csv()
     
     # Create order object
     eodms_order = utils.Orderer(session, max_items=max_items)
@@ -315,6 +346,7 @@ def search_orderDownload(params, no_order=False):
                 answer = input(msg)
                 if answer.lower().find('y') > -1:
                     orders = eodms_order.submit_orders(query_imgs)
+                    # orders.export_csv(res_bname)
                 else:
                     common.print_support()
                     sys.exit(0)
@@ -331,13 +363,85 @@ def search_orderDownload(params, no_order=False):
         sys.exit(1)
     
     # Download images
-    eodms_downloader = utils.Downloader(session, max_images, fn_str)
+    eodms_downloader = utils.Downloader(session, max_images, fn_str, 
+                        size_limit=size_limit)
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
     
     return None
 
 def main():
+    
+    if '-debug' in sys.argv:
+        debug_f = open('debug.txt')
+        
+        params = {'collections': '', 
+                'dates': '', 
+                'input': '', 
+                'maximum': '', 
+                'order': False, 
+                'download': False, 
+                'option': 'full'}
+        for r in debug_f.readlines():
+            if r[0] == '#': continue
+            param, val = r.strip('\n').split('=')
+            params[param] = val
+            
+        # if 'dates' in params.keys():
+            # date_lst = []
+            # for d in params['dates'].split(','):
+                # d_rng = d.split('-')
+                # date_lst.append(d_rng)
+            # params['dates'] = date_lst
+        
+        session = requests.Session()
+        session.auth = (params['username'], params['password'])
+        params['session'] = session
+        
+        config_info = get_config()
+        
+        download_path = config_info.get('Script', 'downloads')
+        if download_path == '':
+            common.DOWNLOAD_PATH = "%s\\downloads" % \
+                os.path.dirname(os.path.abspath(__file__))
+        elif not os.path.isabs(download_path):
+            common.DOWNLOAD_PATH = "%s\\%s" % \
+                (os.path.dirname(os.path.abspath(__file__), download_path))
+        else:
+            common.DOWNLOAD_PATH = download_path
+            
+        print("\nImages will be downloaded to '%s'." % common.DOWNLOAD_PATH)
+        
+        res_path = config_info.get('Script', 'results')
+        if res_path == '':
+            common.RESULTS_PATH = "%s\\results" % \
+                os.path.dirname(os.path.abspath(__file__))
+        elif not os.path.isabs(res_path):
+            common.RESULTS_PATH = "%s\\%s" % \
+                (os.path.dirname(os.path.abspath(__file__), res_path))
+        else:
+            common.RESULTS_PATH = res_path
+            
+        common.TIMEOUT_QUERY = config_info.get('Script', 'timeout_query')
+        common.TIMEOUT_ORDER = config_info.get('Script', 'timeout_order')
+        
+        try:
+            common.TIMEOUT_QUERY = float(common.TIMEOUT_QUERY)
+        except ValueError:
+            common.TIMEOUT_QUERY = 60.0
+            
+        try:
+            common.TIMEOUT_ORDER = float(common.TIMEOUT_ORDER)
+        except ValueError:
+            common.TIMEOUT_ORDER = 180.0
+        
+        #print("params: %s" % params)
+        #answer = input("Press enter...")
+        
+        if params['option'] == 'full':
+            search_orderDownload(params)
+        
+        sys.exit(0)
     
     try:
         choices = {'full': 'Search, order & download images using ' \
@@ -378,6 +482,18 @@ def main():
                             help='Sets process to silent ' \
                             'which supresses all questions.')
         
+        # parser.add_argument('-r', '--recordid', help='The record ID for a ' \
+                            # 'single image. If this parameter is entered, ' \
+                            # 'only the image with this ID will be ordered.')
+        # parser.add_argument('-i', '--input', help='A CSV file containing a ' \
+                            # 'list of record IDs. The process will only ' \
+                            # 'order the images from this file.\nThe file ' \
+                            # 'should contain a column called "Record ID", ' \
+                            # '"Sequence ID" or "Downlink Segment ID" with ' \
+                            # 'an "Order Key" column.')
+        # parser.add_argument('-c', '--collection', help='The collection of ' \
+                            # 'the images being ordered.')
+        
         args = parser.parse_args()
         
         user = args.username
@@ -395,15 +511,6 @@ def main():
                 "                    #")
         print("############################################################" \
                 "#####################")
-                
-        if input_fn.find('.shp') > -1:
-            try:
-                import ogr
-            except ImportError:
-                print("\nCannot open a Shapefile without GDAL. Please install " \
-                    "the GDAL Python package if you'd like to use a Shapefile " \
-                    "for your AOI.")
-                sys.exit(1)
         
         params = {}
         
@@ -518,6 +625,9 @@ def main():
                 'option': option}
         params['session'] = session
         
+        # for k, v in params.items():
+            # print("%s: %s" % (k, v))
+        
         if option is None:
             if common.SILENT:
                 option = 'full'
@@ -536,6 +646,32 @@ def main():
         
         if option == 'full' or option == 'download_aoi':
             # Search, order & download using an AOI
+            
+            # Get the AOI file
+            if input_fn is None or input_fn == '':
+                
+                if common.SILENT:
+                    common.print_support("No AOI file specified. " \
+                        "Exiting process.")
+                    sys.exit(1)
+                
+                msg = "\nEnter the full path name of a GML, KML, Shapefile or " \
+                        "GeoJSON containing an AOI to restrict the search " \
+                        "to a specific location"
+                err_msg = "No AOI specified. Please enter a valid GML, KML, " \
+                        "Shapefile or GeoJSON file"
+                input_fn = get_input(msg, err_msg)
+            else:
+                if input_fn.find('.shp') > -1:
+                    try:
+                        import ogr
+                    except ImportError:
+                        print("\nCannot open a Shapefile without GDAL. Please install " \
+                            "the GDAL Python package if you'd like to use a Shapefile " \
+                            "for your AOI.")
+                        sys.exit(1)
+                
+            params['input'] = input_fn
             
             # Get the collection(s)
             if coll is None:
@@ -570,9 +706,13 @@ def main():
             params['collections'] = coll
                 
             # Get the date range
+            #date_lst = []
             if dates is None:
                 
                 if not common.SILENT:
+                    # msg = "\nEnter to dates, separated by dash, for the date " \
+                            # "range (format: yyyymmdd) (ex: 20100525-20201013) " \
+                            # "(leave blank to search all years)"
                     msg = "\nEnter a range or multiple range of dates; separate " \
                             "each range with a comma and each date with a dash " \
                             "(ex: 20200525-20200630," \
@@ -584,25 +724,11 @@ def main():
                             common.print_support("No date range was provided. " \
                                 "Please enter 2 dates separated by a dash.")
                             sys.exit(1)
+                        # for d in dates.split(','):
+                            # d_rng = d.split('-')
+                            # date_lst.append(d_rng)
             
             params['dates'] = dates
-                
-            # Get the AOI file
-            if input_fn is None or input_fn == '':
-                
-                if common.SILENT:
-                    common.print_support("No AOI file specified. " \
-                        "Exiting process.")
-                    sys.exit(1)
-                
-                msg = "\nEnter the full path name of a GML, KML, Shapefile or " \
-                        "GeoJSON containing an AOI to restrict the search " \
-                        "to a specific location"
-                err_msg = "No AOI specified. Please enter a valid GML, KML, " \
-                        "Shapefile or GeoJSON file"
-                input_fn = get_input(msg, err_msg)
-                
-            params['input'] = input_fn
                 
             if maximum is None or maximum == '':
                 
@@ -612,12 +738,17 @@ def main():
                     
                     total_records = get_input(msg, required=False)
                     
+                    #print("download: %s" % download)
+                    #print("order: %s" % order)
+                    
                     msg = "\nIf you'd like a limit of images per order, enter a " \
                         "value (EODMS sets a maximum limit of 100)"
                 
                     order_limit = get_input(msg, required=False)
                     
                     maximum = ':'.join(filter(None, [total_records, order_limit]))
+                    
+                    # print("maximum: %s" % maximum)
                 
             params['maximum'] = maximum
             
