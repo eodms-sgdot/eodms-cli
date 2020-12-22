@@ -29,7 +29,7 @@ The **eodms-orderdownload.py** script is used to search, order and download imag
 
 #### Python
 
-The eodms-orderdownload.py was designed using **Python 3.7** so it's best to have this version or higher installed.
+The eodms-orderdownload.py was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
 
 #### Python Packages
 

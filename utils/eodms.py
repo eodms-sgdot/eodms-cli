@@ -396,7 +396,8 @@ class OrderList:
             os.mkdir(common.RESULTS_PATH)
         
         # Create the query results CSV
-        csv_fn = "%s\\%s_Results.csv" % (common.RESULTS_PATH, res_bname)
+        csv_fn = os.path.join(common.RESULTS_PATH, \
+                "%s_Results.csv" % res_bname)
         out_csv = csv_util.EODMS_CSV(csv_fn)
         out_csv.open()
         

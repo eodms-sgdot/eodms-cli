@@ -273,13 +273,12 @@ def search_orderDownload(params, no_order=False):
         common.print_support("No results found for given AOI.")
         sys.exit(1)
     
-    # Export the query results to the CSV info file
-    # query_imgs.export_csv(res_bname)
-    
     msg = "%s images returned from search results.\n" % \
             query_imgs.count()
     common.print_footer('Query Results', msg)
     
+    # # Inform the user of the total number of found images and ask if 
+    # #   they'd like to continue
     if max_images is None or max_images == '':
         if not no_order:
             if not common.SILENT:
@@ -317,7 +316,6 @@ def search_orderDownload(params, no_order=False):
                 answer = input(msg)
                 if answer.lower().find('y') > -1:
                     orders = eodms_order.submit_orders(query_imgs)
-                    # orders.export_csv(res_bname)
                 else:
                     common.print_support()
                     sys.exit(0)
@@ -342,6 +340,68 @@ def search_orderDownload(params, no_order=False):
     return None
 
 def main():
+    
+    if '-debug' in sys.argv:
+        debug_f = open('debug.txt')
+        
+        params = {'collections': '', 
+                'dates': '', 
+                'input': '', 
+                'maximum': '', 
+                'order': False, 
+                'download': False, 
+                'option': 'full'}
+        for r in debug_f.readlines():
+            if r[0] == '#': continue
+            param, val = r.strip('\n').split('=')
+            params[param] = val
+        
+        session = requests.Session()
+        session.auth = (params['username'], params['password'])
+        params['session'] = session
+        
+        config_info = get_config()
+        
+        abs_path = os.path.abspath(__file__)
+        download_path = config_info.get('Script', 'downloads')
+        if download_path == '':
+            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    'downloads')
+        elif not os.path.isabs(download_path):
+            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    download_path)
+        else:
+            common.DOWNLOAD_PATH = download_path
+            
+        print("\nImages will be downloaded to '%s'." % common.DOWNLOAD_PATH)
+        
+        res_path = config_info.get('Script', 'results')
+        if res_path == '':
+            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    'results')
+        elif not os.path.isabs(res_path):
+            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    res_path)
+        else:
+            common.RESULTS_PATH = res_path
+            
+        common.TIMEOUT_QUERY = config_info.get('Script', 'timeout_query')
+        common.TIMEOUT_ORDER = config_info.get('Script', 'timeout_order')
+        
+        try:
+            common.TIMEOUT_QUERY = float(common.TIMEOUT_QUERY)
+        except ValueError:
+            common.TIMEOUT_QUERY = 60.0
+            
+        try:
+            common.TIMEOUT_ORDER = float(common.TIMEOUT_ORDER)
+        except ValueError:
+            common.TIMEOUT_ORDER = 180.0
+        
+        if params['option'] == 'full':
+            search_orderDownload(params)
+        
+        sys.exit(0)
     
     try:
         choices = {'full': 'Search, order & download images using ' \
@@ -405,13 +465,14 @@ def main():
         # Set all the parameters from the config.ini file
         config_info = get_config()
         
+        abs_path = os.path.abspath(__file__)
         download_path = config_info.get('Script', 'downloads')
         if download_path == '':
-            common.DOWNLOAD_PATH = "%s\\downloads" % \
-                os.path.dirname(os.path.abspath(__file__))
+            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    'downloads')
         elif not os.path.isabs(download_path):
-            common.DOWNLOAD_PATH = "%s\\%s" % \
-                (os.path.dirname(os.path.abspath(__file__), download_path))
+            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    download_path)
         else:
             common.DOWNLOAD_PATH = download_path
             
@@ -419,11 +480,11 @@ def main():
         
         res_path = config_info.get('Script', 'results')
         if res_path == '':
-            common.RESULTS_PATH = "%s\\results" % \
-                os.path.dirname(os.path.abspath(__file__))
+            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    'results')
         elif not os.path.isabs(res_path):
-            common.RESULTS_PATH = "%s\\%s" % \
-                (os.path.dirname(os.path.abspath(__file__), res_path))
+            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    res_path)
         else:
             common.RESULTS_PATH = res_path
             
@@ -491,7 +552,10 @@ def main():
                     config_info.set('RAPI', 'password', \
                         str(pass_enc))
                     
-                    cfgfile = open('config.ini', 'w')
+                    config_fn = os.path.join(os.path.dirname(\
+                                os.path.abspath(__file__)), \
+                                'config.ini')
+                    cfgfile = open(config_fn, 'w')
                     config_info.write(cfgfile, space_around_delimiters=False)
                     cfgfile.close()
         

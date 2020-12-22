@@ -223,14 +223,14 @@ class Downloader:
                                     os.mkdir(common.DOWNLOAD_PATH)
                                 
                                 # Download the image
-                                common.print_msg("Downloading image with Record " \
-                                        "ID %s (%s)." % (record_id, \
+                                common.print_msg("Downloading image with " \
+                                        "Record ID %s (%s)." % (record_id, \
                                         os.path.basename(url)))
                                 
                                 # # Save the image contents to the 'downloads' folder
                                 if prev_path is None:
-                                    out_fn = "%s\\%s\\%s" % \
-                                        (common.DOWNLOAD_PATH, self.fn_str, fn)
+                                    out_fn = os.path.join(common.DOWNLOAD_PATH, \
+                                            self.fn_str, fn)
                                 else:
                                     out_fn = prev_path
                                 full_path = os.path.realpath(out_fn)
