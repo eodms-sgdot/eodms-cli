@@ -332,6 +332,7 @@ def search_orderDownload(params, no_order=False):
         sys.exit(1)
     
     # Download images
+    size_limit = None
     eodms_downloader = utils.Downloader(session, max_images, fn_str, 
                         size_limit=size_limit)
     eodms_downloader.download_orders(orders)
@@ -340,68 +341,6 @@ def search_orderDownload(params, no_order=False):
     return None
 
 def main():
-    
-    if '-debug' in sys.argv:
-        debug_f = open('debug.txt')
-        
-        params = {'collections': '', 
-                'dates': '', 
-                'input': '', 
-                'maximum': '', 
-                'order': False, 
-                'download': False, 
-                'option': 'full'}
-        for r in debug_f.readlines():
-            if r[0] == '#': continue
-            param, val = r.strip('\n').split('=')
-            params[param] = val
-        
-        session = requests.Session()
-        session.auth = (params['username'], params['password'])
-        params['session'] = session
-        
-        config_info = get_config()
-        
-        abs_path = os.path.abspath(__file__)
-        download_path = config_info.get('Script', 'downloads')
-        if download_path == '':
-            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
-                                    'downloads')
-        elif not os.path.isabs(download_path):
-            common.DOWNLOAD_PATH = os.path.join(os.path.dirname(abs_path), \
-                                    download_path)
-        else:
-            common.DOWNLOAD_PATH = download_path
-            
-        print("\nImages will be downloaded to '%s'." % common.DOWNLOAD_PATH)
-        
-        res_path = config_info.get('Script', 'results')
-        if res_path == '':
-            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
-                                    'results')
-        elif not os.path.isabs(res_path):
-            common.RESULTS_PATH = os.path.join(os.path.dirname(abs_path), \
-                                    res_path)
-        else:
-            common.RESULTS_PATH = res_path
-            
-        common.TIMEOUT_QUERY = config_info.get('Script', 'timeout_query')
-        common.TIMEOUT_ORDER = config_info.get('Script', 'timeout_order')
-        
-        try:
-            common.TIMEOUT_QUERY = float(common.TIMEOUT_QUERY)
-        except ValueError:
-            common.TIMEOUT_QUERY = 60.0
-            
-        try:
-            common.TIMEOUT_ORDER = float(common.TIMEOUT_ORDER)
-        except ValueError:
-            common.TIMEOUT_ORDER = 180.0
-        
-        if params['option'] == 'full':
-            search_orderDownload(params)
-        
-        sys.exit(0)
     
     try:
         choices = {'full': 'Search, order & download images using ' \
