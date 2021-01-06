@@ -212,7 +212,6 @@ class OrderItem:
         return self.metadata['itemId']
         
     def get_orderId(self):
-        # print("self.metadata: %s" % self.metadata)
         return self.metadata['orderId']
         
     def get_metadata(self, entry=None):
@@ -228,7 +227,8 @@ class OrderItem:
         if 'download_paths' not in self.metadata.keys(): return None
         
         paths = self.metadata['download_paths']
-        path_json = json.loads(paths)
+        path_str = json.dumps(paths)
+        path_json = json.loads(path_str)
         
         download_path = path_json[0]['local_destination']
         

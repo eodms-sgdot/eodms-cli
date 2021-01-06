@@ -239,17 +239,23 @@ class Geo:
                     root = tree.getroot()
                 
                 if self.aoi_fn.find('.gml') > -1:
+                    coord_lst = []
                     for coords in root.findall('.//{http://www.opengis.net/' \
                         'gml}coordinates'):
-                        coords = coords.text
+                        coord_lst.append(coords.text)
                 else:
+                    coord_lst = []
                     for coords in root.findall('.//{http://www.opengis.net/' \
                         'kml/2.2}coordinates'):
-                        coords = coords.text
+                        coord_lst.append(coords.text)
+                        
+                pnts_array = []
+                for c in coord_lst:
+                    pnts = [p.strip('\n').strip('\t').split(',') for p in \
+                            c.split(' ') if not p.strip('\n').strip('\t') == '']
+                    pnts_array += pnts
                 
-                pnts_array = [pnt.split(',') for pnt in coords.split(' ')]
-                
-                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
+                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
                     for pnt in pnts_array])
                 
             elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:

@@ -719,7 +719,6 @@ class Query:
         return self.results
         
     def parse_dates(self):
-        #print("dates: %s" % self.dates)
         
         if self.dates is None or self.dates == '':
             return ''
@@ -907,7 +906,8 @@ class Query:
                 date_queries.append("%s between DT'%s' and DT'%s'" % (field_id, \
                     start, end))
                     
-            query_lst.append("(%s)" % ' or '.join(date_queries))
+            if len(date_queries) > 0:
+                query_lst.append("(%s)" % ' or '.join(date_queries))
             
             if coll_id == 'NAPL':
                 # If the collection is NAPL, add an open data parameter

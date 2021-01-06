@@ -217,7 +217,7 @@ def search_orderDownload(params, no_order=False):
     session = params['session']
     
     if aoi.find('.shp') == -1 and aoi.find('.gml') == -1 \
-        and aoi.find('.kml') and aoi.find('.json') == -1 \
+        and aoi.find('.kml') == -1 and aoi.find('.json') == -1 \
         and aoi.find('.geojson') == -1:
         common.print_support("The provided input file is not a valid AOI " \
             "file. Exiting process.")
@@ -332,9 +332,7 @@ def search_orderDownload(params, no_order=False):
         sys.exit(1)
     
     # Download images
-    size_limit = None
-    eodms_downloader = utils.Downloader(session, max_images, fn_str, 
-                        size_limit=size_limit)
+    eodms_downloader = utils.Downloader(session, max_images, fn_str)
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
     
@@ -450,11 +448,6 @@ def main():
             
             user = config_info.get('RAPI', 'username')
             if user == '':
-            
-                if common.SILENT:
-                    common.print_support("No username specified. Exiting " \
-                        "process.")
-                    sys.exit(1)
                     
                 msg = "\nEnter the username for authentication"
                 err_msg = "A username is required to order images."
@@ -468,10 +461,6 @@ def main():
             password = config_info.get('RAPI', 'password')
             
             if password == '':
-                if common.SILENT:
-                    common.print_support("No password specified. Exiting " \
-                        "process.")
-                    sys.exit(1)
                     
                 msg = 'Enter the password for authentication'
                 err_msg = "A password is required to order images."
@@ -482,21 +471,25 @@ def main():
                 print("Using the password set in the 'config.ini' file...")
                 
         if new_user or new_pass:
-            if not common.SILENT:
-                answer = input("\nWould you like to store the credentials " \
-                        "for a future session? (y/n):")
-                if answer.lower().find('y') > -1:
-                    config_info.set('RAPI', 'username', user)
-                    pass_enc = base64.b64encode(password.encode("utf-8")).decode("utf-8")
-                    config_info.set('RAPI', 'password', \
-                        str(pass_enc))
-                    
-                    config_fn = os.path.join(os.path.dirname(\
-                                os.path.abspath(__file__)), \
-                                'config.ini')
-                    cfgfile = open(config_fn, 'w')
-                    config_info.write(cfgfile, space_around_delimiters=False)
-                    cfgfile.close()
+            suggestion = ''
+            if common.SILENT:
+                suggestion = " (it is best to store the credentials if " \
+                            "you'd like to run the script in silent mode)"
+            
+            answer = input("\nWould you like to store the credentials " \
+                    "for a future session%s? (y/n):" % suggestion)
+            if answer.lower().find('y') > -1:
+                config_info.set('RAPI', 'username', user)
+                pass_enc = base64.b64encode(password.encode("utf-8")).decode("utf-8")
+                config_info.set('RAPI', 'password', \
+                    str(pass_enc))
+                
+                config_fn = os.path.join(os.path.dirname(\
+                            os.path.abspath(__file__)), \
+                            'config.ini')
+                cfgfile = open(config_fn, 'w')
+                config_info.write(cfgfile, space_around_delimiters=False)
+                cfgfile.close()
         
         common.ATTEMPTS = config_info.get('RAPI', 'access_attempts')
         
@@ -592,8 +585,7 @@ def main():
                 coll = coll.split(',')
                 
             params['collections'] = coll
-                
-            # Get the date range
+            
             if dates is None:
                 
                 if not common.SILENT:
@@ -608,6 +600,9 @@ def main():
                             common.print_support("No date range was provided. " \
                                 "Please enter 2 dates separated by a dash.")
                             sys.exit(1)
+                        # for d in dates.split(','):
+                            # d_rng = d.split('-')
+                            # date_lst.append(d_rng)
             
             params['dates'] = dates
                 
