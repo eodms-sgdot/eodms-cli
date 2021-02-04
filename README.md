@@ -55,7 +55,7 @@ The script has 4 options for ordering and downloading images:
 	
 4. Download existing orders using a CSV file from a previous order/download process (files found under "results" folder)
 	
-	- This option allows the user to re-download an existing set of images from a previous session (all session results are save in the "results" folder as CSV files).
+	- This option allows the user to re-download an existing set of images from a previous session (all session results are save in the "results" folder as CSV files or in a location specified in the [configuration file](#config-results)).
 
 ### Input File
 
@@ -104,35 +104,37 @@ Also, the items can take a while to become available so please be patient and le
 
 2. Enter your username and password when prompted.
 	
-	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [config file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
+	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
 
 3. When prompted ```What would you like to do?```, enter ```1``` (or press enter as ```1``` is the default).
 
 4. Enter the number corresponding to the collections you'd like to query, separating each with a comma.
 
-5. Enter the date range separated with a dash. If you want to search all years, leave blank.
+5. Next, you'll be asked for the query filters for each collection you specified in step 4. See [Filters](#filters) for more information on entering filters.
+
+6. Enter the date range separated with a dash. If you want to search all years, leave blank.
 	
 	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
 	- Date format is ```YYYYMMDD```.
 
-6. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
+7. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
 
-7. Enter the total number of images you'd like for each order (leave blank for the maximum which is set to 100 by the EODMS).
+8. Enter the total number of images you'd like for each order (leave blank for the maximum which is set to 100 by the EODMS).
 
-8. Once the image results are ready, the number of results will be shown and you'll be asked if you'll like to continue.
+9. Once the image results are ready, the number of results will be shown and you'll be asked if you'll like to continue.
 	
 	- This is due to the possible large number of images returned in the results.
 	- If you chose to enter a total number of images in Step 6, this question will not be asked and ordering will commence.
 
-9. Next, the orders will be submitted to the RAPI.
+10. Next, the orders will be submitted to the RAPI.
 
-10. The script will continue to run until the images are ready for downloading (or if they fail) or until you press Crtl-C.
+11. The script will continue to run until the images are ready for downloading (or if they fail) or until you press Crtl-C.
 
-11. Once the images are ready for download, they will be downloaded to the "downloads" folder in a folder with the date and time the script was started (ex: "20201215_165428").
+12. Once the images are ready for download, they will be downloaded to the "downloads" folder in a folder with the date and time the script was started (ex: "20201215_165428").
 	
 	- A different "downloads" folder can be set in the "[config.ini" file](#config-downloads).
 	
-12. When the script has finished all downloads, you can find a CSV file containing the information for the downloaded images. This CSV file can be used to download the images again (option 4).
+13. When the script has finished all downloads, you can find a CSV file containing the information for the downloaded images. This CSV file can be used to download the images again (option 4).
 
 ### Option 2 - Order & download images using EODMS UI search results
 
@@ -147,7 +149,7 @@ Also, the items can take a while to become available so please be patient and le
 
 3. Enter your username and password when prompted.
 	
-	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [config file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
+	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
 
 4. When prompted ```What would you like to do?```, enter ```2```.
 
@@ -168,21 +170,23 @@ Also, the items can take a while to become available so please be patient and le
 
 3. When prompted ```What would you like to do?```, enter ```3```.
 	
-	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [config file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
+	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
 
 4. Enter the number corresponding to the collections you'd like to query, separating each with a comma.
 
-5. Enter the date range separated with a dash. If you want to search all years, leave blank.
+5. Next, you'll be asked for the query filters for each collection you specified in step 4. See [Filters](#filters) for more information on entering filters.
+
+6. Enter the date range separated with a dash. If you want to search all years, leave blank.
 	
 	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
 	- The date range can also include a time, separated by a T (ex: ```20200701T153455-20200801T000545```). Make sure the time is in UTC.
 	- Date format is ```yyyymmdd``` or ```yyyymmddThhmmss```.
 	
-6. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
+7. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
 
-7. Enter the total number of images you'd like for each order (leave blank for the maximum which is set to 100 by the EODMS).
+8. Enter the total number of images you'd like for each order (leave blank for the maximum which is set to 100 by the EODMS).
 
-8. The process will query the RAPI for the image information, get the order information for the current user and download any existing image items in the orders.
+9. The process will query the RAPI for the image information, get the order information for the current user and download any existing image items in the orders.
 
 ### Option 4 - Download existing orders using a CSV file from a previous order/download process
 
@@ -194,7 +198,7 @@ Also, the items can take a while to become available so please be patient and le
 
 3. When prompted ```What would you like to do?```, enter ```4```.
 	
-	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [config file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
+	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
 
 4. The script will download any images with a "downloaded" column value of "False" in the CSV file. However, the script will ask you if you want to re-download images that have already been downloaded (i.e. "downloaded" set to "True").
 
@@ -242,6 +246,17 @@ Here is a list of parameters for the script:
 	</tr>
 	<tr>
 		<td>
+			Input
+		</td>
+		<td>
+			<pre>-i --input</pre>
+		</td>
+		<td>
+			An input file, can either be an AOI (shapefile, KML, or GeoJSON) or a CSV file exported from the EODMS UI.
+		</td>
+	</tr>
+	<tr>
+		<td>
 			Collections
 		</td>
 		<td>
@@ -261,6 +276,18 @@ Here is a list of parameters for the script:
 	</tr>
 	<tr>
 		<td>
+			Filters
+		</td>
+		<td>
+			<pre>-f --filters</pre>
+		</td>
+		<td>
+			Used to set available filters to narrow image search results for ordering/downloading.<br>
+			See <a href="#filters">Filters</a> for more information on entering filters.
+		</td>
+	</tr>
+	<tr>
+		<td>
 			Date Range
 		</td>
 		<td>
@@ -268,17 +295,6 @@ Here is a list of parameters for the script:
 		</td>
 		<td>
 			The date range for the search in format YYYYMMDD and separated by a dash (ex: <code>20201019-20201119</code>).
-		</td>
-	</tr>
-	<tr>
-		<td>
-			Input
-		</td>
-		<td>
-			<pre>-i --input</pre>
-		</td>
-		<td>
-			An input file, can either be an AOI (shapefile, KML, or GeoJSON) or a CSV file exported from the EODMS UI.
 		</td>
 	</tr>
 	<tr>
@@ -370,6 +386,108 @@ Here is a list of parameters for the script:
 | Download existing orders for a specific AOI (Option 3)                      | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -o download_aoi``` |
 | Download existing orders using CSV from a previous session in silent mode   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\eodms-rapi-orderdownload\results\20201214_155904_Results.csv" -o download_only -s``` |
 
+## Filters
+
+Filters (also known as [Data Options](https://wiki.gccollab.ca/EODMS_How-To_Guide#How_do_I_narrow_my_search_by_time,_dataset,_and_data_options?) in the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp)) are used to narrow your image search results.
+
+The proper format for each filter is:
+
+```[<collection_id>.]<filter_id>=<value>[|<value>]```
+
+where: 
+
+<table>
+	<tr>
+		<td><code>&lt;collection_id&gt;</code></td>
+		<td>
+			The collection ID (not name/title) for one of the collections specified with the <code>collections</code> parameter mentioned above. (For RCM Images, you can use <code>RCM</code> instead of <code>RCMImageProducts</code>.)<br>
+			You don't need to specify the collection ID if you're entering filters in the command-prompt or if you only specify one collection in a command-line syntax.
+		</td>
+	</tr>
+	<tr>
+		<td><code>&lt;filter_id&gt;</code></td>
+		<td>
+			The filter ID for the filter entry. See below for a <a href="#list-of-filters">list of available filters</a> for each collection.
+		</td>
+	</tr>
+	<tr>
+		<td><code>&lt;value&gt;</code></td>
+		<td>
+			The value used to filter the search results. You can specify multiple values with each value separated with a vertical line <code>|</code>.
+		</td>
+	</tr>
+</table>
+
+When entering multiple filters, separate each filter entry with a comma. Also when entering filters in the command-line, surround them with double-quotes.
+
+### Syntax Examples:
+
+For a single collection:
+
+```-f "BEAM_MNEMONIC=16M11|16M13,INCIDENCE_ANGLE=43"```
+
+For 2 collections, RCM and Radarsat-1: 
+
+```-f "RCM.BEAM_MNEMONIC=16M11|16M13,RCM.INCIDENCE_ANGLE=43,Radarsat1.BEAM_MNEMONIC=EH1"```
+
+### List of Filters
+
+#### RCM Image Products
+
+| Filter Name               | Filter ID                 | Examples                                        |
+|---------------------------|---------------------------|-------------------------------------------------|
+| Orbit Direction           | ORBIT_DIRECTION           | ```[RCM.]ORBIT_DIRECTION=Descending```          |
+| Incidence Angle           | INCIDENCE_ANGLE           | NOTE: The Incidence Angle can be a single value or a range separated with a dash.<br>```[RCM.]INCIDENCE_ANGLE=35-43``` |
+| Beam Mnemonic             | BEAM_MNEMONIC             | ```[RCM.]BEAM_MNEMONIC=16M11```                 |
+| Beam Mode Qualifier       | BEAM_MODE_QUALIFIER       | ```[RCM.]BEAM_MODE_QUALIFIER=Calibration```     | 
+| Downlink segment ID       | DOWNLINK_SEGMENT_ID       | ```[RCM.]DOWNLINK_SEGMENT_ID=1737972_1806750``` |
+| LUT Applied               | LUT_Applied               | ```[RCM.]LUT_Applied=Unity-sigma```             |
+| Open Data                 | OPEN_DATA                 | ```[RCM.]OPEN_DATA=false```                     |
+| Polarization              | POLARIZATION              | ```[RCM.]POLARIZATION=HH```                     |
+| Product Format            | PRODUCT_FORMAT            | ```[RCM.]PRODUCT_FORMAT=NITF21```               |
+| Product Type              | PRODUCT_TYPE              | ```[RCM.]PRODUCT_TYPE=GRD```                    |
+| Relative Orbit            | RELATIVE_ORBIT            | ```[RCM.]RELATIVE_ORBIT=14```                   |
+| Within Orbital Tube       | WITHIN_ORBIT_TUBE         | ```[RCM.]WITHIN_ORBIT_TUBE=true```              |
+| Order Key                 | ORDER_KEY                 | ```[RCM.]ORDER_KEY=RCM1_OK1363978_PK1471707_1_SC50MB_20210126_210951_HH_HV_GRD``` |
+| Sequence Id               | SEQUENCE_ID               | ```[RCM.]SEQUENCE_ID=8092382```                 |
+| Special Handling Required | SPECIAL_HANDLING_REQUIRED | ```[RCM.]SPECIAL_HANDLING_REQUIRED=true```      |
+
+#### Radarsat-1
+
+| Filter Name     | Filter ID       | Examples                                     |
+|-----------------|-----------------|----------------------------------------------|
+| Orbit Direction | ORBIT_DIRECTION | ```[Radarsat1.]ORBIT_DIRECTION=Descending``` |
+| Pixel Spacing   | PIXEL_SPACING   | NOTE: The Pixel Spacing can be a single value or a range separated with a dash.<br>```[Radarsat1.]PIXEL_SPACING=10-20```         |
+| Incidence Angle | INCIDENCE_ANGLE | NOTE: The Incidence Angle can be a single value or a range separated with a dash.<br>```[Radarsat1.]INCIDENCE_ANGLE=35-43```      |
+| Beam Mnemonic   | BEAM_MNEMONIC   | ```[Radarsat1.]BEAM_MNEMONIC=EH6```          |
+| Orbit           | ORBIT           | NOTE: The Orbit can be a single value or a range separated with a dash.<br>```[Radarsat1.]ORBIT=90522.0```              |
+
+#### Radarsat-2
+
+| Filter Name           | Filter ID             | Examples                                     |
+|-----------------------|-----------------------|----------------------------------------------|
+| Orbit Direction       | ORBIT_DIRECTION       | ```[Radarsat2.]ORBIT_DIRECTION=Descending``` |
+| Pixel Spacing         | PIXEL_SPACING         | NOTE: The Pixel Spacing can be a single value or a range separated with a dash.<br>```[Radarsat2.]PIXEL_SPACING=50```           |
+| Incidence Angle       | INCIDENCE_ANGLE       | NOTE: The Incidence Angle can be a single value or a range separated with a dash.<br>```[Radarsat2.]INCIDENCE_ANGLE=35-43```      |
+| Sequence Id           | SEQUENCE_ID           | ```[Radarsat2.]SEQUENCE_ID=8023166```        |
+| Beam Mnemonic         | BEAM_MNEMONIC         | ```[Radarsat2.]BEAM_MNEMONIC=DVWF```         |
+| Look Direction        | LOOK_DIRECTION        | ```[Radarsat2.]LOOK_DIRECTION=Right```       |
+| Transmit Polarization | TRANSMIT_POLARIZATION | ```[Radarsat2.]TRANSMIT_POLARIZATION=H```    |
+| Receive Polarization  | RECEIVE_POLARIZATION  | ```[Radarsat2.]RECEIVE_POLARIZATION=H```     |
+| Image Identification  | IMAGE_ID              | ```[Radarsat2.]IMAGE_ID=869600```            |
+| Relative Orbit        | RELATIVE_ORBIT        | ```[Radarsat2.]RELATIVE_ORBIT=219```         |
+| Order Key             | ORDER_KEY             | ```[Radarsat2.]ORDER_KEY=RS2_OK125836_IK869600_PEK017325182_DVWF_20210101_214521_HH_SCS``` |
+
+#### National Air Photo Library
+
+| Filter Name  | Filter ID    | Examples                        |
+|--------------|--------------|---------------------------------|
+| Colour       | COLOUR       | ```[NAPL.]COLOUR=Black&White``` |
+| Scale        | SCALE        | NOTE: The Scale can be a single value or a range separated with a dash.<br>```[NAPL.]SCALE=5000-15000``` |
+| Roll         | ROLL         | ```[NAPL.]ROLL=A28554```        |
+| Photo Number | PHOTO_NUMBER | ```[NAPL.]PHOTO_NUMBER=0028```  |
+
+
 ## Help Example
 
 ```
@@ -387,16 +505,18 @@ optional arguments:
   -p PASSWORD, --password PASSWORD
                         The password of the EODMS account used for
                         authentication.
-  -c COLLECTIONS, --collections COLLECTIONS
-                        The collection of the images being ordered (separate
-                        multiple collections with a comma).
-  -d DATES, --dates DATES
-                        The date ranges for the search.
   -i INPUT, --input INPUT
                         An input file, can either be an AOI or a CSV file
                         exported from the EODMS UI. Valid AOI formats are
                         GeoJSON, KML or Shapefile (Shapefile requires the GDAL
                         Python package).
+  -c COLLECTIONS, --collections COLLECTIONS
+                        The collection of the images being ordered (separate
+                        multiple collections with a comma).
+  -f FILTERS, --filters FILTERS
+                        A list of filters for a specific collection.
+  -d DATES, --dates DATES
+                        The date ranges for the search.
   -m MAXIMUM, --maximum MAXIMUM
                         The maximum number of images to order and download and
                         the maximum number of images per order, separated by a
@@ -439,7 +559,7 @@ The following parameters can be set in the config.ini file:
 		</td>
 	</tr>
 	<tr>
-		<td>
+		<td id="config-results">
 			results
 		</td>
 		<td>

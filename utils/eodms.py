@@ -180,6 +180,8 @@ class ImageList:
         for r in results:
             image = Image()
             image.parse_record(r)
+            # print("metadata: %s" % image.metadata)
+            # answer = input("Press enter...")
             self.img_lst.append(image)
             
     def trim(self, val):
@@ -212,6 +214,7 @@ class OrderItem:
         return self.metadata['itemId']
         
     def get_orderId(self):
+        # print("self.metadata: %s" % self.metadata)
         return self.metadata['orderId']
         
     def get_metadata(self, entry=None):
@@ -247,6 +250,8 @@ class OrderItem:
         fields = common.RAPI_COLLECTIONS[self.image.get_collId()]['fields']
         
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
+        self.metadata['imageMetadata'] = self.image.get_metadata(\
+                                        'metadataUrl')
         self.metadata['imageStartDate'] = self.image.get_date()
         
     def parse_record(self, in_rec):
@@ -261,6 +266,8 @@ class OrderItem:
         if self.image is not None:
             self.metadata['imageUrl'] = self.image.get_metadata(\
                                         'thisRecordUrl')
+            self.metadata['imageMetadata'] = self.image.get_metadata(\
+                                        'metadataUrl')
             self.metadata['imageStartDate'] = self.image.get_date()
     
     def print_item(self, tabs=1):

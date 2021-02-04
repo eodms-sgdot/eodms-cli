@@ -33,6 +33,8 @@ import getpass
 import datetime
 import configparser
 import base64
+import logging
+import logging.handlers as handlers
 
 from utils import *
 
@@ -67,6 +69,18 @@ def build_syntax(parser, params):
             else:
                 pv = ','.join(['"%s"' % i if i.find(' ') > -1 else i \
                         for i in pv ])
+                        
+        elif isinstance(pv, dict):
+            
+            if flag == '-f':
+                filt_lst = []
+                # print("pv: %s" % pv)
+                for k, v_lst in pv.items():
+                    for v in v_lst:
+                        filt_lst.append("%s.%s" % (k, v))
+                # print("filt_lst: %s" % filt_lst)
+                # answer = input("Press enter...")
+                pv = '"%s"' % ','.join(filt_lst)
         else:
             if isinstance(pv, str) and pv.find(' ') > -1:
                 pv = '"%s"' % pv
@@ -87,21 +101,36 @@ def download(params):
     @param params: A dictionary containing the arguments and values.
     """
     
+    logger = logging.getLogger('eodms')
+    
+    # Log the parameters
+    log_parameters(params)
+    
     csv_fn = params['input']
     session = params['session']
     
     if csv_fn.find('.csv') == -1:
-        common.print_support("The provided input file is not a CSV file. " \
-            "Exiting process.")
+        msg = "The provided input file is not a CSV file. " \
+            "Exiting process."
+        common.print_support(msg)
+        logger.error(msg)
         sys.exit(1)
     
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
+    start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     fn_str = start_time.strftime("%Y%m%d_%H%M%S")
     folder_str = start_time.strftime("%Y-%m-%d")
     
+    logger.info("Process start time: %s" % start_str)
+    
     eodms_downloader = utils.Downloader(session, in_csv=csv_fn, fn_str=fn_str)
     eodms_downloader.download_orders()
+    
+    end_time = datetime.datetime.now()
+    end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    logger.info("End time: %s" % end_str)
     
 def get_config():
     
@@ -140,9 +169,22 @@ def get_input(msg, err_msg=None, required=True, password=False):
         
     if required and in_val == '':
         common.print_support(err_msg)
+        logger = logging.getLogger('eodms')
+        logger.error(err_msg)
         sys.exit(1)
         
     return in_val
+    
+def log_parameters(params, title=None):
+    
+    logger = logging.getLogger('eodms')
+    
+    if title is None: title = "Script Parameters"
+    
+    msg = "%s:\n" % title
+    for k, v in params.items():
+        msg += "  %s: %s\n" % (k, v)
+    logger.info(msg)
     
 def order_download(params):
     """
@@ -155,15 +197,25 @@ def order_download(params):
     csv_fn = params['input']
     session = params['session']
     
+    logger = logging.getLogger('eodms')
+    
+    # Log the parameters
+    log_parameters(params)
+    
     if csv_fn.find('.csv') == -1:
-        common.print_support("The provided input file is not a CSV file. " \
-            "Exiting process.")
+        err_msg = "The provided input file is not a CSV file. " \
+                    "Exiting process."
+        common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
+    start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     fn_str = start_time.strftime("%Y%m%d_%H%M%S")
     folder_str = start_time.strftime("%Y-%m-%d")
+    
+    logger.info("Process start time: %s" % start_str)
     
     if not common.RAPI_COLLECTIONS:
         common.get_collections(session)
@@ -192,13 +244,20 @@ def order_download(params):
     
     if orders.count_items() == 0:
         # If no orders could be found
-        common.print_support("No orders were submitted successfully.")
+        err_msg = "No orders were submitted successfully."
+        common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # Download images
     eodms_downloader = utils.Downloader(session, max_images, fn_str)
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
+    
+    end_time = datetime.datetime.now()
+    end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    logger.info("End time: %s" % end_str)
     
     return None
     
@@ -210,23 +269,34 @@ def search_orderDownload(params, no_order=False):
     @param params: A dictionary containing the arguments and values.
     """
     
+    logger = logging.getLogger('eodms')
+    
+    # Log the parameters
+    log_parameters(params)
+    
     # Get all the values from the parameters
     collections = params['collections']
     dates = params['dates']
     aoi = params['input']
+    filters = params['filters']
     session = params['session']
     
     if aoi.find('.shp') == -1 and aoi.find('.gml') == -1 \
         and aoi.find('.kml') == -1 and aoi.find('.json') == -1 \
         and aoi.find('.geojson') == -1:
-        common.print_support("The provided input file is not a valid AOI " \
-            "file. Exiting process.")
+        err_msg = "The provided input file is not a valid AOI " \
+                    "file. Exiting process."
+        common.print_support()
+        logger.error(err_msg)
         sys.exit(1)
     
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
+    start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     fn_str = start_time.strftime("%Y%m%d_%H%M%S")
     folder_str = start_time.strftime("%Y-%m-%d")
+    
+    logger.info("Process start time: %s" % start_str)
         
     if not common.RAPI_COLLECTIONS:
         common.get_collections(session)
@@ -245,20 +315,28 @@ def search_orderDownload(params, no_order=False):
     if not os.path.exists(aoi):
         err_msg = "The AOI file '%s' cannot be found." % aoi
         common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # Search for records using input AOI file
     eodms_query = utils.Query(session, collections, dates, aoi, \
-                    max_images)
+                    max_images, filters)
     query_imgs = eodms_query.query_records()
+    
+    if not isinstance(query_imgs, eodms.ImageList):
+        logger.error(query_imgs)
+        print("\nExiting process.")
+        sys.exit(1)
     
     # Export the results to a GeoJSON
     eodms_geo = geo.Geo()
     
     if aoi.find('.shp') > -1 and not geo.GDAL_INCLUDED:
-        print("\nCannot open a Shapefile without GDAL. Please install " \
+        err_msg = "\nCannot open a Shapefile without GDAL. Please install " \
             "the GDAL Python package if you'd like to use a Shapefile " \
-            "for your AOI.")
+            "for your AOI."
+        print(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # Check for any errors
@@ -266,12 +344,18 @@ def search_orderDownload(params, no_order=False):
         err_msg = "Query to RAPI failed due to '%s'" % \
                     query_imgs.get_msg()
         common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # If no results were found, inform user and end process
     if query_imgs.count() == 0:
-        common.print_support("No results found for given AOI.")
+        err_msg = "No results found for given AOI."
+        common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
+    
+    # Export the query results to the CSV info file
+    # query_imgs.export_csv(res_bname)
     
     msg = "%s images returned from search results.\n" % \
             query_imgs.count()
@@ -288,6 +372,7 @@ def search_orderDownload(params, no_order=False):
                 if answer.lower().find('n') > -1:
                     print("Exiting process.")
                     common.print_support()
+                    logger.info("Process stopped by user.")
                     sys.exit(0)
         else:
             common.print_msg("Proceeding to download the %s images." % \
@@ -309,6 +394,7 @@ def search_orderDownload(params, no_order=False):
             if common.SILENT:
                 print("\nNo previous orders could be found.")
                 common.print_support()
+                logger.info("No previous orders could be found.")
                 sys.exit(0)
             else:
                 msg = "\nNo existing orders could be found for the given AOI. " \
@@ -318,17 +404,21 @@ def search_orderDownload(params, no_order=False):
                     orders = eodms_order.submit_orders(query_imgs)
                 else:
                     common.print_support()
+                    logger.info("Process ended by user.")
                     sys.exit(0)
     else:
         orders = eodms_order.submit_orders(query_imgs)
     
     if not isinstance(orders, eodms.OrderList):
         common.print_support(orders)
+        logger.error(orders)
         sys.exit(1)
     
     if orders.count_items() == 0:
         # If no orders could be found
-        common.print_support("No orders were submitted successfully.")
+        err_msg = "No orders were submitted successfully."
+        common.print_support(err_msg)
+        logger.error(err_msg)
         sys.exit(1)
     
     # Download images
@@ -336,9 +426,18 @@ def search_orderDownload(params, no_order=False):
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
     
+    end_time = datetime.datetime.now()
+    end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    logger.info("End time: %s" % end_str)
+    
     return None
 
 def main():
+
+    # Create info folder, if it doesn't exist, to store CSV files
+    start_time = datetime.datetime.now()
+    start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         choices = {'full': 'Search, order & download images using ' \
@@ -358,16 +457,18 @@ def main():
                             'EODMS account used for authentication.')
         parser.add_argument('-p', '--password', help='The password of the ' \
                             'EODMS account used for authentication.')
-        parser.add_argument('-c', '--collections', help='The collection of ' \
-                            'the images being ordered (separate multiple ' \
-                            'collections with a comma).')
-        parser.add_argument('-d', '--dates', help='The date ranges for the ' \
-                            'search.')
         parser.add_argument('-i', '--input', help='An input file, can ' \
                             'either be an AOI or a CSV file exported from ' \
                             'the EODMS UI. Valid AOI formats are GeoJSON, ' \
                             'KML or Shapefile (Shapefile requires the GDAL ' \
                             'Python package).')
+        parser.add_argument('-c', '--collections', help='The collection of ' \
+                            'the images being ordered (separate multiple ' \
+                            'collections with a comma).')
+        parser.add_argument('-f', '--filters', help='A list of filters for ' \
+                            'a specific collection.')
+        parser.add_argument('-d', '--dates', help='The date ranges for the ' \
+                            'search.')
         parser.add_argument('-m', '--maximum', help='The maximum number ' \
                             'of images to order and download and the maximum ' \
                             'number of images per order, separated by a colon.')
@@ -379,6 +480,18 @@ def main():
                             help='Sets process to silent ' \
                             'which supresses all questions.')
         
+        # parser.add_argument('-r', '--recordid', help='The record ID for a ' \
+                            # 'single image. If this parameter is entered, ' \
+                            # 'only the image with this ID will be ordered.')
+        # parser.add_argument('-i', '--input', help='A CSV file containing a ' \
+                            # 'list of record IDs. The process will only ' \
+                            # 'order the images from this file.\nThe file ' \
+                            # 'should contain a column called "Record ID", ' \
+                            # '"Sequence ID" or "Downlink Segment ID" with ' \
+                            # 'an "Order Key" column.')
+        # parser.add_argument('-c', '--collection', help='The collection of ' \
+                            # 'the images being ordered.')
+        
         args = parser.parse_args()
         
         user = args.username
@@ -386,6 +499,7 @@ def main():
         coll = args.collections
         dates = args.dates
         input_fn = args.input
+        filters = args.filters
         maximum = args.maximum
         option = args.option
         common.SILENT = args.silent
@@ -425,6 +539,31 @@ def main():
         else:
             common.RESULTS_PATH = res_path
             
+        log_loc = config_info.get('Script', 'log')
+        if log_loc == '':
+            common.LOG_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    'log', 'logger.log')
+        elif not os.path.isabs(log_loc):
+            common.LOG_PATH = os.path.join(os.path.dirname(abs_path), \
+                                    log_loc)
+        else:
+            common.LOG_PATH = log_loc
+            
+        # Setup logging
+        logger = logging.getLogger('eodms')
+        logger.setLevel(logging.DEBUG)
+        
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - ' \
+                    '%(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
+        
+        logHandler = handlers.RotatingFileHandler(common.LOG_PATH, \
+                        maxBytes=500000, backupCount=2)
+        logHandler.setLevel(logging.DEBUG)
+        logHandler.setFormatter(formatter)
+        logger.addHandler(logHandler)
+        
+        logger.info("Script start time: %s" % start_str)
+            
         common.TIMEOUT_QUERY = config_info.get('Script', 'timeout_query')
         common.TIMEOUT_ORDER = config_info.get('Script', 'timeout_order')
         
@@ -448,6 +587,11 @@ def main():
             
             user = config_info.get('RAPI', 'username')
             if user == '':
+            
+                # if common.SILENT:
+                    # common.print_support("No username specified. Exiting " \
+                        # "process.")
+                    # sys.exit(1)
                     
                 msg = "\nEnter the username for authentication"
                 err_msg = "A username is required to order images."
@@ -461,6 +605,10 @@ def main():
             password = config_info.get('RAPI', 'password')
             
             if password == '':
+                # if common.SILENT:
+                    # common.print_support("No password specified. Exiting " \
+                        # "process.")
+                    # sys.exit(1)
                     
                 msg = 'Enter the password for authentication'
                 err_msg = "A password is required to order images."
@@ -471,6 +619,7 @@ def main():
                 print("Using the password set in the 'config.ini' file...")
                 
         if new_user or new_pass:
+            #if not common.SILENT:
             suggestion = ''
             if common.SILENT:
                 suggestion = " (it is best to store the credentials if " \
@@ -509,6 +658,8 @@ def main():
                 'option': option}
         params['session'] = session
         
+        coll_lst = common.get_collections(session, True)
+        
         if option is None:
             if common.SILENT:
                 option = 'full'
@@ -521,6 +672,8 @@ def main():
                     option = 'full'
                 elif int(option) > len(choices.keys()):
                     common.print_support("Not a valid option choice.")
+                    logger.error("Invalid value entered for the 'option' " \
+                                "parameter.")
                     sys.exit(1)
                 else:
                     option = list(choices.keys())[int(option) - 1]
@@ -528,12 +681,19 @@ def main():
         if option == 'full' or option == 'download_aoi':
             # Search, order & download using an AOI
             
+            if option == 'download_aoi':
+                logger.info("Downloading existing orders using an AOI.")
+            else:
+                logger.info("Searching, ordering and downloading images " \
+                            "using an AOI.")
+            
             # Get the AOI file
             if input_fn is None or input_fn == '':
                 
                 if common.SILENT:
-                    common.print_support("No AOI file specified. " \
-                        "Exiting process.")
+                    err_msg = "No AOI file specified. Exiting process."
+                    common.print_support(err_msg)
+                    logger.error(err_msg)
                     sys.exit(1)
                 
                 msg = "\nEnter the full path name of a GML, KML, Shapefile or " \
@@ -547,9 +707,11 @@ def main():
                     try:
                         import ogr
                     except ImportError:
-                        print("\nCannot open a Shapefile without GDAL. Please install " \
+                        err_msg = "Cannot open a Shapefile without GDAL. Please install " \
                             "the GDAL Python package if you'd like to use a Shapefile " \
-                            "for your AOI.")
+                            "for your AOI."
+                        print("\n%s" % err_msg)
+                        logger.error(err_msg)
                         sys.exit(1)
                 
             params['input'] = input_fn
@@ -558,11 +720,12 @@ def main():
             if coll is None:
                 
                 if common.SILENT:
-                    common.print_support("No collection specified. " \
-                        "Exiting process.")
+                    err_msg = "No collection specified. Exiting process."
+                    common.print_support(err_msg)
+                    logger.error(err_msg)
                     sys.exit(1)
                 
-                coll_lst = common.get_collections(session, True)
+                # coll_lst = common.get_collections(session, True)
                 
                 # List available collections for this user
                 print("\nAvailable Collections:")
@@ -580,12 +743,91 @@ def main():
                 
                 # Convert number(s) to collection name(s)
                 coll_vals = in_coll.split(',')
-                coll = [coll_lst[int(i) - 1] for i in coll_vals]
+                coll = [coll_lst[int(i) - 1] for i in coll_vals if i.isdigit()]
             else:
                 coll = coll.split(',')
                 
             params['collections'] = coll
             
+            if filters is None:
+                filt_dict = {}
+                # Ask for the filters for the given collection(s)
+                for coll in params['collections']:
+                    coll_id = common.get_collIdByName(coll)
+                    if coll_id in common.FILT_MAP.keys():
+                        print("\nAvailable filters for '%s':" % coll)
+                        for c in common.FILT_MAP[coll_id].keys():
+                            print("  %s" % c)
+                        msg = "Enter the filters you would like to apply " \
+                                "to the query (in the format of " \
+                                "<filter_id>=<value>|<value>|...; " \
+                                "separate each filter property with a comma)"
+                        
+                        filt_items = input("%s:\n" % msg)
+                        
+                        #filt_items = get_input(msg, required=False)
+                        
+                        if filt_items == '':
+                            filt_dict[coll_id] = []
+                        else:
+                            filt_items = filt_items.split(',')
+                            # In case the user put collections in filters
+                            # filt_items = [f.split('.')[1] for f in filt_items \
+                                # if f.find('.') > -1]
+                            filt_items = [f.split('.')[1] if f.find('.') > -1 \
+                                else f for f in filt_items]
+                            filt_dict[coll_id] = filt_items
+            else:
+                # User specified in command-line
+                
+                # Possible formats:
+                #   1. Only one collection: <field_id>=<value>|<value>,<field_id>=<value>&<value>,...
+                #   2. Multiple collections but only specifying one set of filters:
+                #       <coll_id>.<filter_id>=<value>|<value>,...
+                #   3. Multiple collections with filters:
+                #       <coll_id>.<filter_id>=<value>,...<coll_id>.<filter_id>=<value>,...
+                
+                filt_dict = {}
+                
+                # Split filters by comma
+                filt_lst = filters.split(',')
+                for f in filt_lst:
+                    if f.find('.') > -1:
+                        coll_id, filt_items = f.split('.')
+                        if coll_id in filt_dict.keys():
+                            coll_filters = filt_dict[coll_id]
+                        else:
+                            coll_filters = []
+                        coll_filters.append(filt_items)
+                        filt_dict[coll_id] = coll_filters
+                    else:
+                        coll_id = common.get_collIdByName(coll)
+                        if coll_id in filt_dict.keys():
+                            coll_filters = filt_dict[coll_id]
+                        else:
+                            coll_filters = []
+                        coll_filters.append(f)
+                        filt_dict[coll_id] = coll_filters
+                # if filters.find('|') > -1:
+                    # # Option 3
+                    # filt_colls = filters.split('|')
+                    # for c in filt_colls:
+                        # coll_id, filt_items = c.split(':')
+                        # filt_dict[coll_id] = filt_items.split(',')
+                # else:
+                    # if filters.find(':') > -1:
+                        # # Option 2
+                        # coll_id, filters = c.split(':')
+                        # filt_dict[coll_id] = filters.split(',')
+                    # else:
+                        # # Option 1
+                        # coll_id = common.get_collIdByName(coll)
+                        # filt_dict[coll_id] = filters.split(',')
+            
+            params['filters'] = filt_dict
+            
+            # Get the date range
+            #date_lst = []
             if dates is None:
                 
                 if not common.SILENT:
@@ -597,8 +839,10 @@ def main():
                     dates = get_input(msg, required=False)
                     if not dates == '':
                         if dates.find('-') == -1 and not dates == '':
-                            common.print_support("No date range was provided. " \
-                                "Please enter 2 dates separated by a dash.")
+                            err_msg = "No date range was provided. " \
+                                "Please enter 2 dates separated by a dash."
+                            common.print_support(err_msg)
+                            logger.error(err_msg)
                             sys.exit(1)
                         # for d in dates.split(','):
                             # d_rng = d.split('-')
@@ -614,17 +858,27 @@ def main():
                     
                     total_records = get_input(msg, required=False)
                     
+                    #print("download: %s" % download)
+                    #print("order: %s" % order)
+                    
                     msg = "\nIf you'd like a limit of images per order, enter a " \
                         "value (EODMS sets a maximum limit of 100)"
                 
                     order_limit = get_input(msg, required=False)
                     
                     maximum = ':'.join(filter(None, [total_records, order_limit]))
+                    
+                    # print("maximum: %s" % maximum)
                 
             params['maximum'] = maximum
             
+            #print("params: %s" % params)
             print("\nUse this command-line syntax to run the same parameters:")
-            print(build_syntax(parser, params))
+            cli_syntax = build_syntax(parser, params)
+            print(cli_syntax)
+            logger.info("Command-line Syntax: %s" % cli_syntax)
+            
+            #answer = input("Press enter...")
             
             if option == 'full':
                 search_orderDownload(params)
@@ -634,12 +888,16 @@ def main():
         elif option == 'order_csv':
             # Order & download images using EODMS UI CSV file
             
+            logger.info("Ordering and downloading images using results " \
+                        "from a CSV file.")
+            
             # Get the CSV file
             if input_fn is None or input_fn == '':
                 
                 if common.SILENT:
-                    common.print_support("No CSV file specified. " \
-                        "Exiting process.")
+                    err_msg = "No CSV file specified. Exiting process."
+                    common.print_support(err_msg)
+                    logger.error(err_msg)
                     sys.exit(1)
                 
                 msg = "\nEnter the full path name of the CSV file exported "\
@@ -650,19 +908,25 @@ def main():
             params['input'] = input_fn
             
             print("\nUse this command-line syntax to run the same parameters:")
-            print(build_syntax(parser, params))
+            cli_syntax = build_syntax(parser, params)
+            print(cli_syntax)
+            logger.info("Command-line Syntax: %s" % cli_syntax)
             
             order_download(params)
             
         elif option == 'download_only':
             # Download existing orders using CSV file from previous session
             
+            logger.info("Downloading images using results from a CSV file " \
+                        "from a previous session.")
+            
             # Get the CSV file
             if input_fn is None or input_fn == '':
                 
                 if common.SILENT:
-                    common.print_support("No CSV file specified. " \
-                        "Exiting process.")
+                    err_msg = "No CSV file specified. Exiting process."
+                    common.print_support(err_msg)
+                    logger.error(err_msg)
                     sys.exit(1)
                 
                 msg = "\nEnter the full path name the CSV file export from " \
@@ -673,11 +937,14 @@ def main():
             params['input'] = input_fn
             
             print("\nUse this command-line syntax to run the same parameters:")
-            print(build_syntax(parser, params))
+            cli_syntax = build_syntax(parser, params)
+            print(cli_syntax)
+            logger.info("Command-line Syntax: %s" % cli_syntax)
             
             download(params)
         else:
             common.print_support("That is not a valid option.")
+            logger.error("An invalid parameter was entered during the prompt.")
             sys.exit(1)
             
         print("\nProcess complete.")
@@ -685,12 +952,15 @@ def main():
         common.print_support()
     
     except KeyboardInterrupt as err:
-        print("\nProcess ended by user.")
+        msg = "Process ended by user."
+        print("\n" % msg)
         common.print_support()
+        logger.info(msg)
         sys.exit(1)
     except Exception:
         trc_back = "\n%s" % traceback.format_exc()
         common.print_support(trc_back)
+        logger.error(traceback.format_exc())
 
 if __name__ == '__main__':
 	sys.exit(main())

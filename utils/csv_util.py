@@ -25,7 +25,9 @@
 ##############################################################################
 
 import os
+import sys
 import csv
+import logging
 
 from . import common
 from . import utils
@@ -49,6 +51,8 @@ class EODMS_CSV:
         self.open_csv = None
         self.header = None
         
+        self.logger = logging.getLogger('eodms')
+        
     def add_header(self, header):
         self.header = header
         self.open_csv.write("%s\n" % ','.join(header))
@@ -68,6 +72,12 @@ class EODMS_CSV:
             
             return self.coll_id
             
+        elif 'collectionId' in rec.keys():
+            # Get the Collection ID name
+            self.coll_id = rec['collectionId']
+            
+            return self.coll_id
+            
         elif 'Satellite' in rec.keys():
             # Get the satellite name
             satellite = rec['Satellite']
@@ -78,8 +88,10 @@ class EODMS_CSV:
             if self.coll_id is None:
                 # Check if the collection is supported in this script
                 self.coll_id = common.get_collIdByName(satellite, True)
-                print("\nThe satellite/collection '%s' is not supported " \
-                        "with this script at this time." % self.coll_id)
+                msg = "The satellite/collection '%s' is not supported " \
+                        "with this script at this time." % self.coll_id
+                print("\n%s" % msg)
+                self.logger.warning(msg)
                 return None
             
             # If the coll_id is a list, return None
@@ -129,10 +141,12 @@ class EODMS_CSV:
             'Downlink Segment ID' not in in_header and \
             'Image Id' not in in_header and \
             'Record ID' not in in_header and \
+            'recordId' not in in_header and \
             'Image Info' not in in_header:
             err_msg = '''The input file does not contain the proper columns.
   The input file must contain one of the following columns:
     Record ID
+    recordId
     Sequence ID
     Image ID
     Order Key
@@ -143,8 +157,11 @@ class EODMS_CSV:
         
         # Populate the list of records from the input file
         records = []
+        # print("in_lines: %s" % in_lines)
+        # print("number of lines: %s" % len(in_lines))
         for l in in_lines[1:]:
             rec = {}
+            # print("l: %s" % l)
             l_split = l.replace('\n', '').split(',')
             
             if len(l_split) < len(in_header):
@@ -164,6 +181,8 @@ class EODMS_CSV:
         
         # Close the input file
         in_f.close()
+        
+        # print("records: %s" % records)
         
         out_recs = query_obj.query_csvRecords(records)
         

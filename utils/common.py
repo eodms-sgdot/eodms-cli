@@ -28,6 +28,7 @@ import os
 import sys
 import json
 import requests
+import logging
 from xml.etree import ElementTree
 
 from . import utils
@@ -46,6 +47,59 @@ RESULTS_PATH = "results"
 TIMEOUT_QUERY = 60.0
 TIMEOUT_ORDER = 180.0
 ATTEMPTS = 4
+
+FILT_MAP = {'RCMImageProducts': 
+                {
+                    'ORBIT_DIRECTION': 'RCM.ORBIT_DIRECTION', 
+                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    'BEAM_MNEMONIC': 'RCM.BEAM_MNEMONIC', 
+                    'BEAM_MODE_QUALIFIER': 'SENSOR_BEAM_CONFIG.BEAM_MODE_QUALIFIER', 
+                    # 'BEAM_MODE_TYPE': 'RCM.SBEAM',
+                    'DOWNLINK_SEGMENT_ID': 'RCM.DOWNLINK_SEGMENT_ID', 
+                    'LUT_Applied': 'LUTApplied', 
+                    'OPEN_DATA': 'CATALOG_IMAGE.OPEN_DATA', 
+                    'POLARIZATION': 'RCM.POLARIZATION', 
+                    'PRODUCT_FORMAT': 'PRODUCT_FORMAT.FORMAT_NAME_E', 
+                    'PRODUCT_TYPE': 'ARCHIVE_IMAGE.PRODUCT_TYPE', 
+                    'RELATIVE_ORBIT': 'RCM.ORBIT_REL', 
+                    'WITHIN_ORBIT_TUBE': 'RCM.WITHIN_ORBIT_TUBE', 
+                    'ORDER_KEY': 'ARCHIVE_IMAGE.ORDER_KEY', 
+                    'SEQUENCE_ID': 'CATALOG_IMAGE.SEQUENCE_ID', 
+                    'SPECIAL_HANDLING_REQUIRED': 'RCM.SPECIAL_HANDLING_REQUIRED'
+                }, 
+            'Radarsat1': 
+                {
+                    'ORBIT_DIRECTION': 'RSAT1.ORBIT_DIRECTION',
+                    'PIXEL_SPACING': 'ARCHIVE_RSAT1.SAMPLED_PIXEL_SPACING_PAN', 
+                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'BEAM_MODE': 'RSAT1.SBEAM', 
+                    'BEAM_MNEMONIC': 'RSAT1.BEAM_MNEMONIC', 
+                    'ORBIT': 'RSAT1.ORBIT_ABS'
+                }, 
+            'Radarsat2':
+                {
+                    'ORBIT_DIRECTION': 'RSAT2.ORBIT_DIRECTION', 
+                    'PIXEL_SPACING': 'ARCHIVE_RSAT2.SAMPLED_PIXEL_SPACING_PAN', 
+                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    'SEQUENCE_ID': 'CATALOG_IMAGE.SEQUENCE_ID', 
+                    # 'BEAM_MODE': 'RSAT2.SBEAM', 
+                    'BEAM_MNEMONIC': 'RSAT2.BEAM_MNEMONIC', 
+                    'LOOK_DIRECTION': 'RSAT2.ANTENNA_ORIENTATION', 
+                    'TRANSMIT_POLARIZATION': 'RSAT2.TR_POL', 
+                    'RECEIVE_POLARIZATION': 'RSAT2.REC_POL', 
+                    'IMAGE_ID': 'RSAT2.IMAGE_ID', 
+                    'RELATIVE_ORBIT': 'RSAT2.ORBIT_REL', 
+                    'ORDER_KEY': 'ARCHIVE_IMAGE.ORDER_KEY'
+                }, 
+            'NAPL':
+                {
+                    'COLOUR': 'PHOTO.SBEAM', 
+                    'SCALE': 'FLIGHT_SEGMENT.SCALE', 
+                    'ROLL': 'ROLL.ROLL_NUMBER', 
+                    'PHOTO_NUMBER': 'PHOTO.PHOTO_NUMBER' 
+                    # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
+                }
+            }
 
 def get_fullCollId(coll_id, unsupported=False):
     """
@@ -101,8 +155,8 @@ def export_records(csv_f, header, records):
     """
     Exports a set of records to a CSV.
     
-    @type  csv_fn:  file object
-    @param csv_fn:  The CSV file to write to.
+    @type  csv_f:   file object
+    @param csv_f:   The CSV file to write to.
     @type  header:  list
     @param header:  A list containing the header for the file.
     @type  records: list
@@ -138,13 +192,19 @@ def get_availableFields(session, collection):
             collection.
     """
     
+    logger = logging.getLogger('eodms')
+    
     query_url = '%s/wes/rapi/collections/%s' % (RAPI_DOMAIN, collection)
+    
+    logger.info("Getting Fields for Collection %s (RAPI Query): %s" % \
+                (collection, query_url))
     
     coll_res = send_query(query_url, session, timeout=20.0)
     
     # If an error occurred
     if isinstance(coll_res, utils.QueryError):
         print("\n  WARNING: %s" % coll_res.get_msg())
+        logger.warning(coll_res.get_msg())
         return coll_res
     
     coll_json = coll_res.json()
@@ -172,7 +232,9 @@ def get_collections(session, as_list=False):
                 depending on the value of as_list.
     """
     
-    print("\nGetting a list of available collections, please wait...")
+    print("\nGetting a list of available collections for the script, please wait...")
+    
+    logger = logging.getLogger('eodms')
     
     # List of collections that are either commercial products or not available 
     #   to the general public
@@ -183,6 +245,8 @@ def get_collections(session, as_list=False):
     # Create the query to get available collections for the current user
     query_url = "%s/wes/rapi/collections" % RAPI_DOMAIN
     
+    logger.info("Getting Collections (RAPI Query): %s" % query_url)
+    
     # Send the query URL
     coll_res = send_query(query_url, session, timeout=20.0)
     
@@ -191,6 +255,8 @@ def get_collections(session, as_list=False):
         msg = "Could not get a list of collections due to '%s'.\nPlease try " \
                 "running the script again." % coll_res.get_msg()
         print_support(msg)
+        logger = logging.getLogger('eodms')
+        logger.error(msg)
         sys.exit(1)
     
     # If a list is returned from the query, return it
@@ -234,6 +300,9 @@ def get_collIdByName(in_title, unsupported=False):
                         or not.
     """
     
+    if isinstance(in_title, list):
+        in_title = in_title[0]
+    
     if unsupported:
         for k, v in UNSUPPORT_COLLECTIONS.items():
             if v.find(in_title) > -1 or in_title.find(v) > -1 \
@@ -243,6 +312,8 @@ def get_collIdByName(in_title, unsupported=False):
     for k, v in RAPI_COLLECTIONS.items():
         if v['title'].find(in_title) > -1:
             return k
+            
+    return get_fullCollId(in_title)
             
 def get_collectionName(in_id):
     """
@@ -270,6 +341,8 @@ def get_lines(in_f):
     except Exception:
         err_msg = "The input file cannot be read."
         print_support(err_msg)
+        logger = logging.getLogger('eodms')
+        logger.error(err_msg)
         sys.exit(1)
 
 def get_exception(res, output='str'):
@@ -395,12 +468,16 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
     @return The response returned from the RAPI.
     """
     
+    logger = logging.getLogger('eodms')
+    
     verify = True
     if query_url.find('www-pre-prod') > -1:
         verify = False
     
     if not quiet:
         print_msg("RAPI Query URL: %s" % query_url)
+        
+    # logger.info("RAPI Query URL: %s" % query_url)
     
     res = None
     attempt = 1
@@ -410,12 +487,16 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
         # Continue to attempt if timeout occurs
         try:
             if record_name is None:
+                msg = "Querying the RAPI (attempt %s)..." % attempt
                 if not quiet:
-                    print_msg("Querying the RAPI (attempt %s)..." % attempt)
+                    print_msg(msg)
+                #logger.info(msg)
             else:
+                msg = "Querying the RAPI for '%s' " \
+                            "(attempt %s)..." % (record_name, attempt)
                 if not quiet:
-                    print_msg("Querying the RAPI for '%s' " \
-                            "(attempt %s)..." % (record_name, attempt))
+                    print_msg(msg)
+                #logger.info(msg)
             if session is None:
                 res = requests.get(query_url, timeout=timeout, verify=verify)
             else:
@@ -429,7 +510,9 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
                 attempt = 4
             
             if attempt < ATTEMPTS:
-                print_msg("WARNING: %s; attempting to connect again..." % msg)
+                msg = "WARNING: %s; attempting to connect again..." % msg
+                print_msg(msg)
+                logger.warning(msg)
                 res = None
             else:
                 err = msg
@@ -437,7 +520,9 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
         except requests.exceptions.ConnectionError as errc:
             msg = "Connection Error: %s" % errc
             if attempt < ATTEMPTS:
-                print_msg("WARNING: %s; attempting to connect again..." % msg)
+                msg = "WARNING: %s; attempting to connect again..." % msg
+                print_msg(msg)
+                logger.warning(msg)
                 res = None
             else:
                 err = msg
@@ -445,7 +530,9 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
         except requests.exceptions.Timeout as errt:
             msg = "Timeout Error: %s" % errt
             if attempt < ATTEMPTS:
-                print_msg("WARNING: %s; attempting to connect again..." % msg)
+                msg = "WARNING: %s; attempting to connect again..." % msg
+                print_msg(msg)
+                logger.warning(msg)
                 res = None
             else:
                 err = msg
@@ -453,19 +540,24 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
         except requests.exceptions.RequestException as err:
             msg = "Exception: %s" % err
             if attempt < ATTEMPTS:
-                print_msg("WARNING: %s; attempting to connect again..." % msg)
+                msg = "WARNING: %s; attempting to connect again..." % msg
+                print_msg(msg)
+                logger.warning(msg)
                 res = None
             else:
                 err = msg
             attempt += 1
         except KeyboardInterrupt as err:
             print("\nProcess ended by user.")
+            logger.info("Process ended by user.")
             print_support()
             sys.exit(1)
         except:
             msg = "Unexpected error: %s" % sys.exc_info()[0]
             if attempt < ATTEMPTS:
-                print_msg("WARNING: %s; attempting to connect again..." % msg)
+                msg = "WARNING: %s; attempting to connect again..." % msg
+                print_msg(msg)
+                logger.warning(msg)
                 res = None
             else:
                 err = msg
@@ -486,12 +578,15 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
         if err_msg.find('401 - Unauthorized') > -1:
             # Inform the user if the error was caused by an authentication 
             #   issue.
-            print_support("An authentication error has occurred while " \
+            err_msg = "An authentication error has occurred while " \
                         "trying to access the EODMS RAPI. Please run this " \
-                        "script again with your username and password.")
+                        "script again with your username and password."
+            print_support(err_msg)
+            logger.error(err_msg)
             sys.exit(1)
             
         print("WARNING: %s" % err_msg)
+        logger.warning(err_msg)
         return except_err
         
     return res

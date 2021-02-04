@@ -28,6 +28,7 @@ import os
 import sys
 from xml.etree import ElementTree
 import json
+import logging
 try:
     import ogr
     import osr
@@ -51,6 +52,8 @@ class Geo:
         @param aoi_fn: The AOI filename.
         """
         self.aoi_fn = aoi_fn
+        
+        self.logger = logging.getLogger('eodms')
         
     def convert_imageGeom(self, coords, output='array'):
         """
@@ -193,7 +196,9 @@ class Geo:
             elif self.aoi_fn.find('.shp') > -1:
                 ogr_driver = 'ESRI Shapefile'
             else:
-                common.print_support("The AOI file type could not be determined.")
+                err_msg = "The AOI file type could not be determined."
+                common.print_support(err_msg)
+                self.logger.error(err_msg)
                 sys.exit(1)
                 
             # Open AOI file and extract AOI
@@ -253,10 +258,16 @@ class Geo:
                 for c in coord_lst:
                     pnts = [p.strip('\n').strip('\t').split(',') for p in \
                             c.split(' ') if not p.strip('\n').strip('\t') == '']
+                    #print("pnts: %s" % pnts)
                     pnts_array += pnts
+                
+                # print("pnts_array: %s" % pnts_array)
                 
                 aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
                     for pnt in pnts_array])
+                    
+                # print("aoi_feat: %s" % aoi_feat)
+                # answer = input("Press enter...")
                 
             elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
                 with open(self.aoi_fn) as f:
@@ -279,9 +290,11 @@ class Geo:
                 msg = "Could not open shapefile. The GDAL Python Package " \
                         "must be installed to use shapefiles."
                 common.print_support(msg)
+                self.logger.error(msg)
                 sys.exit(1)
             else:
                 common.print_support("The AOI file type could not be determined.")
+                self.logger.error(msg)
                 sys.exit(1)
             
         return aoi_feat

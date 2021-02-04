@@ -35,6 +35,7 @@ from urllib.parse import urlencode
 from urllib.parse import urlparse
 import traceback
 import requests
+import logging
 from inspect import currentframe, getframeinfo
 
 from . import common
@@ -65,6 +66,8 @@ class Downloader:
         self.fn_str = fn_str
         self.csv_fn = in_csv
         self.orders = None
+        
+        self.logger = logging.getLogger('eodms')
         
         self.import_csv()
         
@@ -120,7 +123,9 @@ class Downloader:
             cur_orders = self.orders
             
         if cur_orders is None:
-            print("\nNo orders provided for download.")
+            msg = "No orders provided for download."
+            print("\n%s" % msg)
+            self.logger.warning(msg)
             return None
         
         self.orders_obj = cur_orders
@@ -181,9 +186,11 @@ class Downloader:
                             downloaded = prev_orderItem.get_metadata('downloaded')
                             downloaded = str(downloaded)
                             if downloaded == 'True' and redownload:
-                                common.print_msg("Skipping download of " \
+                                msg = "Skipping download of " \
                                     "image with Record ID %s. Image already " \
-                                    "downloaded." % record_id)
+                                    "downloaded." % record_id
+                                common.print_msg(msg)
+                                self.logger.info(msg)
                                 # Add order item to newly completed list
                                 new_complete.append(prev_orderItem)
                                 continue
@@ -223,9 +230,11 @@ class Downloader:
                                     os.mkdir(common.DOWNLOAD_PATH)
                                 
                                 # Download the image
-                                common.print_msg("Downloading image with " \
+                                msg = "Downloading image with " \
                                         "Record ID %s (%s)." % (record_id, \
-                                        os.path.basename(url)))
+                                        os.path.basename(url))
+                                common.print_msg(msg)
+                                self.logger.info(msg)
                                 
                                 # # Save the image contents to the 'downloads' folder
                                 if prev_path is None:
@@ -283,11 +292,15 @@ class Downloader:
                     if len(new_complete) == 0:
                         # If no new images are ready, let the user know
                         if len(self.completed_orders) == 0:
-                            common.print_msg("No images ready to download " \
-                                    "yet. Please wait...")
+                            msg = "No images ready to download " \
+                                    "yet. Please wait..."
+                            common.print_msg(msg)
+                            #self.logger.info(msg)
                         else:
-                            common.print_msg("No new images are ready to " \
-                                    "download yet. Please wait...")
+                            msg = "No new images are ready to " \
+                                    "download yet. Please wait..."
+                            common.print_msg(msg)
+                            #self.logger.info(msg)
                     else:
                         # Add newly completed orders to completed list
                         self.completed_orders += new_complete
@@ -299,8 +312,10 @@ class Downloader:
                     tot_msg = "Total order items to download: %s" % \
                             self.max_images
                 common.print_msg(tot_msg)
+                self.logger.info(tot_msg)
                 common.print_msg("Completed items: %s" % \
                         len(self.completed_orders), False)
+                self.logger.info("Completed items: %s" % len(self.completed_orders))
                 
             if len(success_orders) > 0:
                 # Print information for all successful orders
@@ -320,6 +335,7 @@ class Downloader:
                         msg += "    Downloaded File: %s\n" % loc_dest
                         msg += "    Source URL: %s\n" % src_url
                 common.print_footer('Successful Downloads', msg)
+                self.logger.info("Successful Downloads: %s" % msg)
             
             if len(failed_orders) > 0:
                 msg = "The following images did not download:\n"
@@ -336,15 +352,19 @@ class Downloader:
                     msg += "    Status: %s\n" % status
                     msg += "    Status Message: %s\n" % stat_msg
                 common.print_footer('Failed Downloads', msg)
+                self.logger.info("Failed Downloads: %s" % msg)
             
         except KeyboardInterrupt as err:
             self.export_csv()
-            print("\nProcess ended by user.")
+            msg = "Process ended by user."
+            print("\n%s" % msg)
+            self.logger.warning(msg)
             common.print_support()
             sys.exit(1)
         except Exception:
             trc_back = "\n%s" % traceback.format_exc()
             common.print_support(trc_back)
+            self.logger.error(traceback.format_exc())
             
     def export_csv(self):
         """
@@ -382,6 +402,7 @@ class Downloader:
         #   order items)
         time_start = datetime.datetime.now()
         query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
+        self.logger.info("Getting order information (RAPI query): %s" % query)
         res = common.send_query(query, self.session, \
                 timeout=common.TIMEOUT_ORDER)
         res_json = res.json()
@@ -415,6 +436,8 @@ class Downloader:
         for o_item in records:
             query = "%s/wes/rapi/order?itemId=%s" % (common.RAPI_DOMAIN, \
                     o_item['itemId'])
+            self.logger.info("Getting order item %s (RAPI query): %s" % \
+                        (o_item['itemId'], query))
             res = common.send_query(query, self.session, \
                     timeout=common.TIMEOUT_ORDER)
             
@@ -423,9 +446,18 @@ class Downloader:
                 err_msg = "Query to RAPI failed due to '%s'" % \
                             res.get_msg()
                 common.print_support(err_msg)
+                self.logger.warning(err_msg)
                 continue
             
             res_json = res.json()
+            
+            # print("res_json: %s" % res_json)
+            
+            if len(res_json['items']) == 0:
+                err_msg = "No Order exists with Item ID %s." % o_item['itemId']
+                common.print_support(err_msg)
+                self.logger.warning(err_msg)
+                continue
             
             order_item = eodms.OrderItem()
             order_item.parse_record(res_json['items'][0])
@@ -478,6 +510,8 @@ class Orderer:
         self.orders_header = ['Record ID', 'Order Key', 'Date', 'Collection ID', \
                                 'Exception', 'Order ID', 'Order Item ID', 'Order ' \
                                 'Status', 'Time Ordered']
+                                
+        self.logger = logging.getLogger('eodms')
                               
         
     def export_csv(self, res_bname):
@@ -531,6 +565,8 @@ class Orderer:
         #   all order items are processed (unless the user has more than 10000 
         #   order items)
         query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
+        self.logger.info("Getting a list of your orders (RAPI query): %s" % \
+                        query)
         res = common.send_query(query, self.session, \
                 timeout=common.TIMEOUT_ORDER)
         res_json = res.json()
@@ -555,6 +591,8 @@ class Orderer:
         order_info = "The following orders were extracted from your cart:\n"
         order_info += self.final_results.print_orders(True)
         common.print_footer('Order Results', order_info)
+        
+        self.logger.info("Order Results: %s" % order_info)
             
         return self.final_results
         
@@ -609,8 +647,10 @@ class Orderer:
                 # Set the RAPI URL
                 order_url = "%s/wes/rapi/order" % common.RAPI_DOMAIN
                 
-                common.print_msg("Submitting orders for images %s-%s..." % \
-                        (str(idx + 1), str(idx + len(items))))
+                msg = "Submitting orders for images %s-%s..." % \
+                        (str(idx + 1), str(idx + len(items)))
+                common.print_msg(msg)
+                self.logger.info(msg)
                 
                 # Send the JSON request to the RAPI
                 try:
@@ -625,6 +665,7 @@ class Orderer:
                 except KeyboardInterrupt as err:
                     print("\nProcess ended by user.")
                     common.print_support()
+                    self.logger.info("Process ended by user.")
                     sys.exit(1)
                 except requests.exceptions.RequestException as err:
                     return "Exception: %s" % err
@@ -635,8 +676,10 @@ class Orderer:
                         return '; '.join(err)
                 
                 order_results += order_res.json()['items']
-                
-            common.print_msg("Number of order items: %s" % len(order_results))
+            
+            msg = "Number of order items: %s" % len(order_results)
+            common.print_msg(msg)
+            self.logger.info(msg)
             
             # Convert results to ImageList
             self.final_results = eodms.OrderList(img_lst)
@@ -645,6 +688,7 @@ class Orderer:
             order_info = "The following orders were submitted to the EODMS:\n"
             order_info += self.final_results.print_orders(True)
             common.print_footer('Submitted Orders', order_info)
+            self.logger.info("Submitted Orders: %s" % order_info)
             
             return self.final_results
             
@@ -680,7 +724,7 @@ class Query:
     """
     
     def __init__(self, session, coll=None, dates=None, aoi=None, 
-                max_images=None):
+                max_images=None, filters={}):
         """
         Initializer for the Query object.
         
@@ -707,6 +751,9 @@ class Query:
         if max_images is not None and not max_images == '':
             max_images = int(max_images)
         self.max_images = max_images
+        self.filters = filters
+        
+        self.logger = logging.getLogger('eodms')
         
     def get_results(self):
         """
@@ -719,6 +766,7 @@ class Query:
         return self.results
         
     def parse_dates(self):
+        #print("dates: %s" % self.dates)
         
         if self.dates is None or self.dates == '':
             return ''
@@ -780,6 +828,9 @@ class Query:
                         # If the Record ID is in the image dictionary, return it
                         query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
                                 rec['Record ID']
+                    elif 'recordId' in rec.keys():
+                        query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
+                                rec['recordId']
                     elif 'Image Info' in rec.keys() and \
                         not rec['Image Info'] == '':
                         # Parse Image Info
@@ -793,9 +844,11 @@ class Query:
                     else:
                         # # If the Order Key is in the image dictionary,
                         # #   use it to query the RAPI
-                        common.print_msg("WARNING: Cannot determine record " \
+                        msg = "Cannot determine record " \
                                 "ID for Result Number '%s' in the CSV file. " \
-                                "Skipping image." % rec['Result Number'])
+                                "Skipping image." % rec['Result Number']
+                        common.print_msg("WARNING: %s" % msg)
+                        self.logger.warning(msg)
                         continue
                                         
                     queries.append(query)
@@ -811,7 +864,8 @@ class Query:
                 query_url = "%s/wes/rapi/search?collection=%s&query=%s" \
                             "&maxResults=100" % (common.RAPI_DOMAIN, \
                             collection, full_queryEnc)
-            
+                self.logger.info("Searching for images (RAPI query): %s" % \
+                                query_url)
                 # Send the query to the RAPI
                 res = common.send_query(query_url, self.session, \
                         common.TIMEOUT_QUERY, quiet=False)
@@ -819,11 +873,13 @@ class Query:
                 # If an error occurred
                 if isinstance(res, QueryError):
                     common.print_msg("WARNING: %s" % res.get_msg())
+                    self.logger.warning(res.get_msg())
                     continue
                 
                 # If the results is a list, an error occurred
                 if isinstance(res, list):
                     common.print_msg("WARNING: %s" % ' '.join(res))
+                    self.logger.warning(' '.join(res))
                     continue
                 
                 # Convert RAPI results to JSON
@@ -836,7 +892,9 @@ class Query:
                 if len(cur_res) == 0:
                     err = "No images could be found."
                     common.print_msg("WARNING: %s" % err)
+                    self.logger.warning(err)
                     common.print_msg("Skipping this entry", False)
+                    self.logger.warning("Skipping this entry")
                     continue
                 
                 all_res += cur_res
@@ -873,8 +931,10 @@ class Query:
             query_lst = []
             
             # Get the collection ID
+            # print("coll: %s" % coll)
             coll_id = common.get_collIdByName(coll)
             
+            # print("coll_id: %s" % coll_id)
             if coll_id is None:
                 # Get the full collection ID
                 coll_id = common.get_fullCollId(coll)
@@ -912,9 +972,76 @@ class Query:
             if coll_id == 'NAPL':
                 # If the collection is NAPL, add an open data parameter
                 query_lst.append('CATALOG_IMAGE.OPEN_DATA=TRUE')
+                
+            # Add filters specified by user
+            # print("filters: %s" % self.filters)
+            for k, v in self.filters.items():
+                if coll_id.find(k) > -1:
+                    user_filts = v
+                    
+            #print("filters: %s" % user_filts)
+            
+            filt_queries = []
+            for filt in user_filts:
+                # Divide keys and values
+                key, val = filt.split('=')
+                
+                if val is None or val == '':
+                    err = "No value specified for Filter ID '%s'." % key
+                    common.print_msg("ERROR: %s" % err)
+                    #common.print_msg("Skipping this filter for query", False)
+                    return err
+                
+                # Get the RAPI key using the filter map
+                coll_filts = common.FILT_MAP[coll_id]
+                rapi_id = coll_filts[key]
+                
+                #print("RAPI ID: %s" % rapi_id)
+                
+                if key.find('INCIDENCE_ANGLE') > -1:
+                    rapi_ids = rapi_id.split(',')
+                    if val.find('-') > -1:
+                        start, end = val.split('-')
+                        sub_query = []
+                        for i in rapi_ids:
+                            sub_query.append('(%s>=%s AND %s<=%s)' % \
+                                (i, start, i, end))
+                        #print("sub_query: %s" % sub_query)
+                        filt_query = "(%s)" % " OR ".join(sub_query)
+                    else:
+                        sub_query = []
+                        for i in rapi_ids:
+                            sub_query.append('%s=%s' % (i, val))
+                        #print("sub_query: %s" % sub_query)
+                        filt_query = "(%s)" % " OR ".join(sub_query)
+                else:
+                    
+                    if val.find('|') > -1:
+                        vals = val.split('|')
+                        
+                        sub_query = []
+                        for v in vals:
+                            sub_query.append("%s='%s'" % (rapi_id, v))
+                        
+                        filt_query = "(%s)" % " OR ".join(sub_query)
+                        
+                    else:
+                        
+                        filt_query = "%s='%s'" % (rapi_id, val)
+                    
+                filt_queries.append(filt_query)
+                
+            query_lst.append(' AND '.join(filt_queries))
+            
+            # print("query_lst: %s" % query_lst)
             
             # Combine all query parameters
-            full_query = ' and '.join(query_lst)
+            # print("query_lst: %s" % query_lst)
+            full_query = ' AND '.join(query_lst)
+            
+            # print("full_query: %s" % full_query)
+            
+            # answer = input("Press enter...")
             
             if self.max_images is None or self.max_images == '':
                 maxResults = 10000
@@ -930,13 +1057,15 @@ class Query:
             query_str = urlencode(params)
             query_url = '%s/wes/rapi/search?%s' % \
                         (common.RAPI_DOMAIN, query_str)
-            
+            self.logger.info("Searching for images (RAPI query): %s" % \
+                            query_url)
             res = common.send_query(query_url, self.session, \
                     common.TIMEOUT_QUERY)
             
             # If an error occurred
             if isinstance(res, QueryError):
                 common.print_msg("WARNING: %s" % res.get_msg())
+                self.logger.warning(res.get_msg())
                 return res
             
             # Add this collection's results to all results
