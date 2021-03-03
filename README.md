@@ -13,6 +13,7 @@ Search, Order and Download Imagery - eodms-orderdownload.py
   - [Option 2 - Order & download images using EODMS UI search results](#option-2---order--download-images-using-eodms-ui-search-results)
   - [Option 3 - Download existing orders using AOI file and RAPI query](#option-3---download-existing-orders-using-aoi-file-and-rapi-query)
   - [Option 4 - Download existing orders using a CSV file from a previous order/download process](#option-4---download-existing-orders-using-a-csv-file-from-a-previous-orderdownload-process)
+  - [Option 5 - Run only a search based on an AOI and input parameters](#option-5---run-only-a-search-based-on-an-aoi-and-input-parameters)
 - [Parameters](#parameters)
   - [Syntax Examples](#syntax-examples)
 - [Help Example](#help-example)
@@ -41,7 +42,7 @@ The eodms-orderdownload.py was designed using **Python 3.7** however it has been
 
 ### Options
 
-The script has 4 options for ordering and downloading images:
+The script has 5 options for ordering and downloading images:
 
 1. Search, order & download images using an AOI
 	
