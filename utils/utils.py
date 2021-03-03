@@ -766,6 +766,9 @@ class Query:
         return self.results
         
     def get_dates(self):
+        """
+        Gets the date range based on the user's value
+        """
         
         if self.dates is None or self.dates == '':
             return ''
@@ -867,7 +870,7 @@ class Query:
                 query_url = "%s/wes/rapi/search?collection=%s&query=%s" \
                             "&maxResults=100" % (common.RAPI_DOMAIN, \
                             collection, full_queryEnc)
-                self.logger.info("Searching for images (RAPI query): %s" % \
+                self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
                                 query_url)
                 # Send the query to the RAPI
                 res = common.send_query(query_url, self.session, \
@@ -967,7 +970,7 @@ class Query:
                 
                 # Add query parameter to list
                 query_build.add_dates(field_id, [start, end])
-            
+                
             if coll_id == 'NAPL':
                 # If the collection is NAPL, add an open data parameter
                 # query_lst.append('CATALOG_IMAGE.OPEN_DATA=TRUE')
@@ -977,7 +980,7 @@ class Query:
             for k, v in self.filters.items():
                 if coll_id.find(k) > -1:
                     user_filts = v
-            
+                    
             filt_queries = []
             for filt in user_filts:
                 
@@ -1004,6 +1007,7 @@ class Query:
                     if val.find('-') > -1:
                         start_end = val.split('-')
                         ranges.append(start_end)
+                        
                     else:
                         ranges.append(val)
                         
@@ -1034,7 +1038,7 @@ class Query:
             query_str = urlencode(params)
             query_url = '%s/wes/rapi/search?%s' % \
                         (common.RAPI_DOMAIN, query_str)
-            self.logger.info("Searching for images (RAPI query): %s" % \
+            self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
                             query_url)
             res = common.send_query(query_url, self.session, \
                     common.TIMEOUT_QUERY)
@@ -1197,7 +1201,7 @@ class QueryBuilder:
         for f in fields:
             qf = self.QueryFilter(f, vals)
             angle_queries.append(qf.get_fullQuery())
-        
+            
         self.angle_str = "(%s)" % " OR ".join(filter(None, angle_queries))
         
     def filter_count(self):

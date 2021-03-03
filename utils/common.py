@@ -480,8 +480,6 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
     
     if not quiet:
         print_msg("RAPI Query URL: %s" % query_url)
-        
-    # logger.info("RAPI Query URL: %s" % query_url)
     
     res = None
     attempt = 1

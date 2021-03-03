@@ -170,8 +170,10 @@ class EODMS_CSV:
         
         # Populate the list of records from the input file
         records = []
+        
         for l in in_lines[1:]:
             rec = {}
+            
             l_split = l.replace('\n', '').split(',')
             
             if len(l_split) < len(in_header):
@@ -224,7 +226,6 @@ class EODMS_CSV:
         """
         Closes a CSV file
         """
-        
         if self.open_csv is not None:
             self.open_csv.close()
             self.open_csv = None
