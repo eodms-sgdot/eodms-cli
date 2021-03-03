@@ -502,22 +502,7 @@ def main():
                             help='Sets process to silent ' \
                             'which supresses all questions.')
         
-        # parser.add_argument('-r', '--recordid', help='The record ID for a ' \
-                            # 'single image. If this parameter is entered, ' \
-                            # 'only the image with this ID will be ordered.')
-        # parser.add_argument('-i', '--input', help='A CSV file containing a ' \
-                            # 'list of record IDs. The process will only ' \
-                            # 'order the images from this file.\nThe file ' \
-                            # 'should contain a column called "Record ID", ' \
-                            # '"Sequence ID" or "Downlink Segment ID" with ' \
-                            # 'an "Order Key" column.')
-        # parser.add_argument('-c', '--collection', help='The collection of ' \
-                            # 'the images being ordered.')
-        
         args = parser.parse_args()
-        
-        # print("args: %s" % args)
-        # print("args.option: %s" % args.option)
         
         user = args.username
         password = args.password
@@ -616,11 +601,6 @@ def main():
             user = config_info.get('RAPI', 'username')
             if user == '':
             
-                # if common.SILENT:
-                    # common.print_support("No username specified. Exiting " \
-                        # "process.")
-                    # sys.exit(1)
-                    
                 msg = "\nEnter the username for authentication"
                 err_msg = "A username is required to order images."
                 user = get_input(msg, err_msg)
@@ -633,11 +613,6 @@ def main():
             password = config_info.get('RAPI', 'password')
             
             if password == '':
-                # if common.SILENT:
-                    # common.print_support("No password specified. Exiting " \
-                        # "process.")
-                    # sys.exit(1)
-                    
                 msg = 'Enter the password for authentication'
                 err_msg = "A password is required to order images."
                 password = get_input(msg, err_msg, password=True)
@@ -647,7 +622,6 @@ def main():
                 print("Using the password set in the 'config.ini' file...")
                 
         if new_user or new_pass:
-            #if not common.SILENT:
             suggestion = ''
             if common.SILENT:
                 suggestion = " (it is best to store the credentials if " \
@@ -709,7 +683,6 @@ def main():
                 else:
                     option = list(choices.keys())[int(option) - 1]
         
-        # print("main.option: %s" % option)
         params['option'] = option
         
         if option == 'full' or option == 'download_aoi' \
@@ -762,8 +735,6 @@ def main():
                     logger.error(err_msg)
                     sys.exit(1)
                 
-                # coll_lst = common.get_collections(session, True)
-                
                 # List available collections for this user
                 print("\nAvailable Collections:")
                 for idx, c in enumerate(coll_lst):
@@ -809,8 +780,6 @@ def main():
                         else:
                             filt_items = filt_items.split(',')
                             # In case the user put collections in filters
-                            # filt_items = [f.split('.')[1] for f in filt_items \
-                                # if f.find('.') > -1]
                             filt_items = [f.split('.')[1] if f.find('.') > -1 \
                                 else f for f in filt_items]
                             filt_dict[coll_id] = filt_items
@@ -845,21 +814,6 @@ def main():
                             coll_filters = []
                         coll_filters.append(f)
                         filt_dict[coll_id] = coll_filters
-                # if filters.find('|') > -1:
-                    # # Option 3
-                    # filt_colls = filters.split('|')
-                    # for c in filt_colls:
-                        # coll_id, filt_items = c.split(':')
-                        # filt_dict[coll_id] = filt_items.split(',')
-                # else:
-                    # if filters.find(':') > -1:
-                        # # Option 2
-                        # coll_id, filters = c.split(':')
-                        # filt_dict[coll_id] = filters.split(',')
-                    # else:
-                        # # Option 1
-                        # coll_id = common.get_collIdByName(coll)
-                        # filt_dict[coll_id] = filters.split(',')
             
             params['filters'] = filt_dict
             
@@ -868,25 +822,11 @@ def main():
             if dates is None:
                 
                 if not common.SILENT:
-                    # msg = "\nEnter a range or multiple range of dates; separate " \
-                            # "each range with a comma and each date with a dash " \
-                            # "(ex: 20200525-20200630," \
-                            # "20200809T151300-20201011T145306) (leave " \
-                            # "blank to search all years)"
+                    
                     msg = "\nEnter a date range (ex: 20200525-20200630) " \
                             "or a previous time-frame (24 hours) " \
                             "(leave blank to search all years)"
                     dates = get_input(msg, required=False)
-                    # if not dates == '':
-                        # if dates.find('-') == -1 and not dates == '':
-                            # err_msg = "No date range was provided. " \
-                                # "Please enter 2 dates separated by a dash."
-                            # common.print_support(err_msg)
-                            # logger.error(err_msg)
-                            # sys.exit(1)
-                        # # for d in dates.split(','):
-                            # # d_rng = d.split('-')
-                            # # date_lst.append(d_rng)
             
             params['dates'] = dates
             
@@ -899,17 +839,12 @@ def main():
                         
                         total_records = get_input(msg, required=False)
                         
-                        #print("download: %s" % download)
-                        #print("order: %s" % order)
-                        
                         msg = "\nIf you'd like a limit of images per order, enter a " \
                             "value (EODMS sets a maximum limit of 100)"
                     
                         order_limit = get_input(msg, required=False)
                         
                         maximum = ':'.join(filter(None, [total_records, order_limit]))
-                        
-                        # print("maximum: %s" % maximum)
                     
                 params['maximum'] = maximum
             
@@ -919,10 +854,6 @@ def main():
             print(cli_syntax)
             logger.info("Command-line Syntax: %s" % cli_syntax)
             
-            #answer = input("Press enter...")
-            
-            #print("main2.option: %s" % option)
-            #print("main.params: %s" % params)
             search_orderDownload(params)
             
         elif option == 'order_csv':

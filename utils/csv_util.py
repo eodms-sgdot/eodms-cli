@@ -54,6 +54,13 @@ class EODMS_CSV:
         self.logger = logging.getLogger('eodms')
         
     def add_header(self, header):
+        """
+        Adds header to a CSV file
+        
+        @type  header: list
+        @param header: List of header column names.
+        """
+        
         self.header = header
         self.open_csv.write("%s\n" % ','.join(header))
         
@@ -102,6 +109,12 @@ class EODMS_CSV:
             return None
             
     def export_record(self, img):
+        """
+        Exports an image to a CSV file.
+        
+        @type  img: eodms.Image
+        @param img: An Image object containing image information.
+        """
         
         out_vals = []
         for h in self.header:
@@ -157,11 +170,8 @@ class EODMS_CSV:
         
         # Populate the list of records from the input file
         records = []
-        # print("in_lines: %s" % in_lines)
-        # print("number of lines: %s" % len(in_lines))
         for l in in_lines[1:]:
             rec = {}
-            # print("l: %s" % l)
             l_split = l.replace('\n', '').split(',')
             
             if len(l_split) < len(in_header):
@@ -181,8 +191,6 @@ class EODMS_CSV:
         
         # Close the input file
         in_f.close()
-        
-        # print("records: %s" % records)
         
         out_recs = query_obj.query_csvRecords(records)
         
@@ -213,6 +221,10 @@ class EODMS_CSV:
         return records
         
     def close(self):
+        """
+        Closes a CSV file
+        """
+        
         if self.open_csv is not None:
             self.open_csv.close()
             self.open_csv = None

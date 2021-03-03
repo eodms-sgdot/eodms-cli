@@ -453,8 +453,6 @@ class Downloader:
             
             res_json = res.json()
             
-            # print("res_json: %s" % res_json)
-            
             if len(res_json['items']) == 0:
                 err_msg = "No Order exists with Item ID %s." % o_item['itemId']
                 common.print_support(err_msg)
@@ -768,7 +766,6 @@ class Query:
         return self.results
         
     def get_dates(self):
-        #print("dates: %s" % self.dates)
         
         if self.dates is None or self.dates == '':
             return ''
@@ -778,8 +775,6 @@ class Query:
         if any(word in self.dates for word in time_words):
             start = dateparser.parse(self.dates).strftime("%Y%m%dT%H%M%S")
             end = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
-            # print("get_dates.start: %s" % start)
-            # print("get_dates.end: %s" % end)
             return [[start, end]]
         else:
             ranges = self.dates.split(',')
@@ -834,17 +829,11 @@ class Query:
                         # If the Sequence ID is in the image dictionary, 
                         #   return it as the Record ID
                         
-                        # query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
-                                # rec['Sequence ID']
                         id_val = rec['Sequence ID']
                     elif 'Record ID' in rec.keys():
                         # If the Record ID is in the image dictionary, return it
-                        # query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
-                                # rec['Record ID']
                         id_val = rec['Record ID']
                     elif 'recordId' in rec.keys():
-                        # query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
-                                # rec['recordId']
                         id_val = rec['recordId']
                     elif 'Image Info' in rec.keys() and \
                         not rec['Image Info'] == '':
@@ -854,8 +843,6 @@ class Query:
                         img_info = img_info.replace('"{', '{').replace('}"', \
                                     '}')
                         id_val = json.loads(img_info)
-                        # query = "CATALOG_IMAGE.SEQUENCE_ID='%s'" % \
-                                # json_imgInfo['imageID']
                     else:
                         # # If the Order Key is in the image dictionary,
                         # #   use it to query the RAPI
@@ -868,15 +855,8 @@ class Query:
                         
                     query_build.add_filter('CATALOG_IMAGE.SEQUENCE_ID', \
                                 id_val)
-                                        
-                    # queries.append(query)
                     
                 if query_build.filter_count() == 0: continue
-                    
-                # full_query = ' or '.join(queries)
-                
-                # if coll == 'NAPL':
-                    # full_query += ' and CATALOG_IMAGE.OPEN_DATA=TRUE'
                     
                 if coll_id == 'NAPL':
                     query_build.set_open(True)
@@ -954,10 +934,8 @@ class Query:
             query_lst = []
             
             # Get the collection ID
-            # print("coll: %s" % coll)
             coll_id = common.get_collIdByName(coll)
             
-            # print("coll_id: %s" % coll_id)
             if coll_id is None:
                 # Get the full collection ID
                 coll_id = common.get_fullCollId(coll)
@@ -972,17 +950,12 @@ class Query:
             footprint_id = common.RAPI_COLLECTIONS[coll_id]['fields']['Footprint']
             query_build.add_aoi(footprint_id, self.aoi_feat)
             
-            #query_lst.append('%s INTERSECTS %s' % (ft_prt_id, self.aoi_feat))
-            
             # Create query parameters for dates
             date_rngs = self.get_dates()
-            #print("date_rngs: %s" % date_rngs)
             date_queries = []
             for rng in date_rngs:
                 
                 if len(rng) < 2: continue
-                
-                #print("rng: %s" % rng)
                 
                 # Separate date range
                 start = common.convert_date(rng[0])
@@ -993,12 +966,7 @@ class Query:
                             ['Creation Date']
                 
                 # Add query parameter to list
-                # date_queries.append("%s between DT'%s' and DT'%s'" % (field_id, \
-                    # start, end))
                 query_build.add_dates(field_id, [start, end])
-                    
-            # if len(date_queries) > 0:
-                # query_lst.append("(%s)" % ' or '.join(date_queries))
             
             if coll_id == 'NAPL':
                 # If the collection is NAPL, add an open data parameter
@@ -1006,12 +974,9 @@ class Query:
                 query_build.set_open(True)
                 
             # Add filters specified by user
-            # print("filters: %s" % self.filters)
             for k, v in self.filters.items():
                 if coll_id.find(k) > -1:
                     user_filts = v
-                    
-            #print("filters: %s" % user_filts)
             
             filt_queries = []
             for filt in user_filts:
@@ -1019,28 +984,14 @@ class Query:
                 if not any(x in filt for x in common.OPERATORS):
                     print("Filter '%s' entered incorrectly." % filt)
                     continue
-                
-                # # Divide keys and values
-                # for op in common.OPERATORS:
-                    # print("op: %s" % op)
-                    # print("filt: %s" % filt)
-                    # splts = re.findall('[+-/*//()]|\d+', filt)
-                    # print("splts: %s" % splts)
-                    # if filt.upper().find(op) > -1:
-                        # key, val = filt.split(op)
-                        # break
                         
                 split_pattern = r"\b|\b".join([o.strip() \
                                 for o in common.OPERATORS])
                 key, val = re.split(split_pattern, filt)
-                        
-                # print("key: %s" % key)
-                # print("val: %s" % val)
                 
                 if val is None or val == '':
                     err = "No value specified for Filter ID '%s'." % key
                     common.print_msg("ERROR: %s" % err)
-                    #common.print_msg("Skipping this filter for query", False)
                     return err
                 
                 # Get the RAPI key using the filter map
@@ -1053,19 +1004,7 @@ class Query:
                     if val.find('-') > -1:
                         start_end = val.split('-')
                         ranges.append(start_end)
-                        
-                        # sub_query = []
-                        # for i in rapi_ids:
-                            # sub_query.append('(%s>=%s AND %s<=%s)' % \
-                                # (i, start, i, end))
-                        # #print("sub_query: %s" % sub_query)
-                        # filt_query = "(%s)" % " OR ".join(sub_query)
                     else:
-                        # sub_query = []
-                        # for i in rapi_ids:
-                            # sub_query.append('%s=%s' % (i, val))
-                        # #print("sub_query: %s" % sub_query)
-                        # filt_query = "(%s)" % " OR ".join(sub_query)
                         ranges.append(val)
                         
                     query_build.add_incidenceAngle(rapi_ids, ranges)
@@ -1074,36 +1013,12 @@ class Query:
                     if val.find('|') > -1:
                         vals = val.split('|')
                         
-                        # sub_query = []
-                        # for v in vals:
-                            # sub_query.append("%s='%s'" % (rapi_id, v))
-                        
-                        # filt_query = "(%s)" % " OR ".join(sub_query)
-                        
                         query_build.add_filter(rapi_id, vals)
                         
                     else:
-                        
-                        # filt_query = "%s='%s'" % (rapi_id, val)
                         query_build.add_filter(rapi_id, val)
                     
-                # filt_queries.append(filt_query)
-                
-            # query_lst.append(' AND '.join(filt_queries))
-            
-            # # print("query_lst: %s" % query_lst)
-            
-            # # Combine all query parameters
-            # # print("query_lst: %s" % query_lst)
-            # full_query = ' AND '.join(query_lst)
-            
-            #query_build.print_params()
-            
             full_query = query_build.get_query()
-            
-            # print("full_query: %s" % full_query)
-            
-            # answer = input("Press enter...")
             
             if self.max_images is None or self.max_images == '':
                 maxResults = common.MAX_RESULTS
@@ -1188,7 +1103,6 @@ class QueryBuilder:
             if sub_val is None:
                 sub_val = self.value
             
-            # print("sub_val: %s" % sub_val)
             if isinstance(sub_val, list) and len(sub_val) > 1:
                 # The value is a range
                 if self.operator.lower() == 'between':
@@ -1279,18 +1193,10 @@ class QueryBuilder:
         low_angle = self.QueryFilter(fields[0], vals)
         high_angle = self.QueryFilter(fields[1], vals)
         
-        # print("\nlow_angle: %s" % low_angle.print_filter(True))
-        # print("\nhigh_angle: %s" % high_angle.print_filter(True))
-        
         angle_queries = []
         for f in fields:
-            #print("f: %s" % f)
-            #print("vals: %s" % vals)
             qf = self.QueryFilter(f, vals)
-            #print("qf: %s" % qf)
             angle_queries.append(qf.get_fullQuery())
-            
-        #print("angle_queries: %s" % angle_queries)
         
         self.angle_str = "(%s)" % " OR ".join(filter(None, angle_queries))
         

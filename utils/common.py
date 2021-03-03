@@ -36,9 +36,6 @@ from . import utils
 
 RAPI_DOMAIN = 'https://www.eodms-sgdot.nrcan-rncan.gc.ca'
 
-# For DEBUG:
-# RAPI_DOMAIN = 'http://www-pre-prod.eodms.services.global.gc.ca'
-
 RAPI_COLLECTIONS = {}
 UNSUPPORT_COLLECTIONS = {}
 INDENT = 3
@@ -141,7 +138,6 @@ def convert_date(in_date):
     @return: The date converted to ISO format.
     """
     
-    #print("convert_date.in_date: %s" % in_date)
     if in_date.lower().find('t') > -1:
         date, tme = in_date.lower().split('t')
         year = date[:4]
