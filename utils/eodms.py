@@ -138,8 +138,12 @@ class ImageList:
         @param res_bname: The base filename for the CSV file.
         """
         
+        if not os.path.exists(common.RESULTS_PATH):
+            os.mkdir(common.RESULTS_PATH)
+        
         # Create the query results CSV
-        csv_fn = "%s_QueryResults.csv" % res_bname
+        csv_fn = os.path.join(common.RESULTS_PATH, \
+                "%s_QueryResults.csv" % res_bname)
         out_csv = csv_util.EODMS_CSV(csv_fn)
         out_csv.open()
         
@@ -153,6 +157,8 @@ class ImageList:
             
         # Close the CSV
         out_csv.close()
+        
+        return csv_fn
     
     def get_fields(self):
         return self.img_lst[0].get_fields()
@@ -404,7 +410,7 @@ class OrderList:
         
         # Create the query results CSV
         csv_fn = os.path.join(common.RESULTS_PATH, \
-                "%s_Results.csv" % res_bname)
+                "%s_DownloadResults.csv" % res_bname)
         out_csv = csv_util.EODMS_CSV(csv_fn)
         out_csv.open()
         

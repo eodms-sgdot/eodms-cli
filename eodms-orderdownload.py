@@ -36,6 +36,14 @@ import base64
 import logging
 import logging.handlers as handlers
 
+try:
+    import dateparser
+except:
+    msg = "Dateparser package is not installed. Please install and run script again."
+    common.print_support(msg)
+    logger.error(msg)
+    sys.exit(1)
+
 from utils import *
 
 def build_syntax(parser, params):
@@ -54,6 +62,8 @@ def build_syntax(parser, params):
     
     # Get the actions of the argparse
     actions = parser._option_string_actions
+    
+    # print("params: %s" % params)
     
     syntax_params = []
     for p, pv in params.items():
@@ -261,7 +271,7 @@ def order_download(params):
     
     return None
     
-def search_orderDownload(params, no_order=False):
+def search_orderDownload(params):
     """
     Runs all steps: querying, ordering and downloading
     
@@ -280,6 +290,7 @@ def search_orderDownload(params, no_order=False):
     aoi = params['input']
     filters = params['filters']
     session = params['session']
+    option = params['option']
     
     if aoi.find('.shp') == -1 and aoi.find('.gml') == -1 \
         and aoi.find('.kml') == -1 and aoi.find('.json') == -1 \
@@ -364,7 +375,8 @@ def search_orderDownload(params, no_order=False):
     # # Inform the user of the total number of found images and ask if 
     # #   they'd like to continue
     if max_images is None or max_images == '':
-        if not no_order:
+        # print("option: %s" % option)
+        if not option == 'download_only' and not option == 'search_only':
             if not common.SILENT:
                 answer = input("\n%s images found intersecting your AOI. " \
                             "Proceed with ordering? (y/n): " % \
@@ -374,6 +386,14 @@ def search_orderDownload(params, no_order=False):
                     common.print_support()
                     logger.info("Process stopped by user.")
                     sys.exit(0)
+                    
+        elif option == 'search_only':
+            query_imgs.export_csv(fn_str)
+            print("\n%s images found intersecting your AOI." % query_imgs.count())
+            print("\nPlease check the results folder for more info.")
+            print("\nExiting process.")
+            common.print_support()
+            sys.exit(0)
         else:
             common.print_msg("Proceeding to download the %s images." % \
                 query_imgs.count())
@@ -384,7 +404,7 @@ def search_orderDownload(params, no_order=False):
     
     # Create order object
     eodms_order = utils.Orderer(session, max_items=max_items)
-    if no_order:
+    if option == 'download_only':
         # If the user only wants to download a previous order
         #   query the RAPI using the AOI and then user the 
         #   query results to get a list of orders
@@ -448,7 +468,9 @@ def main():
                     'file and RAPI query', 
                 'download_only': 'Download existing orders using a ' \
                     'CSV file from a previous order/download process ' \
-                    '(files found under "results" folder)'}
+                    '(files found under "results" folder)', 
+                'search_only': 'Run only a search based on an AOI '\
+                    'and input parameters'}
         
         parser = argparse.ArgumentParser(description='Search & Order EODMS ' \
                             'products.')
@@ -493,6 +515,9 @@ def main():
                             # 'the images being ordered.')
         
         args = parser.parse_args()
+        
+        # print("args: %s" % args)
+        # print("args.option: %s" % args.option)
         
         user = args.username
         password = args.password
@@ -577,6 +602,9 @@ def main():
         except ValueError:
             common.TIMEOUT_ORDER = 180.0
             
+        # Get the total number of results per query
+        common.MAX_RESULTS = config_info.get('RAPI', 'max_results')
+            
         print("\nCSV Results will be placed in '%s'." % common.RESULTS_PATH)
             
         # Get authentication if not specified
@@ -660,6 +688,9 @@ def main():
         
         coll_lst = common.get_collections(session, True)
         
+        print("\n(For more information on the following prompts, please refer" \
+                " to the README file.)")
+        
         if option is None:
             if common.SILENT:
                 option = 'full'
@@ -678,11 +709,17 @@ def main():
                 else:
                     option = list(choices.keys())[int(option) - 1]
         
-        if option == 'full' or option == 'download_aoi':
+        # print("main.option: %s" % option)
+        params['option'] = option
+        
+        if option == 'full' or option == 'download_aoi' \
+            or option == 'search_only':
             # Search, order & download using an AOI
             
             if option == 'download_aoi':
                 logger.info("Downloading existing orders using an AOI.")
+            elif option == 'search_only':
+                logger.info("Searching for images using an AOI.")
             else:
                 logger.info("Searching, ordering and downloading images " \
                             "using an AOI.")
@@ -831,46 +868,50 @@ def main():
             if dates is None:
                 
                 if not common.SILENT:
-                    msg = "\nEnter a range or multiple range of dates; separate " \
-                            "each range with a comma and each date with a dash " \
-                            "(ex: 20200525-20200630," \
-                            "20200809T151300-20201011T145306) (leave " \
-                            "blank to search all years)"
+                    # msg = "\nEnter a range or multiple range of dates; separate " \
+                            # "each range with a comma and each date with a dash " \
+                            # "(ex: 20200525-20200630," \
+                            # "20200809T151300-20201011T145306) (leave " \
+                            # "blank to search all years)"
+                    msg = "\nEnter a date range (ex: 20200525-20200630) " \
+                            "or a previous time-frame (24 hours) " \
+                            "(leave blank to search all years)"
                     dates = get_input(msg, required=False)
-                    if not dates == '':
-                        if dates.find('-') == -1 and not dates == '':
-                            err_msg = "No date range was provided. " \
-                                "Please enter 2 dates separated by a dash."
-                            common.print_support(err_msg)
-                            logger.error(err_msg)
-                            sys.exit(1)
-                        # for d in dates.split(','):
-                            # d_rng = d.split('-')
-                            # date_lst.append(d_rng)
+                    # if not dates == '':
+                        # if dates.find('-') == -1 and not dates == '':
+                            # err_msg = "No date range was provided. " \
+                                # "Please enter 2 dates separated by a dash."
+                            # common.print_support(err_msg)
+                            # logger.error(err_msg)
+                            # sys.exit(1)
+                        # # for d in dates.split(','):
+                            # # d_rng = d.split('-')
+                            # # date_lst.append(d_rng)
             
             params['dates'] = dates
-                
-            if maximum is None or maximum == '':
-                
-                if not common.SILENT:
-                    msg = "\nEnter the total number of images you'd like to " \
-                        "order (leave blank for no limit)"
+            
+            if not option == 'search_only':
+                if maximum is None or maximum == '':
                     
-                    total_records = get_input(msg, required=False)
+                    if not common.SILENT:
+                        msg = "\nEnter the total number of images you'd like to " \
+                            "order (leave blank for no limit)"
+                        
+                        total_records = get_input(msg, required=False)
+                        
+                        #print("download: %s" % download)
+                        #print("order: %s" % order)
+                        
+                        msg = "\nIf you'd like a limit of images per order, enter a " \
+                            "value (EODMS sets a maximum limit of 100)"
                     
-                    #print("download: %s" % download)
-                    #print("order: %s" % order)
+                        order_limit = get_input(msg, required=False)
+                        
+                        maximum = ':'.join(filter(None, [total_records, order_limit]))
+                        
+                        # print("maximum: %s" % maximum)
                     
-                    msg = "\nIf you'd like a limit of images per order, enter a " \
-                        "value (EODMS sets a maximum limit of 100)"
-                
-                    order_limit = get_input(msg, required=False)
-                    
-                    maximum = ':'.join(filter(None, [total_records, order_limit]))
-                    
-                    # print("maximum: %s" % maximum)
-                
-            params['maximum'] = maximum
+                params['maximum'] = maximum
             
             #print("params: %s" % params)
             print("\nUse this command-line syntax to run the same parameters:")
@@ -880,10 +921,9 @@ def main():
             
             #answer = input("Press enter...")
             
-            if option == 'full':
-                search_orderDownload(params)
-            else:
-                search_orderDownload(params, True)
+            #print("main2.option: %s" % option)
+            #print("main.params: %s" % params)
+            search_orderDownload(params)
             
         elif option == 'order_csv':
             # Order & download images using EODMS UI CSV file

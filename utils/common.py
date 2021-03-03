@@ -30,6 +30,7 @@ import json
 import requests
 import logging
 from xml.etree import ElementTree
+import re
 
 from . import utils
 
@@ -47,6 +48,12 @@ RESULTS_PATH = "results"
 TIMEOUT_QUERY = 60.0
 TIMEOUT_ORDER = 180.0
 ATTEMPTS = 4
+MAX_RESULTS = 1000
+
+OPERATORS = ['=', '<>', '<', '<=', '>', '>=', ' LIKE ', ' STARTS WITH ', \
+            ' ENDS WITH ', ' CONTAINS ', ' CONTAINED BY ', ' CROSSES ', \
+            ' DISJOINT WITH ', ' INTERSECTS ', ' OVERLAPS ', ' TOUCHES ', \
+            ' WITHIN ']
 
 FILT_MAP = {'RCMImageProducts': 
                 {
@@ -134,6 +141,7 @@ def convert_date(in_date):
     @return: The date converted to ISO format.
     """
     
+    #print("convert_date.in_date: %s" % in_date)
     if in_date.lower().find('t') > -1:
         date, tme = in_date.lower().split('t')
         year = date[:4]

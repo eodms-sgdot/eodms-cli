@@ -33,9 +33,11 @@ The eodms-orderdownload.py was designed using **Python 3.7** however it has been
 
 #### Python Packages
 
-The [Requests package](https://pypi.org/project/requests/) will need to be installed before using this script.
-
-The [GDAL Python Package](https://pypi.org/project/GDAL/) is required if you would like to use shapefiles for AOIs.
+| Package Name | Use                                                 | URL                                  |
+|--------------|-----------------------------------------------------|--------------------------------------|
+| Requests     | Used to access the RAPI URL.                        | https://pypi.org/project/requests/   |
+| dateparser   | Used to parse a date like "24 hours".               |https://pypi.org/project/dateparser/ |
+| GDAL         | (Optional) Only required when using AOI shapefiles. | https://pypi.org/project/GDAL/       |
 
 ### Options
 
@@ -56,6 +58,10 @@ The script has 4 options for ordering and downloading images:
 4. Download existing orders using a CSV file from a previous order/download process (files found under "results" folder)
 	
 	- This option allows the user to re-download an existing set of images from a previous session (all session results are save in the "results" folder as CSV files or in a location specified in the [configuration file](#config-results)).
+
+5. Run only a search based on an AOI and input parameters.
+	
+	- This option only searches for images using an AOI. No ordering or downloading will occur.
 
 ### Input File
 
@@ -112,10 +118,13 @@ Also, the items can take a while to become available so please be patient and le
 
 5. Next, you'll be asked for the query filters for each collection you specified in step 4. See [Filters](#filters) for more information on entering filters.
 
-6. Enter the date range separated with a dash. If you want to search all years, leave blank.
+6. Enter the date range. If you want to search all years, leave blank.
 	
+	- A date range can be entered or a statement representing a time-frame from the current time (ex: ```24 hours```).
+	- If entering date ranges, use a dash for the range.
 	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
-	- Date format is ```YYYYMMDD```.
+	- The date range can also include a time, separated by a T (ex: ```20200701T153455-20200801T000545```). Make sure the time is in UTC.
+	- Date format is ```yyyymmdd``` or ```yyyymmddThhmmss```.
 
 7. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
 
@@ -178,6 +187,8 @@ Also, the items can take a while to become available so please be patient and le
 
 6. Enter the date range separated with a dash. If you want to search all years, leave blank.
 	
+	- A date range can be entered or a statement representing a time-frame from the current time (ex: ```24 hours```).
+	- If entering date ranges, use a dash for the range.
 	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
 	- The date range can also include a time, separated by a T (ex: ```20200701T153455-20200801T000545```). Make sure the time is in UTC.
 	- Date format is ```yyyymmdd``` or ```yyyymmddThhmmss```.
@@ -201,6 +212,33 @@ Also, the items can take a while to become available so please be patient and le
 	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
 
 4. The script will download any images with a "downloaded" column value of "False" in the CSV file. However, the script will ask you if you want to re-download images that have already been downloaded (i.e. "downloaded" set to "True").
+
+### Option 5 - Run only a search based on an AOI and input parameters
+
+1. Start the process by dragging-and-dropping an AOI (shapefile, GML, KML or GeoJSON) onto the **eodms-orderdownload.bat** batch file.
+
+	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering step 3.
+	- If you would like to use a shapefile, install the **GDAL Python package** before running the script.
+
+2. Enter your username and password when prompted.
+	
+	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
+
+3. When prompted ```What would you like to do?```, enter ```1``` (or press enter as ```1``` is the default).
+
+4. Enter the number corresponding to the collections you'd like to query, separating each with a comma.
+
+5. Next, you'll be asked for the query filters for each collection you specified in step 4. See [Filters](#filters) for more information on entering filters.
+
+6. Enter the date range. If you want to search all years, leave blank.
+	
+	- A date range can be entered or a statement representing a time-frame from the current time (ex: ```24 hours```).
+	- If entering date ranges, use a dash for the range.
+	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
+	- The date range can also include a time, separated by a T (ex: ```20200701T153455-20200801T000545```). Make sure the time is in UTC.
+	- Date format is ```yyyymmdd``` or ```yyyymmddThhmmss```.
+
+7. The script will run a query using the RAPI and export the results in a CSV file in the "results" folder (or whichever folder is specified in the [configuration file](#config-results)).
 
 ## Parameters
 
@@ -294,7 +332,9 @@ Here is a list of parameters for the script:
 			<pre>-d --dates</pre>
 		</td>
 		<td>
-			The date range for the search in format YYYYMMDD and separated by a dash (ex: <code>20201019-20201119</code>).
+			The date range can either be a range or a statement representing a range from the current time.<br>
+			For a time statement, you can use <code>hour(s)</code>, <code>day(s)</code>, <code>week(s)</code>, <code>month(s)</code> and <code>year(s)</code> (ex: <code>6 days</code> will return results for the last 6 days.)<br>
+			For a date range, the format is YYYYMMDD and separated by a dash (ex: <code>20201019-20201119</code>). You can have multiple date ranges separated by a comma (ex: <code>20200601-20200701,20201013-20201113</code>).
 		</td>
 	</tr>
 	<tr>
@@ -358,6 +398,14 @@ Here is a list of parameters for the script:
 						Option 4 - Download existing orders using a CSV file from a previous order/download process (files found under "results" folder).
 					</td>
 				</tr>
+				<tr>
+					<td>
+						<pre>search_only</pre>
+					</td>
+					<td>
+						Option 5 - Conducts a search on the RAPI using an AOI and input parameters. No ordering or downloading will occur.
+					</td>
+				</tr>
 			</table>
 		</td>
 	</tr>
@@ -385,6 +433,7 @@ Here is a list of parameters for the script:
 | Order & download only 5 images with maximum number of images per order at 2 | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -m 5:2``` |
 | Download existing orders for a specific AOI (Option 3)                      | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -o download_aoi``` |
 | Download existing orders using CSV from a previous session in silent mode   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\eodms-rapi-orderdownload\results\20201214_155904_Results.csv" -o download_only -s``` |
+| Search for images acquired in the last 24 hours                             | ```python eodms-orderdownload.py -c "RCM Image Products" -d "24 hours" -i C:\TEMP\AOI.shp -o search_only -s``` |
 
 ## Filters
 
@@ -392,7 +441,7 @@ Filters (also known as [Data Options](https://wiki.gccollab.ca/EODMS_How-To_Guid
 
 The proper format for each filter is:
 
-```[<collection_id>.]<filter_id>=<value>[|<value>]```
+```[<collection_id>.]<filter_id><operator><value>[|<value>]```
 
 where: 
 
@@ -411,6 +460,18 @@ where:
 		</td>
 	</tr>
 	<tr>
+		<td><code>&lt;operator&gt;</code></td>
+		<td>
+			The operator can be the following:
+			<code>=</code>, 
+			<code><></code>, 
+			<code><</code>, 
+			<code><=</code>, 
+			<code>></code>, 
+			<code>>=</code>
+		</td>
+	</tr>
+	<tr>
 		<td><code>&lt;value&gt;</code></td>
 		<td>
 			The value used to filter the search results. You can specify multiple values with each value separated with a vertical line <code>|</code>.
@@ -424,7 +485,7 @@ When entering multiple filters, separate each filter entry with a comma. Also wh
 
 For a single collection:
 
-```-f "BEAM_MNEMONIC=16M11|16M13,INCIDENCE_ANGLE=43"```
+```-f "BEAM_MNEMONIC=16M11|16M13,INCIDENCE_ANGLE>=43"```
 
 For 2 collections, RCM and Radarsat-1: 
 
@@ -608,7 +669,15 @@ The following parameters can be set in the config.ini file:
 			access_attempts
 		</td>
 		<td>
-			The number of times the script will attempt to send a query to the RAPI before the script exits.</b>.
+			The number of times the script will attempt to send a query to the RAPI before the script exits.
+		</td>
+	</tr>
+	<tr>
+		<td>
+			max_results
+		</td>
+		<td>
+			The maximum number of results to search in the RAPI.
 		</td>
 	</tr>
 </table>
