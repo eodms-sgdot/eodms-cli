@@ -993,6 +993,8 @@ class Query:
                 key = filt_split[0].strip()
                 val = filt_split[1].strip()
                 
+                val = val.replace('"', '').replace("'", '')
+                
                 if val is None or val == '':
                     err = "No value specified for Filter ID '%s'." % key
                     common.print_msg("ERROR: %s" % err)

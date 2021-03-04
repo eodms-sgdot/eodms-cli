@@ -87,6 +87,7 @@ def build_syntax(parser, params):
                 # print("pv: %s" % pv)
                 for k, v_lst in pv.items():
                     for v in v_lst:
+                        v = v.replace('"', '').replace("'", '')
                         filt_lst.append("%s.%s" % (k, v))
                 # print("filt_lst: %s" % filt_lst)
                 # answer = input("Press enter...")
@@ -803,7 +804,8 @@ def main():
                             coll_filters = filt_dict[coll_id]
                         else:
                             coll_filters = []
-                        coll_filters.append(filt_items)
+                        coll_filters.append(filt_items.replace('"', '').\
+                            replace("'", ''))
                         filt_dict[coll_id] = coll_filters
                     else:
                         coll_id = common.get_collIdByName(coll)
