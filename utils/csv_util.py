@@ -60,7 +60,6 @@ class EODMS_CSV:
         @type  header: list
         @param header: List of header column names.
         """
-        
         self.header = header
         self.open_csv.write("%s\n" % ','.join(header))
         
@@ -115,7 +114,6 @@ class EODMS_CSV:
         @type  img: eodms.Image
         @param img: An Image object containing image information.
         """
-        
         out_vals = []
         for h in self.header:
             if h in img.get_fields():
@@ -170,10 +168,8 @@ class EODMS_CSV:
         
         # Populate the list of records from the input file
         records = []
-        
         for l in in_lines[1:]:
             rec = {}
-            
             l_split = l.replace('\n', '').split(',')
             
             if len(l_split) < len(in_header):

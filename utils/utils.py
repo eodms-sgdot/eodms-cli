@@ -297,12 +297,10 @@ class Downloader:
                             msg = "No images ready to download " \
                                     "yet. Please wait..."
                             common.print_msg(msg)
-                            #self.logger.info(msg)
                         else:
                             msg = "No new images are ready to " \
                                     "download yet. Please wait..."
                             common.print_msg(msg)
-                            #self.logger.info(msg)
                     else:
                         # Add newly completed orders to completed list
                         self.completed_orders += new_complete
@@ -824,14 +822,13 @@ class Query:
                 else:
                     sub_recs = recs[idx:25 + idx]
             
-                query_build = QueryBuilder()
+                query_build = QueryBuilder(common.get_collIdByName(coll))
                 
                 for rec in sub_recs:
                     
                     if 'Sequence ID' in rec.keys():
                         # If the Sequence ID is in the image dictionary, 
                         #   return it as the Record ID
-                        
                         id_val = rec['Sequence ID']
                     elif 'Record ID' in rec.keys():
                         # If the Record ID is in the image dictionary, return it
@@ -947,10 +944,11 @@ class Query:
                 if coll_id is None:
                     continue
                     
-            query_build = QueryBuilder()
+            query_build = QueryBuilder(coll_id)
             
             # Create query parameter for AOI
-            footprint_id = common.RAPI_COLLECTIONS[coll_id]['fields']['Footprint']
+            footprint_id = common.RAPI_COLLECTIONS[coll_id]['fields']\
+                            ['Footprint']['id']
             query_build.add_aoi(footprint_id, self.aoi_feat)
             
             # Create query parameters for dates
@@ -966,21 +964,20 @@ class Query:
                 
                 # Get the specific Creation Date field for this collection
                 field_id = common.RAPI_COLLECTIONS[coll_id]['fields']\
-                            ['Creation Date']
+                            ['Creation Date']['id']
                 
                 # Add query parameter to list
                 query_build.add_dates(field_id, [start, end])
-                
+            
             if coll_id == 'NAPL':
                 # If the collection is NAPL, add an open data parameter
-                # query_lst.append('CATALOG_IMAGE.OPEN_DATA=TRUE')
-                query_build.set_open(True)
-                
+                query_build.set_open(True)  
+            
             # Add filters specified by user
             for k, v in self.filters.items():
                 if coll_id.find(k) > -1:
                     user_filts = v
-                    
+            
             filt_queries = []
             for filt in user_filts:
                 
@@ -990,7 +987,11 @@ class Query:
                         
                 split_pattern = r"\b|\b".join([o.strip() \
                                 for o in common.OPERATORS])
-                key, val = re.split(split_pattern, filt)
+                filt_split = re.split(split_pattern, filt)
+                op = re.findall(r"(?=(" + '|'.join(common.OPERATORS) + \
+                        r"))", filt)[0]
+                key = filt_split[0].strip()
+                val = filt_split[1].strip()
                 
                 if val is None or val == '':
                     err = "No value specified for Filter ID '%s'." % key
@@ -1017,11 +1018,11 @@ class Query:
                     if val.find('|') > -1:
                         vals = val.split('|')
                         
-                        query_build.add_filter(rapi_id, vals)
+                        query_build.add_filter(rapi_id, vals, op)
                         
                     else:
-                        query_build.add_filter(rapi_id, val)
-                    
+                        query_build.add_filter(rapi_id, val, op)
+            
             full_query = query_build.get_query()
             
             if self.max_images is None or self.max_images == '':
@@ -1029,10 +1030,14 @@ class Query:
             else:
                 maxResults = self.max_images
             
+            # Get the BEAM_MNEMONIC field to add to resultField
+            beam_mnem = common.RAPI_COLLECTIONS[coll_id]['fields']\
+                        ['Beam Mnemonic']['id']
+            
             # Build the query URL
             params = {'collection': coll_id, 
                     'query': full_query, 
-                    'resultField': footprint_id, 
+                    'resultField': "%s,%s" % (beam_mnem, footprint_id), 
                     'maxResults': maxResults, 
                     'format': "json"}
             query_str = urlencode(params)
@@ -1067,7 +1072,8 @@ class QueryBuilder:
     
     class QueryFilter:
         
-        def __init__(self, field=None, value=None, operator='='):
+        def __init__(self, query_builder, field=None, value=None, 
+                    operator='='):
             """
             Initializer for the Filter object.
             
@@ -1080,6 +1086,7 @@ class QueryBuilder:
             @param operator: The operator for the filter.
             """
             
+            self.query_builder = query_builder
             self.field = field
             self.value = value
             self.operator = operator
@@ -1106,7 +1113,7 @@ class QueryBuilder:
             
             if sub_val is None:
                 sub_val = self.value
-            
+                
             if isinstance(sub_val, list) and len(sub_val) > 1:
                 # The value is a range
                 if self.operator.lower() == 'between':
@@ -1123,7 +1130,13 @@ class QueryBuilder:
                 for o in common.OPERATORS:
                     if o.find(self.operator.upper()) > -1:
                         op = o
-                filter_query = '%s%s%s' % (self.field, op, sub_val)
+                
+                # Get the field type from the list of fields
+                if common.get_fieldType(self.query_builder.coll, \
+                    self.field) == 'String':
+                    sub_val = "'%s'" % sub_val
+                
+                filter_query = "%s%s%s" % (self.field, op, sub_val)
                         
             return filter_query
             
@@ -1136,10 +1149,8 @@ class QueryBuilder:
                     sub_lst = []
                     for v in self.value:
                         sub_query = self.build_query(v)
-                        print("sub_query: %s" % sub_query)
                         sub_lst.append(sub_query)
                     sub_str = "(%s)" % ' OR '.join(filter(None, sub_lst))
-                    print("sub_str: %s" % sub_str)
                     
                     self.query_lst.append(sub_str)
                 else:
@@ -1164,8 +1175,9 @@ class QueryBuilder:
                 print("Operator: %s" % self.operator)
                 print("Value: %s" % self.value)
             
-    def __init__(self):
+    def __init__(self, coll):
         
+        self.coll = coll
         self.aoi = None
         self.dates = None
         self.open_data = None
@@ -1175,31 +1187,31 @@ class QueryBuilder:
         
     def add_aoi(self, field, wkt, operator='INTERSECTS'):
         
-        self.aoi = self.QueryFilter(field, wkt, operator)
+        self.aoi = self.QueryFilter(self, field, wkt, operator)
         
     def add_dates(self, field, dates):
         
         dates = ["DT'%s'" % d for d in dates]
-        self.dates = self.QueryFilter(field, dates, 'BETWEEN')
+        self.dates = self.QueryFilter(self, field, dates, 'BETWEEN')
                             
     def set_open(self, val):
         
-        self.open_data = self.QueryFilter('CATALOG_IMAGE.OPEN_DATA', \
+        self.open_data = self.QueryFilter(self, 'CATALOG_IMAGE.OPEN_DATA', \
                         str(val).upper())
         
     def add_filter(self, field, val, operator='='):
         
-        filt = self.QueryFilter(field, val, operator)
+        filt = self.QueryFilter(self, field, val, operator)
         self.filters.append(filt)
         
     def add_incidenceAngle(self, fields, vals):
         
-        low_angle = self.QueryFilter(fields[0], vals)
-        high_angle = self.QueryFilter(fields[1], vals)
+        low_angle = self.QueryFilter(self, fields[0], vals)
+        high_angle = self.QueryFilter(self, fields[1], vals)
         
         angle_queries = []
         for f in fields:
-            qf = self.QueryFilter(f, vals)
+            qf = self.QueryFilter(self, f, vals)
             angle_queries.append(qf.get_fullQuery())
             
         self.angle_str = "(%s)" % " OR ".join(filter(None, angle_queries))

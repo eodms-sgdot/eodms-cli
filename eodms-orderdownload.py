@@ -600,7 +600,6 @@ def main():
             
             user = config_info.get('RAPI', 'username')
             if user == '':
-            
                 msg = "\nEnter the username for authentication"
                 err_msg = "A username is required to order images."
                 user = get_input(msg, err_msg)
@@ -682,7 +681,7 @@ def main():
                     sys.exit(1)
                 else:
                     option = list(choices.keys())[int(option) - 1]
-        
+                    
         params['option'] = option
         
         if option == 'full' or option == 'download_aoi' \
@@ -822,7 +821,6 @@ def main():
             if dates is None:
                 
                 if not common.SILENT:
-                    
                     msg = "\nEnter a date range (ex: 20200525-20200630) " \
                             "or a previous time-frame (24 hours) " \
                             "(leave blank to search all years)"
@@ -853,7 +851,6 @@ def main():
             cli_syntax = build_syntax(parser, params)
             print(cli_syntax)
             logger.info("Command-line Syntax: %s" % cli_syntax)
-            
             search_orderDownload(params)
             
         elif option == 'order_csv':

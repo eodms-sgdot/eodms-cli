@@ -36,6 +36,9 @@ from . import utils
 
 RAPI_DOMAIN = 'https://www.eodms-sgdot.nrcan-rncan.gc.ca'
 
+# For DEBUG:
+# RAPI_DOMAIN = 'http://www-pre-prod.eodms.services.global.gc.ca'
+
 RAPI_COLLECTIONS = {}
 UNSUPPORT_COLLECTIONS = {}
 INDENT = 3
@@ -216,7 +219,7 @@ def get_availableFields(session, collection):
     # Get a list of the searchFields
     fields = {}
     for r in coll_json['searchFields']:
-        fields[r['title']] = r['id']
+        fields[r['title']] = {'id': r['id'], 'datatype': r['datatype']}
         
     return fields
 
@@ -328,6 +331,12 @@ def get_collectionName(in_id):
     """
     
     return RAPI_COLLECTIONS[in_id]
+    
+def get_fieldType(coll_id, field_id):
+    
+    for k, v in RAPI_COLLECTIONS[coll_id]['fields'].items():
+        if v['id'] == field_id:
+            return v['datatype']
 
 def get_lines(in_f):
     """
@@ -492,13 +501,11 @@ def send_query(query_url, session=None, timeout=60.0, record_name=None,
                 msg = "Querying the RAPI (attempt %s)..." % attempt
                 if not quiet:
                     print_msg(msg)
-                #logger.info(msg)
             else:
                 msg = "Querying the RAPI for '%s' " \
                             "(attempt %s)..." % (record_name, attempt)
                 if not quiet:
                     print_msg(msg)
-                #logger.info(msg)
             if session is None:
                 res = requests.get(query_url, timeout=timeout, verify=verify)
             else:

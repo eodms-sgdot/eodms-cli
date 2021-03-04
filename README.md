@@ -37,7 +37,7 @@ The eodms-orderdownload.py was designed using **Python 3.7** however it has been
 | Package Name | Use                                                 | URL                                  |
 |--------------|-----------------------------------------------------|--------------------------------------|
 | Requests     | Used to access the RAPI URL.                        | https://pypi.org/project/requests/   |
-| dateparser   | Used to parse a date like "24 hours".               |https://pypi.org/project/dateparser/ |
+| dateparser   | Used to parse a date like "24 hours".               | https://pypi.org/project/dateparser/ |
 | GDAL         | (Optional) Only required when using AOI shapefiles. | https://pypi.org/project/GDAL/       |
 
 ### Options
@@ -423,19 +423,6 @@ Here is a list of parameters for the script:
 	</tr>
 </table>
 
-### Syntax Examples
-
-| Type                                                                        | Description                                              |
-|-----------------------------------------------------------------------------|----------------------------------------------------------|
-| Order & download images using an AOI (Option 1)                             | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp"``` |
-| Order & download images using an EODMS search results CSV file (Option 2)   | ```python eodms-orderdownload.py -i "C:\TEMP\Results.csv" -o order_csv``` |
-| Order & download RCM images within date range                               | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -d 20201019-20201119 -c RCM``` |
-| Order & download only 2 images from search in silent mode                   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\TEMP\AOI.shp" -m 2 -s``` |
-| Order & download only 5 images with maximum number of images per order at 2 | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -m 5:2``` |
-| Download existing orders for a specific AOI (Option 3)                      | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -o download_aoi``` |
-| Download existing orders using CSV from a previous session in silent mode   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\eodms-rapi-orderdownload\results\20201214_155904_Results.csv" -o download_only -s``` |
-| Search for images acquired in the last 24 hours                             | ```python eodms-orderdownload.py -c "RCM Image Products" -d "24 hours" -i C:\TEMP\AOI.shp -o search_only -s``` |
-
 ## Filters
 
 Filters (also known as [Data Options](https://wiki.gccollab.ca/EODMS_How-To_Guide#How_do_I_narrow_my_search_by_time,_dataset,_and_data_options?) in the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp)) are used to narrow your image search results.
@@ -469,20 +456,47 @@ where:
 			<code><</code>, 
 			<code><=</code>, 
 			<code>></code>, 
-			<code>>=</code>
+			<code>>=</code>, 
+			<code>LIKE</code>, 
+			<code>STARTS WITH</code>, 
+			<code>ENDS WITH</code>
 		</td>
 	</tr>
 	<tr>
 		<td><code>&lt;value&gt;</code></td>
 		<td>
-			The value used to filter the search results. You can specify multiple values with each value separated with a vertical line <code>|</code>.
+			The value used to filter the search results. You can specify multiple values with each value separated with a vertical line <code>|</code>.<br><br>
+			The following wildcards can be used in filters:
+			<table>
+				<tr>
+					<td style="text-align: center;">
+						<b>Symbol</b>
+					</td>
+					<td style="text-align: center;">
+						<b>Description</b>
+					</td>
+					<td style="text-align: center;">
+						<b>Example</b>
+					</td>
+				</tr>
+				<tr>
+					<td><code>%</code></td>
+					<td>Represents zero or more characters</td>
+					<td><code>ha%</code> finds ha, has, had, have, etc.</td>
+				</tr>
+			    <tr>
+					<td><code>_</code></td>
+					<td>Represents a single character</td>
+					<td><code>s_t</code> finds sat and sit</td>
+				</tr>
+			</table>
 		</td>
 	</tr>
 </table>
 
 When entering multiple filters, separate each filter entry with a comma. Also when entering filters in the command-line, surround them with double-quotes.
 
-### Syntax Examples:
+### Filter Syntax Examples:
 
 For a single collection:
 
@@ -549,6 +563,20 @@ For 2 collections, RCM and Radarsat-1:
 | Roll         | ROLL         | ```[NAPL.]ROLL=A28554```        |
 | Photo Number | PHOTO_NUMBER | ```[NAPL.]PHOTO_NUMBER=0028```  |
 
+## Syntax Examples
+
+| Type                                                                        | Description                                              |
+|-----------------------------------------------------------------------------|----------------------------------------------------------|
+| Order & download images using an AOI (Option 1)                             | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp"``` |
+| Order & download images using an EODMS search results CSV file (Option 2)   | ```python eodms-orderdownload.py -i "C:\TEMP\Results.csv" -o order_csv``` |
+| Order & download RCM images within date range                               | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -d 20201019-20201119 -c RCM``` |
+| Order & download only 2 images from search in silent mode                   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\TEMP\AOI.shp" -m 2 -s``` |
+| Order & download only 5 images with maximum number of images per order at 2 | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -m 5:2``` |
+| Download existing orders for a specific AOI (Option 3)                      | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -o download_aoi``` |
+| Download existing orders using CSV from a previous session in silent mode   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\eodms-rapi-orderdownload\results\20201214_155904_Results.csv" -o download_only -s``` |
+| Search for images acquired in the last 24 hours                             | ```python eodms-orderdownload.py -c "RCM Image Products" -d "24 hours" -i C:\TEMP\AOI.shp -o search_only -s``` |
+| Search for RCM images with incidence angles less than or equal to 20        | ```python eodms-orderdownload.py -c "RCM Image Products" -i C:\TEMP\AOI.shp -f "RCM.INCIDENCE_ANGLE<=20" -o search_only -s``` |
+| Search for RCM images with Order Keys containing OK number 1352580          | ```python eodms-orderdownload.py -c "RCM Image Products" -i C:\TEMP\AOI.shp -f "ORDER_KEY LIKE %1352580%" -o search_only -s``` |
 
 ## Help Example
 
