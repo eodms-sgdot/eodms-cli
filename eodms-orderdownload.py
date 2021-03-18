@@ -35,6 +35,7 @@ import configparser
 import base64
 import logging
 import logging.handlers as handlers
+import pathlib
 
 try:
     import dateparser
@@ -567,6 +568,10 @@ def main():
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - ' \
                     '%(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
         
+        if not os.path.exists(os.path.dirname(common.LOG_PATH)):
+            pathlib.Path(os.path.dirname(common.LOG_PATH)).mkdir(\
+                parents=True, exist_ok=True)
+        
         logHandler = handlers.RotatingFileHandler(common.LOG_PATH, \
                         maxBytes=500000, backupCount=2)
         logHandler.setLevel(logging.DEBUG)
@@ -723,6 +728,11 @@ def main():
                         print("\n%s" % err_msg)
                         logger.error(err_msg)
                         sys.exit(1)
+                        
+            input_fn = input_fn.strip()
+            input_fn = input_fn.strip("'")
+            input_fn = input_fn.strip('"')
+            input_fn = os.path.abspath(input_fn)
                 
             params['input'] = input_fn
             

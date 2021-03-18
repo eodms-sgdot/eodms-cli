@@ -974,6 +974,7 @@ class Query:
                 query_build.set_open(True)  
             
             # Add filters specified by user
+            user_filts = []
             for k, v in self.filters.items():
                 if coll_id.find(k) > -1:
                     user_filts = v
