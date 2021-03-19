@@ -253,7 +253,8 @@ class OrderItem:
             image.parse_record(in_image)
         self.image = image
         
-        fields = common.RAPI_COLLECTIONS[self.image.get_collId()]['fields']
+        fields = common.EODMS_RAPI.get_collections()[self.image.get_collId()]\
+                ['fields']
         
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
         self.metadata['imageMetadata'] = self.image.get_metadata(\

@@ -45,33 +45,30 @@ from . import geo
 from . import eodms
 from . import csv_util
 
-class Downloader:
-    """
-    The Downloader class contains all the methods and functions used to 
-        download EODMS images.
-    """
+class EODMSRAPI:
     
-    def __init__(self, session, max_images=None, fn_str='', 
-                in_csv=None, size_limit=None):
-        """
-        Initializer for the Downloader object.
-        
-        @type  session: request.Session
-        @param session: The request session containing EODMS authentication.
-        """
-        
+    def __init__(self, session):
         self.session = session
-        self.completed_orders = []
-        self.download_size = 0
-        self.max_images = max_images
-        self.size_limit = size_limit
-        self.fn_str = fn_str
-        self.csv_fn = in_csv
-        self.orders = None
-        
         self.logger = logging.getLogger('eodms')
+        self.rapi_root = "https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi"
         
-        self.import_csv()
+        self.rapi_collections = {}
+        self.unsupport_collections = {}
+        self.download_size = 0
+        self.size_limit = None
+        
+        return None
+        
+    def print_progress(self, count, blockSize, totalSize):
+        self.download_size += blockSize
+        
+        if self.size_limit is not None:
+            if self.download_size >= int(self.size_limit):
+                raise Exception("Download aborted!")
+        
+        sys.stdout.write('%s  Bytes downloaded: %s\r' % (' '*common.INDENT, \
+                        self.download_size))
+        sys.stdout.flush()
         
     def download_image(self, url, dest_fn):
         """
@@ -101,7 +98,440 @@ class Downloader:
             urllib.request.urlretrieve(url, dest_fn, \
                 reporthook=self.print_progress)
         except:
+            msg = "Unexpected error: %s" % traceback.format_exc()
+            common.print_msg(msg)
+            self.logger.warning(msg)
             pass
+            
+    def set_downloadSize(self, size):
+        self.download_size = size
+        
+    def get_availableFields(self, collection):
+        """
+        Gets a dictionary of available fields for a collection from the RAPI.
+        
+        @type  collection: str
+        @param collection: The Collection ID.
+        
+        @rtype:  dict
+        @return: A dictionary containing the available fields for the given 
+                collection.
+        """
+        
+        query_url = '%s/collections/%s' % (self.rapi_root, collection)
+        
+        self.logger.info("Getting Fields for Collection %s (RAPI Query): %s" % \
+                    (collection, query_url))
+        
+        coll_res = self.submit(query_url, timeout=20.0)
+        
+        # If an error occurred
+        if isinstance(coll_res, QueryError):
+            print("\n  WARNING: %s" % coll_res.get_msg())
+            self.logger.warning(coll_res.get_msg())
+            return coll_res
+        
+        coll_json = coll_res.json()
+        
+        # Get a list of the searchFields
+        fields = {}
+        for r in coll_json['searchFields']:
+            fields[r['title']] = {'id': r['id'], 'datatype': r['datatype']}
+            
+        return fields
+        
+    def get_collections(self, as_list=False, redo=False):
+        """
+        Gets a list of available collections for the current user.
+        
+        @type  as_list: boolean
+        @param as_list: Determines the type of return. If False, a dictionary
+                            will be returned. If True, only a list of collection
+                            IDs will be returned.
+        
+        @rtype:  dict or list (depending on value of as_list)
+        @return: Either a dictionary of collections or a list of collection IDs 
+                    depending on the value of as_list.
+        """
+        
+        print("\nGetting a list of available collections for the script, please wait...")
+        
+        # logger = logging.getLogger('eodms')
+        
+        if self.rapi_collections and not redo:
+            return self.rapi_collections
+        
+        # List of collections that are either commercial products or not available 
+        #   to the general public
+        ignore_collNames = ['RCMScienceData', 'Radarsat2RawProducts', 
+                            'Radarsat1RawProducts', 'COSMO-SkyMed1', '162', 
+                            '165', '164']
+        
+        # Create the query to get available collections for the current user
+        query_url = "%s/collections" % self.rapi_root
+        
+        self.logger.info("Getting Collections (RAPI Query): %s" % query_url)
+        
+        # Send the query URL
+        coll_res = self.submit(query_url, timeout=20.0)
+        
+        # If an error occurred
+        if isinstance(coll_res, QueryError):
+            msg = "Could not get a list of collections due to '%s'.\nPlease try " \
+                    "running the script again." % coll_res.get_msg()
+            common.print_support(msg)
+            self.logger.error(msg)
+            sys.exit(1)
+        
+        # If a list is returned from the query, return it
+        if isinstance(coll_res, list):
+            return coll_res
+        
+        # Convert query to JSON
+        coll_json = coll_res.json()
+        
+        # Create the collections dictionary
+        for coll in coll_json:
+            for child in coll['children']:
+                if child['collectionId'] in ignore_collNames:
+                    for c in child['children']:
+                        self.unsupport_collections[c['collectionId']] = c['title']
+                else:
+                    for c in child['children']:
+                        if c['collectionId'] in ignore_collNames:
+                            self.unsupport_collections[c['collectionId']] = c['title']
+                        else:
+                            fields = self.get_availableFields(c['collectionId'])
+                            self.rapi_collections[c['collectionId']] = {'title': c['title'], \
+                                'fields': fields}
+        
+        # If as_list is True, convert dictionary to list of collection IDs
+        if as_list:
+            collections = [i['title'] for i in self.rapi_collections.values()]
+            return collections
+        
+        return self.rapi_collections
+        
+    def get_collIdByName(self, in_title, unsupported=False):
+        """
+        Gets the Collection ID based on the tile/name of the collection.
+        
+        @type  in_title:    str
+        @param in_title:    The title/name of the collection.
+                            (ex: 'RCM Image Products' for ID 'RCMImageProducts')
+        @type  unsupported: boolean
+        @param unsupported: Determines whether to check in the unsupported list 
+                            or not.
+        """
+        
+        if isinstance(in_title, list):
+            in_title = in_title[0]
+        
+        if unsupported:
+            for k, v in self.unsupport_collections.items():
+                if v.find(in_title) > -1 or in_title.find(v) > -1 \
+                    or in_title.find(k) > -1 or k.find(in_title) > -1:
+                    return k
+        
+        for k, v in self.rapi_collections.items():
+            if v['title'].find(in_title) > -1:
+                return k
+                
+        return self.get_fullCollId(in_title)
+                
+    def get_collectionName(self, in_id):
+        """
+        Gets the collection name for a specified collection ID.
+        
+        @type  in_id: str
+        @param in_id: The collection ID.
+        """
+        
+        return self.rapi_collections[in_id]
+        
+    def get_fieldType(self, coll_id, field_id):
+        
+        for k, v in self.rapi_collections[coll_id]['fields'].items():
+            if v['id'] == field_id:
+                return v['datatype']
+                
+    def get_fullCollId(self, coll_id, unsupported=False):
+        """
+        Gets the full collection ID using the input collection ID which can be a 
+            substring of the collection ID.
+        
+        @type  coll_id:     str
+        @param coll_id:     The collection ID to check.
+        @type  unsupported: boolean
+        @param unsupported: Determines whether to check in the supported or 
+                            unsupported collection lists.
+        """
+        
+        if unsupported:
+            print("self.unsupport_collections: %s" % self.unsupport_collections)
+            for k in self.unsupport_collections.keys():
+                if k.find(coll_id) > -1:
+                    return k
+        
+        for k in self.rapi_collections.keys():
+            if k.find(coll_id) > -1:
+                return k
+                
+    def get_order(self, itemId):
+        
+        query = "%s/order?itemId=%s" % (self.rapi_root, itemId)
+        self.logger.info("Getting order item %s (RAPI query): %s" % \
+                    (itemId, query))
+        res = self.submit(query, timeout=common.TIMEOUT_ORDER)
+                
+        return res
+                
+    def get_orders(self, maxOrders=10000):
+        
+        query_url = "%s/order?maxOrders=%s&format=json" % (self.rapi_root,\
+                    maxOrders)
+                    
+        self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
+                        query_url)
+        # Send the query to the RAPI
+        res = self.submit(query_url, common.TIMEOUT_QUERY, quiet=False)
+                
+        return res
+        
+    def send_query(self, collection, query=None, resultField=None, 
+                    maxResults=100):
+        
+        full_query = query.get_query()
+        full_queryEnc = urllib.parse.quote(full_query)
+        
+        params = {'collection': collection}
+        
+        if query is not None:
+            params['query'] = full_query
+            
+        if resultField is not None:
+            if isinstance(resultField, list):
+                params['resultField'] = ','.join(resultField)
+            else:
+                params['resultField'] = resultField
+                
+        if maxResults is not None:
+            params['maxResults'] = maxResults
+            
+        params['format'] = "json"
+        
+        query_str = urlencode(params)
+        query_url = "%s/search?%s" % (self.rapi_root, query_str)
+                    
+        self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
+                        query_url)
+        # Send the query to the RAPI
+        res = self.submit(query_url, common.TIMEOUT_QUERY, quiet=False)
+                
+        return res
+        
+    def send_order(self, items):
+        
+        # Add the 'Content-Type' option to the header
+        self.session.headers.update({'Content-Type': 'application/json'})
+        
+        # Create the dictionary for the POST request JSON
+        post_dict = {"destinations": [], 
+                    "items": items}
+                    
+        # Dump the dictionary into a JSON object
+        post_json = json.dumps(post_dict)
+        
+        # Set the RAPI URL
+        order_url = "%s/order" % self.rapi_root
+        
+        # Send the JSON request to the RAPI
+        try:
+            order_res = self.session.post(url=order_url, data=post_json)
+            order_res.raise_for_status()
+        except requests.exceptions.HTTPError as errh:
+            return "Http Error: %s" % errh
+        except requests.exceptions.ConnectionError as errc:
+            return "Error Connecting: %s" % errc
+        except requests.exceptions.Timeout as errt:
+            return "Timeout Error: %s" % errt
+        except KeyboardInterrupt as err:
+            print("\nProcess ended by user.")
+            common.print_support()
+            self.logger.info("Process ended by user.")
+            sys.exit(1)
+        except requests.exceptions.RequestException as err:
+            return "Exception: %s" % err
+        
+        if not order_res.ok:
+            err = common.get_exception(order_res)
+            if isinstance(err, list):
+                return '; '.join(err)
+                
+        return order_res
+        
+    def submit(self, query_url, timeout=60.0, record_name=None, 
+                quiet=True):
+        """
+        Send a query to the RAPI.
+        
+        @type  query_url:   str
+        @param query_url:   The query URL.
+        @type  timeout:     float
+        @param timeout:     The length of the timeout in seconds.
+        @type  record_name: str
+        @param record_name: A string used to supply information for the record 
+                            in a print statement.
+        
+        @rtype  request.Response
+        @return The response returned from the RAPI.
+        """
+        
+        #logger = logging.getLogger('eodms')
+        
+        verify = True
+        # if query_url.find('www-pre-prod') > -1:
+            # verify = False
+        
+        if not quiet:
+            common.print_msg("RAPI Query URL: %s" % query_url)
+        
+        res = None
+        attempt = 1
+        err = None
+        # Get the entry records from the RAPI using the downlink segment ID
+        while res is None and attempt <= common.ATTEMPTS:
+            # Continue to attempt if timeout occurs
+            try:
+                if record_name is None:
+                    msg = "Querying the RAPI (attempt %s)..." % attempt
+                    if not quiet:
+                        common.print_msg(msg)
+                else:
+                    msg = "Querying the RAPI for '%s' " \
+                                "(attempt %s)..." % (record_name, attempt)
+                    if not quiet:
+                        common.print_msg(msg)
+                if self.session is None:
+                    res = requests.get(query_url, timeout=timeout, verify=verify)
+                else:
+                    res = self.session.get(query_url, timeout=timeout, verify=verify)
+                res.raise_for_status()
+            except requests.exceptions.HTTPError as errh:
+                msg = "HTTP Error: %s" % errh
+                
+                if msg.find('Unauthorized') > -1:
+                    err = msg
+                    attempt = 4
+                
+                if attempt < common.ATTEMPTS:
+                    msg = "WARNING: %s; attempting to connect again..." % msg
+                    common.print_msg(msg)
+                    self.logger.warning(msg)
+                    res = None
+                else:
+                    err = msg
+                attempt += 1
+            except requests.exceptions.ConnectionError as errc:
+                msg = "Connection Error: %s" % errc
+                if attempt < common.ATTEMPTS:
+                    msg = "WARNING: %s; attempting to connect again..." % msg
+                    common.print_msg(msg)
+                    self.logger.warning(msg)
+                    res = None
+                else:
+                    err = msg
+                attempt += 1
+            except requests.exceptions.Timeout as errt:
+                msg = "Timeout Error: %s" % errt
+                if attempt < common.ATTEMPTS:
+                    msg = "WARNING: %s; attempting to connect again..." % msg
+                    common.print_msg(msg)
+                    self.logger.warning(msg)
+                    res = None
+                else:
+                    err = msg
+                attempt += 1
+            except requests.exceptions.RequestException as err:
+                msg = "Exception: %s" % err
+                if attempt < common.ATTEMPTS:
+                    msg = "WARNING: %s; attempting to connect again..." % msg
+                    common.print_msg(msg)
+                    self.logger.warning(msg)
+                    res = None
+                else:
+                    err = msg
+                attempt += 1
+            except KeyboardInterrupt as err:
+                print("\nProcess ended by user.")
+                self.logger.info("Process ended by user.")
+                print_support()
+                sys.exit(1)
+            except:
+                msg = "Unexpected error: %s" % traceback.format_exc()
+                if attempt < common.ATTEMPTS:
+                    msg = "WARNING: %s; attempting to connect again..." % msg
+                    common.print_msg(msg)
+                    self.logger.warning(msg)
+                    res = None
+                else:
+                    err = msg
+                attempt += 1
+                
+        if err is not None:
+            query_err = QueryError(err)
+            return query_err
+                
+        # If no results from RAPI, return None
+        if res is None: return None
+        
+        # Check for exceptions that weren't already caught
+        except_err = common.get_exception(res)
+        
+        if isinstance(except_err, QueryError):
+            err_msg = except_err.get_msg()
+            if err_msg.find('401 - Unauthorized') > -1:
+                # Inform the user if the error was caused by an authentication 
+                #   issue.
+                err_msg = "An authentication error has occurred while " \
+                            "trying to access the EODMS RAPI. Please run this " \
+                            "script again with your username and password."
+                print_support(err_msg)
+                self.logger.error(err_msg)
+                sys.exit(1)
+                
+            print("WARNING: %s" % err_msg)
+            self.logger.warning(err_msg)
+            return except_err
+            
+        return res
+
+class Downloader:
+    """
+    The Downloader class contains all the methods and functions used to 
+        download EODMS images.
+    """
+    
+    def __init__(self, max_images=None, fn_str='', 
+                in_csv=None, size_limit=None):
+        """
+        Initializer for the Downloader object.
+        
+        @type  eodms_rapi: EODMSRAPI
+        @param eodms_rapi: The EODMSRAPI object used to query the RAPI
+        """
+        
+        self.eodms_rapi = common.EODMS_RAPI
+        self.completed_orders = []
+        self.max_images = max_images
+        self.size_limit = size_limit
+        self.fn_str = fn_str
+        self.csv_fn = in_csv
+        self.orders = None
+        
+        self.logger = logging.getLogger('eodms')
+        
+        self.import_csv()
         
     def download_orders(self, cur_orders=None):
         """
@@ -249,10 +679,10 @@ class Downloader:
                                 if not os.path.exists(os.path.dirname(full_path)):
                                     os.mkdir(os.path.dirname(full_path))
                                 
-                                self.download_size = 0
-                                self.download_image(url, out_fn)
+                                self.eodms_rapi.set_downloadSize(0)
+                                self.eodms_rapi.download_image(url, out_fn)
                                 print('')
-                                self.download_size = 0
+                                self.eodms_rapi.set_downloadSize(0)
                                 
                                 # Record the URL and downloaded file to a dictionary
                                 dest_info = {}
@@ -401,10 +831,13 @@ class Downloader:
         #   all order items are processed (unless the user has more than 10000 
         #   order items)
         time_start = datetime.datetime.now()
-        query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
-        self.logger.info("Getting order information (RAPI query): %s" % query)
-        res = common.send_query(query, self.session, \
-                timeout=common.TIMEOUT_ORDER)
+        
+        # query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
+        # self.logger.info("Getting order information (RAPI query): %s" % query)
+        # res = common.send_query(query, self.session, \
+                # timeout=common.TIMEOUT_ORDER)
+        res = self.eodms_rapi.get_orders()        
+        
         res_json = res.json()
         time_end = datetime.datetime.now()
         
@@ -428,18 +861,19 @@ class Downloader:
         
         if self.csv_fn is None: return None
         
-        eodms_csv = csv_util.EODMS_CSV(self.csv_fn, self.session)
+        eodms_csv = csv_util.EODMS_CSV(self.csv_fn)
         records = eodms_csv.import_csv()
         
         self.orders = eodms.OrderList()
         
         for o_item in records:
-            query = "%s/wes/rapi/order?itemId=%s" % (common.RAPI_DOMAIN, \
-                    o_item['itemId'])
-            self.logger.info("Getting order item %s (RAPI query): %s" % \
-                        (o_item['itemId'], query))
-            res = common.send_query(query, self.session, \
-                    timeout=common.TIMEOUT_ORDER)
+            # query = "%s/wes/rapi/order?itemId=%s" % (common.RAPI_DOMAIN, \
+                    # o_item['itemId'])
+            # self.logger.info("Getting order item %s (RAPI query): %s" % \
+                        # (o_item['itemId'], query))
+            # res = common.send_query(query, self.session, \
+                    # timeout=common.TIMEOUT_ORDER)
+            res = self.eodms_rapi.get_order(o_item['itemId'])
             
             # Check for any errors
             if isinstance(res, QueryError):
@@ -465,39 +899,26 @@ class Downloader:
             self.orders.update_order(order_item.get_orderId(), \
                 order_item)
         
-    def print_progress(self, count, blockSize, totalSize):
-        self.download_size += blockSize
-        
-        if self.size_limit is not None:
-            if self.download_size >= int(self.size_limit):
-                raise Exception("Download aborted!")
-        
-        sys.stdout.write('%s  Bytes downloaded: %s\r' % (' '*common.INDENT, \
-                        self.download_size))
-        sys.stdout.flush()
-        
 class Orderer:
     """
     The Orderer class contains all the methods and functions used to order 
         image results.
     """
     
-    def __init__(self, session, results=None, max_items=100):
+    def __init__(self, results=None, max_items=100):
         """
         Initializer for Orderer.
         
-        @type  session:   request.Session
-        @param session:   A request session with authentication.
-        @type  record_id: int
-        @param record_id: The record ID for a single order.
-        @type  coll:      str
-        @param coll:      The collection ID name (ex: RCMImageProducts).
+        @type  record_id:  int
+        @param record_id:  The record ID for a single order.
+        @type  coll:       str
+        @param coll:       The collection ID name (ex: RCMImageProducts).
         
         @rtype:  n/a
         @return: None
         """
         
-        self.session = session
+        self.eodms_rapi = common.EODMS_RAPI
         self.results = results
         if max_items is None:
             self.max_items = 100
@@ -562,11 +983,14 @@ class Orderer:
         # Send a query to the order RAPI, set the maximum to 10000 to ensure
         #   all order items are processed (unless the user has more than 10000 
         #   order items)
-        query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
-        self.logger.info("Getting a list of your orders (RAPI query): %s" % \
-                        query)
-        res = common.send_query(query, self.session, \
-                timeout=common.TIMEOUT_ORDER)
+        # query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
+        # self.logger.info("Getting a list of your orders (RAPI query): %s" % \
+                        # query)
+        # res = common.send_query(query, self.session, \
+                # timeout=common.TIMEOUT_ORDER)
+                
+        res = self.eodms_rapi.get_orders(10000)
+                
         res_json = res.json()
         
         order_results = []
@@ -620,8 +1044,8 @@ class Orderer:
                 else:
                     sub_recs = img_lst.get_subset(idx, self.max_items + idx)
             
-                # Add the 'Content-Type' option to the header
-                self.session.headers.update({'Content-Type': 'application/json'})
+                # # Add the 'Content-Type' option to the header
+                # self.session.headers.update({'Content-Type': 'application/json'})
                 
                 items = []
                 for r in sub_recs:
@@ -635,45 +1059,57 @@ class Orderer:
                 # If there are no items, return None
                 if len(items) == 0: return None
                 
-                # Create the dictionary for the POST request JSON
-                post_dict = {"destinations": [], 
-                            "items": items}
-                
-                # Dump the dictionary into a JSON object
-                post_json = json.dumps(post_dict)
-                
-                # Set the RAPI URL
-                order_url = "%s/wes/rapi/order" % common.RAPI_DOMAIN
-                
                 msg = "Submitting orders for images %s-%s..." % \
                         (str(idx + 1), str(idx + len(items)))
                 common.print_msg(msg)
                 self.logger.info(msg)
                 
-                # Send the JSON request to the RAPI
-                try:
-                    order_res = self.session.post(url=order_url, data=post_json)
-                    order_res.raise_for_status()
-                except requests.exceptions.HTTPError as errh:
-                    return "Http Error: %s" % errh
-                except requests.exceptions.ConnectionError as errc:
-                    return "Error Connecting: %s" % errc
-                except requests.exceptions.Timeout as errt:
-                    return "Timeout Error: %s" % errt
-                except KeyboardInterrupt as err:
-                    print("\nProcess ended by user.")
-                    common.print_support()
-                    self.logger.info("Process ended by user.")
-                    sys.exit(1)
-                except requests.exceptions.RequestException as err:
-                    return "Exception: %s" % err
+                res = self.eodms_rapi.send_order(items)
                 
-                if not order_res.ok:
-                    err = common.get_exception(order_res)
-                    if isinstance(err, list):
-                        return '; '.join(err)
+                if isinstance(res, str):
+                    return res
                 
-                order_results += order_res.json()['items']
+                order_results += res.json()['items']
+                
+                # # Create the dictionary for the POST request JSON
+                # post_dict = {"destinations": [], 
+                            # "items": items}
+                
+                # # Dump the dictionary into a JSON object
+                # post_json = json.dumps(post_dict)
+                
+                # # Set the RAPI URL
+                # order_url = "%s/wes/rapi/order" % common.RAPI_DOMAIN
+                
+                # msg = "Submitting orders for images %s-%s..." % \
+                        # (str(idx + 1), str(idx + len(items)))
+                # common.print_msg(msg)
+                # self.logger.info(msg)
+                
+                # # Send the JSON request to the RAPI
+                # try:
+                    # order_res = self.session.post(url=order_url, data=post_json)
+                    # order_res.raise_for_status()
+                # except requests.exceptions.HTTPError as errh:
+                    # return "Http Error: %s" % errh
+                # except requests.exceptions.ConnectionError as errc:
+                    # return "Error Connecting: %s" % errc
+                # except requests.exceptions.Timeout as errt:
+                    # return "Timeout Error: %s" % errt
+                # except KeyboardInterrupt as err:
+                    # print("\nProcess ended by user.")
+                    # common.print_support()
+                    # self.logger.info("Process ended by user.")
+                    # sys.exit(1)
+                # except requests.exceptions.RequestException as err:
+                    # return "Exception: %s" % err
+                
+                # if not order_res.ok:
+                    # err = common.get_exception(order_res)
+                    # if isinstance(err, list):
+                        # return '; '.join(err)
+                
+                # order_results += order_res.json()['items']
             
             msg = "Number of order items: %s" % len(order_results)
             common.print_msg(msg)
@@ -721,14 +1157,11 @@ class Query:
         queries to the RAPI.
     """
     
-    def __init__(self, session, coll=None, dates=None, aoi=None, 
+    def __init__(self, coll=None, dates=None, aoi=None, 
                 max_images=None, filters={}):
         """
         Initializer for the Query object.
         
-        @type  session:    request.Session
-        @param session:    The request session containing the EODMS 
-                            creditentials.
         @type  coll:       list
         @param coll:       A list of collections for the query.
         @type  dates:      str
@@ -745,7 +1178,7 @@ class Query:
         self.collections = coll
         self.dates = dates
         self.aoi = aoi
-        self.session = session
+        self.eodms_rapi = common.EODMS_RAPI
         if max_images is not None and not max_images == '':
             max_images = int(max_images)
         self.max_images = max_images
@@ -810,6 +1243,8 @@ class Query:
             
             coll_recs[collection] = rec_lst
         
+        # eodms_rapi = EODMSRAPI()
+        
         all_res = []
         
         for coll, recs in coll_recs.items():
@@ -822,7 +1257,8 @@ class Query:
                 else:
                     sub_recs = recs[idx:25 + idx]
             
-                query_build = QueryBuilder(common.get_collIdByName(coll))
+                query_build = QueryBuilder(common.EODMS_RAPI.\
+                                get_collIdByName(coll))
                 
                 for rec in sub_recs:
                     
@@ -861,17 +1297,19 @@ class Query:
                 if coll_id == 'NAPL':
                     query_build.set_open(True)
                 
-                full_query = query_build.get_query()
+                res = self.eodms_rapi.send_query(collection, query_build)
                 
-                full_queryEnc = urllib.parse.quote(full_query)
-                query_url = "%s/wes/rapi/search?collection=%s&query=%s" \
-                            "&maxResults=100" % (common.RAPI_DOMAIN, \
-                            collection, full_queryEnc)
-                self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
-                                query_url)
-                # Send the query to the RAPI
-                res = common.send_query(query_url, self.session, \
-                        common.TIMEOUT_QUERY, quiet=False)
+                # full_query = query_build.get_query()
+                
+                # full_queryEnc = urllib.parse.quote(full_query)
+                # query_url = "%s/wes/rapi/search?collection=%s&query=%s" \
+                            # "&maxResults=100" % (common.RAPI_DOMAIN, \
+                            # collection, full_queryEnc)
+                # self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
+                                # query_url)
+                # # Send the query to the RAPI
+                # res = common.send_query(query_url, self.session, \
+                        # common.TIMEOUT_QUERY, quiet=False)
                 
                 # If an error occurred
                 if isinstance(res, QueryError):
@@ -934,11 +1372,11 @@ class Query:
             query_lst = []
             
             # Get the collection ID
-            coll_id = common.get_collIdByName(coll)
+            coll_id = self.eodms_rapi.get_collIdByName(coll)
             
             if coll_id is None:
                 # Get the full collection ID
-                coll_id = common.get_fullCollId(coll)
+                coll_id = self.eodms_rapi.get_fullCollId(coll)
                 
                 # If the collection ID is not supported by this script, skip it
                 if coll_id is None:
@@ -947,8 +1385,8 @@ class Query:
             query_build = QueryBuilder(coll_id)
             
             # Create query parameter for AOI
-            footprint_id = common.RAPI_COLLECTIONS[coll_id]['fields']\
-                            ['Footprint']['id']
+            collections = self.eodms_rapi.get_collections()
+            footprint_id = collections[coll_id]['fields']['Footprint']['id']
             query_build.add_aoi(footprint_id, self.aoi_feat)
             
             # Create query parameters for dates
@@ -963,8 +1401,8 @@ class Query:
                 end = common.convert_date(rng[1])
                 
                 # Get the specific Creation Date field for this collection
-                field_id = common.RAPI_COLLECTIONS[coll_id]['fields']\
-                            ['Creation Date']['id']
+                field_id = collections[coll_id]['fields']['Creation Date']\
+                            ['id']
                 
                 # Add query parameter to list
                 query_build.add_dates(field_id, [start, end])
@@ -1026,7 +1464,7 @@ class Query:
                     else:
                         query_build.add_filter(rapi_id, val, op)
             
-            full_query = query_build.get_query()
+            # full_query = query_build.get_query()
             
             if self.max_images is None or self.max_images == '':
                 maxResults = common.MAX_RESULTS
@@ -1034,22 +1472,18 @@ class Query:
                 maxResults = self.max_images
             
             # Get the BEAM_MNEMONIC field to add to resultField
-            beam_mnem = common.RAPI_COLLECTIONS[coll_id]['fields']\
-                        ['Beam Mnemonic']['id']
+            # print("collections: %s" % collections)
+            # for k, v in collections.items():
+                # print("%s:" % k)
+                # for fk, fv in v['fields'].items():
+                    # print("  %s: %s" % (fk, fv))
+            # answer = input("Press enter...")
+            for fk, fv in collections[coll_id]['fields'].items():
+                if fv['id'].find('BEAM_MNEMONIC') > -1:
+                    beam_mnem = fv['id']
             
-            # Build the query URL
-            params = {'collection': coll_id, 
-                    'query': full_query, 
-                    'resultField': "%s,%s" % (beam_mnem, footprint_id), 
-                    'maxResults': maxResults, 
-                    'format': "json"}
-            query_str = urlencode(params)
-            query_url = '%s/wes/rapi/search?%s' % \
-                        (common.RAPI_DOMAIN, query_str)
-            self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
-                            query_url)
-            res = common.send_query(query_url, self.session, \
-                    common.TIMEOUT_QUERY)
+            res = self.eodms_rapi.send_query(coll_id, query_build, beam_mnem, \
+                    maxResults)
             
             # If an error occurred
             if isinstance(res, QueryError):
@@ -1135,7 +1569,7 @@ class QueryBuilder:
                         op = o
                 
                 # Get the field type from the list of fields
-                if common.get_fieldType(self.query_builder.coll, \
+                if common.EODMS_RAPI.get_fieldType(self.query_builder.coll, \
                     self.field) == 'String':
                     sub_val = "'%s'" % sub_val
                 

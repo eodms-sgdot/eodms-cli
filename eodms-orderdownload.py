@@ -70,6 +70,7 @@ def build_syntax(parser, params):
     for p, pv in params.items():
         if pv is None or pv == '': continue
         if p == 'session': continue
+        if p == 'eodms_rapi': continue
         action = actions['--%s' % p]
         flag = action.option_strings[0]
         
@@ -119,7 +120,7 @@ def download(params):
     log_parameters(params)
     
     csv_fn = params['input']
-    session = params['session']
+    # session = params['session']
     
     if csv_fn.find('.csv') == -1:
         msg = "The provided input file is not a CSV file. " \
@@ -136,7 +137,7 @@ def download(params):
     
     logger.info("Process start time: %s" % start_str)
     
-    eodms_downloader = utils.Downloader(session, in_csv=csv_fn, fn_str=fn_str)
+    eodms_downloader = utils.Downloader(in_csv=csv_fn, fn_str=fn_str)
     eodms_downloader.download_orders()
     
     end_time = datetime.datetime.now()
@@ -207,7 +208,7 @@ def order_download(params):
     """
     
     csv_fn = params['input']
-    session = params['session']
+    #session = params['session']
     
     logger = logging.getLogger('eodms')
     
@@ -229,8 +230,7 @@ def order_download(params):
     
     logger.info("Process start time: %s" % start_str)
     
-    if not common.RAPI_COLLECTIONS:
-        common.get_collections(session)
+    common.EODMS_RAPI.get_collections()
     
     # Parse the maximum number of orders and items per order
     max_items = None
@@ -242,11 +242,11 @@ def order_download(params):
             max_items = None
             max_images = params['maximum']
     
-    eodms_csv = csv_util.EODMS_CSV(csv_fn, session)
+    eodms_csv = csv_util.EODMS_CSV(csv_fn)
     query_imgs = eodms_csv.import_eodmsCSV()
     
     # Create order object
-    eodms_order = utils.Orderer(session, max_items=max_items)
+    eodms_order = utils.Orderer(max_items=max_items)
     
     orders = eodms_order.submit_orders(query_imgs)
     
@@ -262,7 +262,7 @@ def order_download(params):
         sys.exit(1)
     
     # Download images
-    eodms_downloader = utils.Downloader(session, max_images, fn_str)
+    eodms_downloader = utils.Downloader(max_images, fn_str)
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
     
@@ -291,7 +291,7 @@ def search_orderDownload(params):
     dates = params['dates']
     aoi = params['input']
     filters = params['filters']
-    session = params['session']
+    # eodms_rapi = params['eodms_rapi']
     option = params['option']
     
     if aoi.find('.shp') == -1 and aoi.find('.gml') == -1 \
@@ -311,8 +311,7 @@ def search_orderDownload(params):
     
     logger.info("Process start time: %s" % start_str)
         
-    if not common.RAPI_COLLECTIONS:
-        common.get_collections(session)
+    common.EODMS_RAPI.get_collections()
     
     # Parse the maximum number of orders and items per order
     max_items = None
@@ -332,7 +331,7 @@ def search_orderDownload(params):
         sys.exit(1)
     
     # Search for records using input AOI file
-    eodms_query = utils.Query(session, collections, dates, aoi, \
+    eodms_query = utils.Query(collections, dates, aoi, \
                     max_images, filters)
     query_imgs = eodms_query.query_records()
     
@@ -405,7 +404,7 @@ def search_orderDownload(params):
         query_imgs.trim(max_images)
     
     # Create order object
-    eodms_order = utils.Orderer(session, max_items=max_items)
+    eodms_order = utils.Orderer(max_items=max_items)
     if option == 'download_only':
         # If the user only wants to download a previous order
         #   query the RAPI using the AOI and then user the 
@@ -444,7 +443,7 @@ def search_orderDownload(params):
         sys.exit(1)
     
     # Download images
-    eodms_downloader = utils.Downloader(session, max_images, fn_str)
+    eodms_downloader = utils.Downloader(max_images, fn_str)
     eodms_downloader.download_orders(orders)
     eodms_downloader.export_csv()
     
@@ -647,6 +646,7 @@ def main():
                 config_info.write(cfgfile, space_around_delimiters=False)
                 cfgfile.close()
         
+        # Get number of attempts when querying the RAPI
         common.ATTEMPTS = config_info.get('RAPI', 'access_attempts')
         
         try:
@@ -657,15 +657,16 @@ def main():
             
         session = requests.Session()
         session.auth = (user, password)
+        common.EODMS_RAPI = utils.EODMSRAPI(session)
         
         params = {'collections': coll, 
                 'dates': dates, 
                 'input': input_fn, 
                 'maximum': maximum, 
                 'option': option}
-        params['session'] = session
+        # params['eodms_rapi'] = eodms_rapi
         
-        coll_lst = common.get_collections(session, True)
+        coll_lst = common.EODMS_RAPI.get_collections(True)
         
         print("\n(For more information on the following prompts, please refer" \
                 " to the README file.)")
@@ -771,7 +772,7 @@ def main():
                 filt_dict = {}
                 # Ask for the filters for the given collection(s)
                 for coll in params['collections']:
-                    coll_id = common.get_collIdByName(coll)
+                    coll_id = common.EODMS_RAPI.get_collIdByName(coll)
                     if coll_id in common.FILT_MAP.keys():
                         print("\nAvailable filters for '%s':" % coll)
                         for c in common.FILT_MAP[coll_id].keys():
@@ -818,7 +819,7 @@ def main():
                             replace("'", ''))
                         filt_dict[coll_id] = coll_filters
                     else:
-                        coll_id = common.get_collIdByName(coll)
+                        coll_id = common.EODMS_RAPI.get_collIdByName(coll)
                         if coll_id in filt_dict.keys():
                             coll_filters = filt_dict[coll_id]
                         else:

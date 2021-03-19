@@ -35,7 +35,7 @@ from . import eodms
 
 class EODMS_CSV:
     
-    def __init__(self, csv_fn, session=None):
+    def __init__(self, csv_fn): #, session=None):
         """
         Initializer for the EODMS_CSV which processes a CSV file exported 
             from the EODMS UI.
@@ -47,7 +47,7 @@ class EODMS_CSV:
         """
         
         self.csv_fn = csv_fn
-        self.session = session
+        # self.session = session
         self.open_csv = None
         self.header = None
         
@@ -89,11 +89,11 @@ class EODMS_CSV:
             satellite = rec['Satellite']
             
             # Set the collection ID name
-            self.coll_id = common.get_collIdByName(satellite)
+            self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
             
             if self.coll_id is None:
                 # Check if the collection is supported in this script
-                self.coll_id = common.get_collIdByName(satellite, True)
+                self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite, True)
                 msg = "The satellite/collection '%s' is not supported " \
                         "with this script at this time." % self.coll_id
                 print("\n%s" % msg)
@@ -137,7 +137,7 @@ class EODMS_CSV:
         @return: A list of records extracted from the CSV file.
         """
         
-        query_obj = utils.Query(self.session)
+        query_obj = utils.Query()
         
         # Open the input file
         in_f = open(self.csv_fn, 'r')
@@ -203,7 +203,7 @@ class EODMS_CSV:
         @return: A list of records extracted from the CSV file.
         """
         
-        query_obj = utils.Query(self.session)
+        query_obj = utils.Query()
         
         reader = csv.reader(open(self.csv_fn, 'r'))
         records = []
