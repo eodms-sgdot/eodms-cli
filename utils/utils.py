@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2021 Her Majesty the Queen in Right of Canada, as 
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -47,8 +47,11 @@ from . import csv_util
 
 class EODMSRAPI:
     
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, username, password):
+    
+        self.session = requests.Session()
+        self.session.auth = (username, password)
+        
         self.logger = logging.getLogger('eodms')
         self.rapi_root = "https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi"
         
@@ -1424,11 +1427,20 @@ class Query:
                     print("Filter '%s' entered incorrectly." % filt)
                     continue
                         
-                split_pattern = r"\b|\b".join([o.strip() \
-                                for o in common.OPERATORS])
-                filt_split = re.split(split_pattern, filt)
-                op = re.findall(r"(?=(" + '|'.join(common.OPERATORS) + \
-                        r"))", filt)[0]
+                # split_pattern = r"\b|\b".join([o.strip() \
+                                # for o in common.OPERATORS])
+                # filt_split = re.split(split_pattern, filt)
+                # op = re.findall(r"(?=(" + '|'.join(common.OPERATORS) + \
+                        # r"))", filt)
+                # print("1 - op: %s" % op)
+                # answer = input("Press enter...")
+                
+                ops = [x for x in common.OPERATORS if x in filt]
+
+                for o in ops:
+                    filt_split = filt.split(o)
+                    op = o
+                
                 key = filt_split[0].strip()
                 val = filt_split[1].strip()
                 
@@ -1443,26 +1455,27 @@ class Query:
                 coll_filts = common.FILT_MAP[coll_id]
                 rapi_id = coll_filts[key]
                 
-                if key.find('INCIDENCE_ANGLE') > -1:
-                    ranges = []
-                    rapi_ids = rapi_id.split(',')
-                    if val.find('-') > -1:
-                        start_end = val.split('-')
-                        ranges.append(start_end)
+                # if key.find('INCIDENCE_ANGLE') > -1:
+                    # ranges = []
+                    # rapi_ids = rapi_id.split(',')
+                    # if val.find('-') > -1:
+                        # start_end = val.split('-')
+                        # ranges.append(start_end)
+                    # else:
+                        # ranges.append(val)
                         
-                    else:
-                        ranges.append(val)
-                        
-                    query_build.add_incidenceAngle(rapi_ids, ranges)
-                else:
+                    # query_build.add_incidenceAngle(rapi_ids, ranges)
+                # else:
                     
-                    if val.find('|') > -1:
-                        vals = val.split('|')
-                        
-                        query_build.add_filter(rapi_id, vals, op)
-                        
-                    else:
-                        query_build.add_filter(rapi_id, val, op)
+                if val.find('|') > -1:
+                    vals = val.split('|')
+                    
+                    # print("2 - op: %s" % op)
+                    query_build.add_filter(rapi_id, vals, op)
+                    
+                else:
+                    # print("2 - op: %s" % op)
+                    query_build.add_filter(rapi_id, val, op)
             
             # full_query = query_build.get_query()
             
@@ -1565,7 +1578,9 @@ class QueryBuilder:
                     sub_val = sub_val[0]
                 # Convert the operator
                 for o in common.OPERATORS:
-                    if o.find(self.operator.upper()) > -1:
+                    # print("o: %s" % o.upper().strip())
+                    # print("self.operator: %s" % self.operator.strip().upper())
+                    if o.strip().upper() == self.operator.strip().upper():
                         op = o
                 
                 # Get the field type from the list of fields
@@ -1638,6 +1653,7 @@ class QueryBuilder:
         
     def add_filter(self, field, val, operator='='):
         
+        # print("3 - operator: %s" % operator)
         filt = self.QueryFilter(self, field, val, operator)
         self.filters.append(filt)
         

@@ -48,7 +48,7 @@ TIMEOUT_ORDER = 180.0
 ATTEMPTS = 4
 MAX_RESULTS = 1000
 
-OPERATORS = ['=', '<>', '<', '<=', '>', '>=', ' LIKE ', ' STARTS WITH ', \
+OPERATORS = ['=', '<', '>', '<>', '<=', '>=', ' LIKE ', ' STARTS WITH ', \
             ' ENDS WITH ', ' CONTAINS ', ' CONTAINED BY ', ' CROSSES ', \
             ' DISJOINT WITH ', ' INTERSECTS ', ' OVERLAPS ', ' TOUCHES ', \
             ' WITHIN ']
@@ -56,7 +56,8 @@ OPERATORS = ['=', '<>', '<', '<=', '>', '>=', ' LIKE ', ' STARTS WITH ', \
 FILT_MAP = {'RCMImageProducts': 
                 {
                     'ORBIT_DIRECTION': 'RCM.ORBIT_DIRECTION', 
-                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    'INCIDENCE_ANGLE': 'RCM.INCIDENCE_ANGLE', 
                     'BEAM_MNEMONIC': 'RCM.BEAM_MNEMONIC', 
                     'BEAM_MODE_QUALIFIER': 'SENSOR_BEAM_CONFIG.BEAM_MODE_QUALIFIER', 
                     # 'BEAM_MODE_TYPE': 'RCM.SBEAM',
@@ -76,7 +77,8 @@ FILT_MAP = {'RCMImageProducts':
                 {
                     'ORBIT_DIRECTION': 'RSAT1.ORBIT_DIRECTION',
                     'PIXEL_SPACING': 'ARCHIVE_RSAT1.SAMPLED_PIXEL_SPACING_PAN', 
-                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    'INCIDENCE_ANGLE': 'RSAT1.INCIDENCE_ANGLE', 
                     # 'BEAM_MODE': 'RSAT1.SBEAM', 
                     'BEAM_MNEMONIC': 'RSAT1.BEAM_MNEMONIC', 
                     'ORBIT': 'RSAT1.ORBIT_ABS'
@@ -85,7 +87,8 @@ FILT_MAP = {'RCMImageProducts':
                 {
                     'ORBIT_DIRECTION': 'RSAT2.ORBIT_DIRECTION', 
                     'PIXEL_SPACING': 'ARCHIVE_RSAT2.SAMPLED_PIXEL_SPACING_PAN', 
-                    'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    'INCIDENCE_ANGLE': 'RSAT2.INCIDENCE_ANGLE', 
                     'SEQUENCE_ID': 'CATALOG_IMAGE.SEQUENCE_ID', 
                     # 'BEAM_MODE': 'RSAT2.SBEAM', 
                     'BEAM_MNEMONIC': 'RSAT2.BEAM_MNEMONIC', 

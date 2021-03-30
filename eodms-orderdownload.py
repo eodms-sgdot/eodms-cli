@@ -654,10 +654,7 @@ def main():
         except ValueError:
             common.ATTEMPTS = 4
             
-            
-        session = requests.Session()
-        session.auth = (user, password)
-        common.EODMS_RAPI = utils.EODMSRAPI(session)
+        common.EODMS_RAPI = utils.EODMSRAPI(user, password)
         
         params = {'collections': coll, 
                 'dates': dates, 
