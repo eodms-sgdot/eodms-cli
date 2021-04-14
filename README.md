@@ -149,7 +149,7 @@ Also, the items can take a while to become available so please be patient and le
 ### Option 2 - Order & download images using EODMS UI search results
 
 1. Before running the script: 
-	- Go to the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp)
+	- Go to the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index-en.html)
 	- Search for the images you'd like to order
 	- [Save the search results into a CSV file](https://wiki.gccollab.ca/EODMS_How-To_Guide#Is_it_possible_to_export_the_results_including_geometry_.28i.e._spatial_info.29).
 
