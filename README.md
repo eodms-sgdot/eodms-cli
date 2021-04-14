@@ -50,7 +50,7 @@ The script has 5 options for ordering and downloading images:
 	
 2. Order & download images using EODMS UI search results (CSV file)
 	
-	- This option is used for ordering and downloading images already determined using the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp).
+	- This option is used for ordering and downloading images already determined using the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index-en.html).
 	
 3. Download existing orders using AOI file and RAPI query
 
@@ -66,7 +66,7 @@ The script has 5 options for ordering and downloading images:
 
 ### Input File
 
-The script accepts either an **AOI with a polygon** (Shapefile, GeoJSON, GML or KML) (options 1 & 3), a **CSV file** containing results **exported from the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp)** (option 2) or a **CSV file** from a **previous session** (option 4).
+The script accepts either an **AOI with a polygon** (Shapefile, GeoJSON, GML or KML) (options 1 & 3), a **CSV file** containing results **exported from the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index-en.html)** (option 2) or a **CSV file** from a **previous session** (option 4).
 
 ### Other Parameters
 
@@ -425,7 +425,7 @@ Here is a list of parameters for the script:
 
 ## Filters
 
-Filters (also known as [Data Options](https://wiki.gccollab.ca/EODMS_How-To_Guide#How_do_I_narrow_my_search_by_time,_dataset,_and_data_options?) in the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index_en.jsp)) are used to narrow your image search results.
+Filters (also known as [Data Options](https://wiki.gccollab.ca/EODMS_How-To_Guide#How_do_I_narrow_my_search_by_time,_dataset,_and_data_options?) in the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index-en.html)) are used to narrow your image search results.
 
 The proper format for each filter is:
 
