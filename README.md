@@ -78,7 +78,7 @@ The script contains other parameters which help to limit the scope of a search (
 
 ### Query
 
-All image queries use the RAPI search service at https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/search (see [EODMS APIs - REST Search](https://wiki.gccollab.ca/EODMS_APIs#REST_Search) for more info).
+All image queries use the RAPI search service at https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/search (see [Wiki - Advanced Search](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki/Directly-Accessing-the-EODMS-REST-API#rapi---advanced-search) for more info).
 
 If an **AOI file** is provided, the script will query the RAPI for any images, within a given collection or collections, which intersect the AOI.
 
@@ -86,7 +86,7 @@ If a **EODMS CSV file** is used, the script will extract the entries from the fi
 
 ### Order
 
-Once the RAPI returns search results, the script submits these images to the RAPI order service at https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/order (see [EODMS APIs - REST Order](https://wiki.gccollab.ca/EODMS_APIs#REST_Order) for more info).
+Once the RAPI returns search results, the script submits these images to the RAPI order service at https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/order (see [Wiki - Create/Send an Order](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki/Directly-Accessing-the-EODMS-REST-API#createsend-an-order) for more info).
 
 If a **maximum number of images** was set, only the first set of images up to that number will be ordered. If no limit was set, all images from the search result will be ordered.
 
