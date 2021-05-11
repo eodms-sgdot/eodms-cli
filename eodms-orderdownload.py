@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2021 Her Majesty the Queen in Right of Canada, as 
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -719,13 +719,21 @@ def main():
                 if input_fn.find('.shp') > -1:
                     try:
                         import ogr
+                        import osr
+                        GDAL_INCLUDED = True
                     except ImportError:
-                        err_msg = "Cannot open a Shapefile without GDAL. Please install " \
-                            "the GDAL Python package if you'd like to use a Shapefile " \
-                            "for your AOI."
-                        print("\n%s" % err_msg)
-                        logger.error(err_msg)
-                        sys.exit(1)
+                        print("error with gdal import")
+                        try:
+                            import osgeo.ogr as ogr
+                            import osgeo.osr as osr
+                            GDAL_INCLUDED = True
+                        except ImportError:
+                            err_msg = "Cannot open a Shapefile without GDAL. Please install " \
+                                "the GDAL Python package if you'd like to use a Shapefile " \
+                                "for your AOI."
+                            print("\n%s" % err_msg)
+                            logger.error(err_msg)
+                            sys.exit(1)
                         
             input_fn = input_fn.strip()
             input_fn = input_fn.strip("'")

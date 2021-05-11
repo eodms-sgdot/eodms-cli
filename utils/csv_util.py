@@ -72,38 +72,40 @@ class EODMS_CSV:
         @param rec: A record entry from the CSV file.
         """
         
-        if 'Collection ID' in rec.keys():
-            # Get the Collection ID name
-            self.coll_id = rec['Collection ID']
+        for k in rec.keys():
+            if k.lower() == 'collection id':
+                self.coll_id = rec[k]
             
-            return self.coll_id
+                return self.coll_id
             
-        elif 'collectionId' in rec.keys():
-            # Get the Collection ID name
-            self.coll_id = rec['collectionId']
+            elif k.lower() == 'collectionid':
+                # Get the Collection ID name
+                self.coll_id = rec[k]
+                
+                return self.coll_id
             
-            return self.coll_id
-            
-        elif 'Satellite' in rec.keys():
-            # Get the satellite name
-            satellite = rec['Satellite']
-            
-            # Set the collection ID name
-            self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
-            
-            if self.coll_id is None:
-                # Check if the collection is supported in this script
-                self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite, True)
-                msg = "The satellite/collection '%s' is not supported " \
-                        "with this script at this time." % self.coll_id
-                print("\n%s" % msg)
-                self.logger.warning(msg)
-                return None
-            
-            # If the coll_id is a list, return None
-            if isinstance(self.coll_id, list): return None
-            
-            return self.coll_id
+            elif k.lower() == 'satellite':
+                # Get the satellite name
+                satellite = rec[k]
+                
+                print("satellite: %s" % satellite)
+                
+                # Set the collection ID name
+                self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
+                
+                if self.coll_id is None:
+                    # Check if the collection is supported in this script
+                    self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite, True)
+                    msg = "The satellite/collection '%s' is not supported " \
+                            "with this script at this time." % self.coll_id
+                    print("\n%s" % msg)
+                    self.logger.warning(msg)
+                    return None
+                
+                # If the coll_id is a list, return None
+                if isinstance(self.coll_id, list): return None
+                
+                return self.coll_id
         else:
             return None
             
@@ -144,16 +146,16 @@ class EODMS_CSV:
         in_lines = common.get_lines(in_f)
         
         # Get the header from the first row
-        in_header = in_lines[0].replace('\n', '').split(',')
+        in_header = in_lines[0].lower().replace('\n', '').split(',')
         
         # Check for columns in input file
-        if 'Sequence ID' not in in_header and \
-            'Order Key' not in in_header and \
-            'Downlink Segment ID' not in in_header and \
-            'Image Id' not in in_header and \
-            'Record ID' not in in_header and \
-            'recordId' not in in_header and \
-            'Image Info' not in in_header:
+        if 'sequence id' not in in_header and \
+            'order key' not in in_header and \
+            'downlink segment id' not in in_header and \
+            'image id' not in in_header and \
+            'record id' not in in_header and \
+            'recordid' not in in_header and \
+            'image info' not in in_header:
             err_msg = '''The input file does not contain the proper columns.
   The input file must contain one of the following columns:
     Record ID

@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2021 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2021 Her Majesty the Queen in Right of Canada, as 
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -236,7 +236,10 @@ class EODMSRAPI:
                     or in_title.find(k) > -1 or k.find(in_title) > -1:
                     return k
         
+        # print("in_title: %s" % in_title)
         for k, v in self.rapi_collections.items():
+            # print("k: %s" % k)
+            # print("v: %s" % v)
             if v['title'].find(in_title) > -1:
                 return k
                 
@@ -276,7 +279,9 @@ class EODMSRAPI:
                 if k.find(coll_id) > -1:
                     return k
         
+        # print("coll_id: %s" % coll_id)
         for k in self.rapi_collections.keys():
+            # print("k: %s" % k)
             if k.find(coll_id) > -1:
                 return k
                 
@@ -468,7 +473,7 @@ class EODMSRAPI:
             except KeyboardInterrupt as err:
                 print("\nProcess ended by user.")
                 self.logger.info("Process ended by user.")
-                print_support()
+                common.print_support()
                 sys.exit(1)
             except:
                 msg = "Unexpected error: %s" % traceback.format_exc()
@@ -499,7 +504,7 @@ class EODMSRAPI:
                 err_msg = "An authentication error has occurred while " \
                             "trying to access the EODMS RAPI. Please run this " \
                             "script again with your username and password."
-                print_support(err_msg)
+                common.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
                 
@@ -1265,24 +1270,23 @@ class Query:
                 
                 for rec in sub_recs:
                     
-                    if 'Sequence ID' in rec.keys():
-                        # If the Sequence ID is in the image dictionary, 
-                        #   return it as the Record ID
-                        id_val = rec['Sequence ID']
-                    elif 'Record ID' in rec.keys():
-                        # If the Record ID is in the image dictionary, return it
-                        id_val = rec['Record ID']
-                    elif 'recordId' in rec.keys():
-                        id_val = rec['recordId']
-                    elif 'Image Info' in rec.keys() and \
-                        not rec['Image Info'] == '':
-                        # Parse Image Info
-                        img_info = rec['Image Info'].replace(' ', ', ')
-                        img_info = img_info.replace('""', '"')
-                        img_info = img_info.replace('"{', '{').replace('}"', \
-                                    '}')
-                        id_val = json.loads(img_info)
-                    else:
+                    id_val = None
+                    for k in rec.keys():
+                        if k.lower() in ['sequence id', 'record id', \
+                            'recordid']:
+                            # If the Sequence ID is in the image dictionary, 
+                            #   return it as the Record ID
+                            id_val = rec[k]
+                        elif k.lower() == 'image info' in rec.keys() and \
+                            not rec['Image Info'] == '':
+                            # Parse Image Info
+                            img_info = rec[k].replace(' ', ', ')
+                            img_info = img_info.replace('""', '"')
+                            img_info = img_info.replace('"{', '{').replace('}"', \
+                                        '}')
+                            id_val = json.loads(img_info)
+                    
+                    if id_val is None:
                         # # If the Order Key is in the image dictionary,
                         # #   use it to query the RAPI
                         msg = "Cannot determine record " \
@@ -1291,13 +1295,35 @@ class Query:
                         common.print_msg("WARNING: %s" % msg)
                         self.logger.warning(msg)
                         continue
+                    # elif 'Record ID' in rec.keys():
+                        # # If the Record ID is in the image dictionary, return it
+                        # id_val = rec['Record ID']
+                    # elif 'recordId' in rec.keys():
+                        # id_val = rec['recordId']
+                    # elif 'Image Info' in rec.keys() and \
+                        # not rec['Image Info'] == '':
+                        # # Parse Image Info
+                        # img_info = rec['Image Info'].replace(' ', ', ')
+                        # img_info = img_info.replace('""', '"')
+                        # img_info = img_info.replace('"{', '{').replace('}"', \
+                                    # '}')
+                        # id_val = json.loads(img_info)
+                    # else:
+                        # # # If the Order Key is in the image dictionary,
+                        # # #   use it to query the RAPI
+                        # msg = "Cannot determine record " \
+                                # "ID for Result Number '%s' in the CSV file. " \
+                                # "Skipping image." % rec['Result Number']
+                        # common.print_msg("WARNING: %s" % msg)
+                        # self.logger.warning(msg)
+                        # continue
                         
                     query_build.add_filter('CATALOG_IMAGE.SEQUENCE_ID', \
                                 id_val)
                     
                 if query_build.filter_count() == 0: continue
                     
-                if coll_id == 'NAPL':
+                if coll == 'NAPL':
                     query_build.set_open(True)
                 
                 res = self.eodms_rapi.send_query(collection, query_build)

@@ -34,7 +34,14 @@ try:
     import osr
     GDAL_INCLUDED = True
 except ImportError:
-    GDAL_INCLUDED = False
+    print("error with gdal import")
+    try:
+        import osgeo.ogr as ogr
+        import osgeo.osr as osr
+        GDAL_INCLUDED = True
+    except ImportError:
+        print("error with osgeo gdal import")
+        GDAL_INCLUDED = False
     
 from . import common
 
@@ -216,6 +223,8 @@ class Geo:
                 # Create the geometry
                 geom = feat.GetGeometryRef()
                 
+                # print("geom: %s" % geom)
+                
                 # Convert the geometry to WGS84
                 s_crs = geom.GetSpatialReference()
                 
@@ -223,17 +232,53 @@ class Geo:
                 epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
                 epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
                 
-                if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
-                    # Create the CoordinateTransformation
-                    coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
-                    geom.Transform(coordTrans)
+                # print("epsg_tCrs: %s" % type(epsg_tCrs))
+                
+                if not str(epsg_sCrs) == '4326':
+                    if epsg_tCrs is None:
+                        print("\nCannot reproject AOI.")
+                        sys.exit(1)
+                        
+                    if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
+                        # Create the CoordinateTransformation
+                        print("\nReprojecting input AOI...")
+                        coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
+                        geom.Transform(coordTrans)
+                        
+                        # print("geom: %s" % geom)
+                        
+                        # Reverse x and y of transformed geometry
+                        ring = geom.GetGeometryRef(0)
+                        for i in range(ring.GetPointCount()):
+                            ring.SetPoint(i, ring.GetY(i), ring.GetX(i))
+                        
+                        # print("geom: %s" % geom)
+                        
+                        # #print("\npoint count: %s" % geom.GetPointCount())
+                        # new_ring = ogr.Geometry(ogr.wkbLinearRing)
+                        # for ring in geom:
+                            # print("\npoint count: %s" % ring.GetPointCount())
+                            # for i in range(0, ring.GetPointCount()):
+                                # # GetPoint returns a tuple not a Geometry
+                                # pt = ring.GetPoint(i)
+                                # point = ogr.Geometry(ogr.wkbPoint)
+                                # point.AddPoint(pt[0], pt[1])
+                                # print("Point: %s" % str(point))
+                                # point.Transform(coordTrans)
+                                # print("Point: %s" % str(point))
+                        
+                # print("geom: %s" % geom)
                 
                 # Convert multipolygon to polygon (if applicable)
                 if geom.GetGeometryType() == 6:
                     geom = geom.UnionCascaded()
+                    
+                # print("geom: %s" % geom)
                 
                 # Convert to WKT
                 aoi_feat = geom.ExportToWkt()
+                
+                # print("aoi_feat: %s" % aoi_feat)
                 
         else:
             # Determine the OGR driver of the input AOI
