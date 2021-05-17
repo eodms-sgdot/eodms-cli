@@ -64,8 +64,6 @@ def build_syntax(parser, params):
     # Get the actions of the argparse
     actions = parser._option_string_actions
     
-    # print("params: %s" % params)
-    
     syntax_params = []
     for p, pv in params.items():
         if pv is None or pv == '': continue
@@ -91,8 +89,6 @@ def build_syntax(parser, params):
                     for v in v_lst:
                         v = v.replace('"', '').replace("'", '')
                         filt_lst.append("%s.%s" % (k, v))
-                # print("filt_lst: %s" % filt_lst)
-                # answer = input("Press enter...")
                 pv = '"%s"' % ','.join(filt_lst)
         else:
             if isinstance(pv, str) and pv.find(' ') > -1:
@@ -120,7 +116,6 @@ def download(params):
     log_parameters(params)
     
     csv_fn = params['input']
-    # session = params['session']
     
     if csv_fn.find('.csv') == -1:
         msg = "The provided input file is not a CSV file. " \
@@ -208,7 +203,6 @@ def order_download(params):
     """
     
     csv_fn = params['input']
-    #session = params['session']
     
     logger = logging.getLogger('eodms')
     
@@ -291,7 +285,6 @@ def search_orderDownload(params):
     dates = params['dates']
     aoi = params['input']
     filters = params['filters']
-    # eodms_rapi = params['eodms_rapi']
     option = params['option']
     
     if aoi.find('.shp') == -1 and aoi.find('.gml') == -1 \
@@ -367,7 +360,6 @@ def search_orderDownload(params):
         sys.exit(1)
     
     # Export the query results to the CSV info file
-    # query_imgs.export_csv(res_bname)
     
     msg = "%s images returned from search results.\n" % \
             query_imgs.count()
@@ -376,7 +368,6 @@ def search_orderDownload(params):
     # # Inform the user of the total number of found images and ask if 
     # #   they'd like to continue
     if max_images is None or max_images == '':
-        # print("option: %s" % option)
         if not option == 'download_only' and not option == 'search_only':
             if not common.SILENT:
                 answer = input("\n%s images found intersecting your AOI. " \
@@ -661,7 +652,6 @@ def main():
                 'input': input_fn, 
                 'maximum': maximum, 
                 'option': option}
-        # params['eodms_rapi'] = eodms_rapi
         
         coll_lst = common.EODMS_RAPI.get_collections(True)
         
@@ -775,30 +765,29 @@ def main():
             
             if filters is None:
                 filt_dict = {}
-                # Ask for the filters for the given collection(s)
-                for coll in params['collections']:
-                    coll_id = common.EODMS_RAPI.get_collIdByName(coll)
-                    if coll_id in common.FILT_MAP.keys():
-                        print("\nAvailable filters for '%s':" % coll)
-                        for c in common.FILT_MAP[coll_id].keys():
-                            print("  %s" % c)
-                        msg = "Enter the filters you would like to apply " \
-                                "to the query (in the format of " \
-                                "<filter_id>=<value>|<value>|...; " \
-                                "separate each filter property with a comma)"
-                        
-                        filt_items = input("%s:\n" % msg)
-                        
-                        #filt_items = get_input(msg, required=False)
-                        
-                        if filt_items == '':
-                            filt_dict[coll_id] = []
-                        else:
-                            filt_items = filt_items.split(',')
-                            # In case the user put collections in filters
-                            filt_items = [f.split('.')[1] if f.find('.') > -1 \
-                                else f for f in filt_items]
-                            filt_dict[coll_id] = filt_items
+                if not common.SILENT:
+                    # Ask for the filters for the given collection(s)
+                    for coll in params['collections']:
+                        coll_id = common.EODMS_RAPI.get_collIdByName(coll)
+                        if coll_id in common.FILT_MAP.keys():
+                            print("\nAvailable filters for '%s':" % coll)
+                            for c in common.FILT_MAP[coll_id].keys():
+                                print("  %s" % c)
+                            msg = "Enter the filters you would like to apply " \
+                                    "to the query (in the format of " \
+                                    "<filter_id>=<value>|<value>|...; " \
+                                    "separate each filter property with a comma)"
+                            
+                            filt_items = input("%s:\n" % msg)
+                            
+                            if filt_items == '':
+                                filt_dict[coll_id] = []
+                            else:
+                                filt_items = filt_items.split(',')
+                                # In case the user put collections in filters
+                                filt_items = [f.split('.')[1] if f.find('.') > -1 \
+                                    else f for f in filt_items]
+                                filt_dict[coll_id] = filt_items
             else:
                 # User specified in command-line
                 
@@ -835,7 +824,6 @@ def main():
             params['filters'] = filt_dict
             
             # Get the date range
-            #date_lst = []
             if dates is None:
                 
                 if not common.SILENT:
@@ -864,7 +852,6 @@ def main():
                     
                 params['maximum'] = maximum
             
-            #print("params: %s" % params)
             print("\nUse this command-line syntax to run the same parameters:")
             cli_syntax = build_syntax(parser, params)
             print(cli_syntax)
