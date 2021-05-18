@@ -195,23 +195,33 @@ class EODMSRAPI:
         
         # Create the collections dictionary
         for coll in coll_json:
-            for child in coll['children']:
-                if child['collectionId'] in ignore_collNames:
-                    for c in child['children']:
-                        self.unsupport_collections[c['collectionId']] = c['title']
-                else:
-                    for c in child['children']:
-                        if c['collectionId'] in ignore_collNames:
-                            self.unsupport_collections[c['collectionId']] = c['title']
-                        else:
-                            fields = self.get_availableFields(c['collectionId'])
-                            self.rapi_collections[c['collectionId']] = {'title': c['title'], \
-                                'fields': fields}
+            if 'children' in coll.keys():
+                for child in coll['children']:
+                    if child['collectionId'] in ignore_collNames:
+                        if 'children' in child.keys():
+                            for c in child['children']:
+                                self.unsupport_collections[c['collectionId']] = c['title']
+                    else:
+                        if 'children' in child.keys():
+                            for c in child['children']:
+                                if c['collectionId'] in ignore_collNames:
+                                    self.unsupport_collections[c['collectionId']] = c['title']
+                                else:
+                                    fields = self.get_availableFields(c['collectionId'])
+                                    self.rapi_collections[c['collectionId']] = {'title': c['title'], \
+                                        'fields': fields}
         
         # If as_list is True, convert dictionary to list of collection IDs
         if as_list:
             collections = [i['title'] for i in self.rapi_collections.values()]
             return collections
+            
+        if len(collections) == 0:
+            msg = "Could not get a list of collections.\nPlease try " \
+                    "running the script again."
+            common.print_support(msg)
+            self.logger.error(msg)
+            sys.exit(1)
         
         return self.rapi_collections
         
