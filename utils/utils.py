@@ -340,7 +340,7 @@ class EODMSRAPI:
         
         query_str = urlencode(params)
         query_url = "%s/search?%s" % (self.rapi_root, query_str)
-                    
+        
         self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
                         query_url)
         # Send the query to the RAPI
@@ -419,6 +419,7 @@ class EODMSRAPI:
         err = None
         # Get the entry records from the RAPI using the downlink segment ID
         while res is None and attempt <= common.ATTEMPTS:
+            
             # Continue to attempt if timeout occurs
             try:
                 if record_name is None:
@@ -1251,7 +1252,7 @@ class Query:
         coll_recs = {}
         for rec in records:
             # Get the collection ID for the image
-            collection = rec['Collection ID']
+            collection = rec['collection id']
             
             rec_lst = []
             if collection in coll_recs.keys():
@@ -1287,97 +1288,98 @@ class Query:
                             # If the Sequence ID is in the image dictionary, 
                             #   return it as the Record ID
                             id_val = rec[k]
-                        elif k.lower() == 'image info' in rec.keys() and \
-                            not rec['Image Info'] == '':
-                            # Parse Image Info
-                            img_info = rec[k].replace(' ', ', ')
-                            img_info = img_info.replace('""', '"')
-                            img_info = img_info.replace('"{', '{').replace('}"', \
-                                        '}')
-                            id_val = json.loads(img_info)
                     
                     if id_val is None:
-                        # # If the Order Key is in the image dictionary,
-                        # #   use it to query the RAPI
-                        msg = "Cannot determine record " \
-                                "ID for Result Number '%s' in the CSV file. " \
-                                "Skipping image." % rec['Result Number']
-                        common.print_msg("WARNING: %s" % msg)
-                        self.logger.warning(msg)
-                        continue
-                    # elif 'Record ID' in rec.keys():
-                        # # If the Record ID is in the image dictionary, return it
-                        # id_val = rec['Record ID']
-                    # elif 'recordId' in rec.keys():
-                        # id_val = rec['recordId']
-                    # elif 'Image Info' in rec.keys() and \
-                        # not rec['Image Info'] == '':
-                        # # Parse Image Info
-                        # img_info = rec['Image Info'].replace(' ', ', ')
-                        # img_info = img_info.replace('""', '"')
-                        # img_info = img_info.replace('"{', '{').replace('}"', \
-                                    # '}')
-                        # id_val = json.loads(img_info)
-                    # else:
-                        # # # If the Order Key is in the image dictionary,
-                        # # #   use it to query the RAPI
-                        # msg = "Cannot determine record " \
-                                # "ID for Result Number '%s' in the CSV file. " \
-                                # "Skipping image." % rec['Result Number']
-                        # common.print_msg("WARNING: %s" % msg)
-                        # self.logger.warning(msg)
-                        # continue
+                        # If the Order Key is in the image dictionary,
+                        #   use it to query the RAPI
                         
-                    query_build.add_filter('CATALOG_IMAGE.SEQUENCE_ID', \
-                                id_val)
+                        order_key = rec.get('order key')
+                        
+                        if order_key is None or order_key == '':
+                            msg = "Cannot determine record " \
+                                    "ID for Result Number '%s' in the CSV file. " \
+                                    "Skipping image." % rec.get('result number')
+                            self.print_msg("WARNING: %s" % msg)
+                            self.logger.warning(msg)
+                            continue
+                        
+                        coll_filts = common.FILT_MAP[coll]
+                        rapi_id = coll_filts['ORDER_KEY']
+                        query_build.add_filter(rapi_id, order_key)
+                        
+                        if query_build.filter_count() == 0: continue
+                        
+                        res = self.eodms_rapi.send_query(collection, query_build)
+                        
+                        # If an error occurred
+                        if isinstance(res, QueryError):
+                            common.print_msg("WARNING: %s" % res.get_msg())
+                            self.logger.warning(res.get_msg())
+                            continue
+                        
+                        # If the results is a list, an error occurred
+                        if isinstance(res, list):
+                            common.print_msg("WARNING: %s" % ' '.join(res))
+                            self.logger.warning(' '.join(res))
+                            continue
+                        
+                        # Convert RAPI results to JSON
+                        res_json = res.json()
+                        
+                        # Get the results from the JSON
+                        cur_res = res_json['results']
+                        
+                        if len(cur_res) > 1:
+                            msg = "Cannot determine record " \
+                                    "ID for Result Number '%s' in the CSV file. " \
+                                    "Skipping image." % rec.get('result number')
+                            self.print_msg("WARNING: %s" % msg)
+                            self.logger.warning(msg)
+                            continue
+                        
+                        all_res += cur_res
+                        
+                        continue
                     
-                if query_build.filter_count() == 0: continue
+                    coll_filts = common.FILT_MAP[coll]
+                    rapi_id = coll_filts['SEQUENCE_ID']
+                    query_build.add_filter(rapi_id, id_val)
                     
-                if coll == 'NAPL':
-                    query_build.set_open(True)
-                
-                res = self.eodms_rapi.send_query(collection, query_build)
-                
-                # full_query = query_build.get_query()
-                
-                # full_queryEnc = urllib.parse.quote(full_query)
-                # query_url = "%s/wes/rapi/search?collection=%s&query=%s" \
-                            # "&maxResults=100" % (common.RAPI_DOMAIN, \
-                            # collection, full_queryEnc)
-                # self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
-                                # query_url)
-                # # Send the query to the RAPI
-                # res = common.send_query(query_url, self.session, \
-                        # common.TIMEOUT_QUERY, quiet=False)
-                
-                # If an error occurred
-                if isinstance(res, QueryError):
-                    common.print_msg("WARNING: %s" % res.get_msg())
-                    self.logger.warning(res.get_msg())
-                    continue
-                
-                # If the results is a list, an error occurred
-                if isinstance(res, list):
-                    common.print_msg("WARNING: %s" % ' '.join(res))
-                    self.logger.warning(' '.join(res))
-                    continue
-                
-                # Convert RAPI results to JSON
-                res_json = res.json()
-                
-                # Get the results from the JSON
-                cur_res = res_json['results']
-                
-                # If no results, return as error
-                if len(cur_res) == 0:
-                    err = "No images could be found."
-                    common.print_msg("WARNING: %s" % err)
-                    self.logger.warning(err)
-                    common.print_msg("Skipping this entry", False)
-                    self.logger.warning("Skipping this entry")
-                    continue
-                
-                all_res += cur_res
+                    if query_build.filter_count() == 0: continue
+                        
+                    if coll == 'NAPL':
+                        query_build.set_open(True)
+                    
+                    res = self.eodms_rapi.send_query(collection, query_build)
+                    
+                    # If an error occurred
+                    if isinstance(res, QueryError):
+                        common.print_msg("WARNING: %s" % res.get_msg())
+                        self.logger.warning(res.get_msg())
+                        continue
+                    
+                    # If the results is a list, an error occurred
+                    if isinstance(res, list):
+                        common.print_msg("WARNING: %s" % ' '.join(res))
+                        self.logger.warning(' '.join(res))
+                        continue
+                    
+                    # Convert RAPI results to JSON
+                    res_json = res.json()
+                    
+                    # Get the results from the JSON
+                    cur_res = res_json['results']
+                    
+                    # If no results, return as error
+                    if len(cur_res) == 0:
+                        err = "No images could be found."
+                        common.print_msg("WARNING: %s" % err)
+                        self.logger.warning(err)
+                        common.print_msg("Skipping this entry", False)
+                        self.logger.warning("Skipping this entry")
+                        continue
+                    
+                    all_res += cur_res
         
         # Convert results to ImageList
         self.results = eodms.ImageList()
@@ -1711,6 +1713,8 @@ class QueryBuilder:
     
     def get_query(self):
         
+        self.query_list = []
+        
         if self.aoi is not None:
             self.query_list.append(self.aoi.get_fullQuery())
             
@@ -1719,7 +1723,7 @@ class QueryBuilder:
             
         if self.angle_str is not None:
             self.query_list.append(self.angle_str)
-                            
+            
         self.query_list += [qf.get_fullQuery() for qf in self.filters]
         
         self.query_str = " AND ".join(filter(None, self.query_list))

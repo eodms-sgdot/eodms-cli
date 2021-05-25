@@ -178,13 +178,13 @@ class EODMS_CSV:
                 continue
             
             for idx, h in enumerate(in_header):
-                rec[h] = l_split[idx]
+                rec[h.lower()] = l_split[idx]
                 
             coll_id = self.determine_collection(rec)
             
             if coll_id is None: continue
             
-            rec['Collection ID'] = coll_id
+            rec['collection id'] = coll_id
             
             # Add the record to the list of records
             records.append(rec)

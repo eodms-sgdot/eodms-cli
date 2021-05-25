@@ -34,13 +34,13 @@ try:
     import osr
     GDAL_INCLUDED = True
 except ImportError:
-    print("error with gdal import")
+    
     try:
         import osgeo.ogr as ogr
         import osgeo.osr as osr
         GDAL_INCLUDED = True
     except ImportError:
-        print("error with osgeo gdal import")
+        
         GDAL_INCLUDED = False
     
 from . import common
