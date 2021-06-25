@@ -1268,118 +1268,77 @@ class Query:
         
         for coll, recs in coll_recs.items():
             
-            for idx in range(0, len(recs), 25):
-                
-                # Get the next 100 images
-                if len(recs) < idx + 25:
-                    sub_recs = recs[idx:]
-                else:
-                    sub_recs = recs[idx:25 + idx]
+            coll_filts = common.FILT_MAP[coll]
             
-                query_build = QueryBuilder(common.EODMS_RAPI.\
-                                get_collIdByName(coll))
+            # for idx in range(0, len(recs), 2):
                 
-                for rec in sub_recs:
-                    
-                    id_val = None
-                    for k in rec.keys():
-                        if k.lower() in ['sequence id', 'record id', \
-                            'recordid']:
-                            # If the Sequence ID is in the image dictionary, 
-                            #   return it as the Record ID
-                            id_val = rec[k]
-                    
+                # # Get the next 100 images
+                # if len(recs) < idx + 2:
+                    # sub_recs = recs[idx:]
+                # else:
+                    # sub_recs = recs[idx:2 + idx]
+                
+                #sequence_ids = []
+                #order_keys = []
+                
+            for idx, rec in enumerate(recs):
+                
+                query_build = QueryBuilder(common.EODMS_RAPI.\
+                            get_collIdByName(coll))
+                
+                id_val = None
+                
+                # Check if record contains a sequence id, record id 
+                #   or recordid and add to QueryBuilder
+                for i in ['sequence id', 'record id', 'recordid']:
                     if id_val is None:
-                        # If the Order Key is in the image dictionary,
-                        #   use it to query the RAPI
+                        id_val = rec.get(i)
                         
-                        order_key = rec.get('order key')
-                        
-                        if order_key is None or order_key == '':
-                            msg = "Cannot determine record " \
-                                    "ID for Result Number '%s' in the CSV file. " \
-                                    "Skipping image." % rec.get('result number')
-                            self.print_msg("WARNING: %s" % msg)
-                            self.logger.warning(msg)
-                            continue
-                        
-                        coll_filts = common.FILT_MAP[coll]
-                        rapi_id = coll_filts['ORDER_KEY']
-                        query_build.add_filter(rapi_id, order_key)
-                        
-                        if query_build.filter_count() == 0: continue
-                        
-                        res = self.eodms_rapi.send_query(collection, query_build)
-                        
-                        # If an error occurred
-                        if isinstance(res, QueryError):
-                            common.print_msg("WARNING: %s" % res.get_msg())
-                            self.logger.warning(res.get_msg())
-                            continue
-                        
-                        # If the results is a list, an error occurred
-                        if isinstance(res, list):
-                            common.print_msg("WARNING: %s" % ' '.join(res))
-                            self.logger.warning(' '.join(res))
-                            continue
-                        
-                        # Convert RAPI results to JSON
-                        res_json = res.json()
-                        
-                        # Get the results from the JSON
-                        cur_res = res_json['results']
-                        
-                        if len(cur_res) > 1:
-                            msg = "Cannot determine record " \
-                                    "ID for Result Number '%s' in the CSV file. " \
-                                    "Skipping image." % rec.get('result number')
-                            self.print_msg("WARNING: %s" % msg)
-                            self.logger.warning(msg)
-                            continue
-                        
-                        all_res += cur_res
-                        
-                        continue
-                    
-                    coll_filts = common.FILT_MAP[coll]
+                if id_val is not None:
                     rapi_id = coll_filts['SEQUENCE_ID']
                     query_build.add_filter(rapi_id, id_val)
                     
-                    if query_build.filter_count() == 0: continue
+                else:
+                    
+                    order_key = rec.get('order key')
+                    
+                    if order_key is None or order_key == '':
+                        msg = "Cannot determine record " \
+                                "ID for Result Number '%s' in the CSV file. " \
+                                "Skipping image." % rec.get('result number')
+                        self.print_msg("WARNING: %s" % msg)
+                        self.logger.warning(msg)
+                        continue
+                    
+                    rapi_id = coll_filts['ORDER_KEY']
+                    query_build.add_filter(rapi_id, order_key)
+                
+                common.print_msg("Getting information for image %s out of " \
+                    "%s..." % (idx + 1, len(recs)))
+                res = self.eodms_rapi.send_query(collection, query_build)
                         
-                    if coll == 'NAPL':
-                        query_build.set_open(True)
-                    
-                    res = self.eodms_rapi.send_query(collection, query_build)
-                    
-                    # If an error occurred
-                    if isinstance(res, QueryError):
-                        common.print_msg("WARNING: %s" % res.get_msg())
-                        self.logger.warning(res.get_msg())
-                        continue
-                    
-                    # If the results is a list, an error occurred
-                    if isinstance(res, list):
-                        common.print_msg("WARNING: %s" % ' '.join(res))
-                        self.logger.warning(' '.join(res))
-                        continue
-                    
-                    # Convert RAPI results to JSON
-                    res_json = res.json()
-                    
-                    # Get the results from the JSON
-                    cur_res = res_json['results']
-                    
-                    # If no results, return as error
-                    if len(cur_res) == 0:
-                        err = "No images could be found."
-                        common.print_msg("WARNING: %s" % err)
-                        self.logger.warning(err)
-                        common.print_msg("Skipping this entry", False)
-                        self.logger.warning("Skipping this entry")
-                        continue
-                    
-                    all_res += cur_res
+                # If an error occurred
+                if isinstance(res, QueryError):
+                    common.print_msg("WARNING: %s" % res.get_msg())
+                    self.logger.warning(res.get_msg())
+                    continue
+                
+                # If the results is a list, an error occurred
+                if isinstance(res, list):
+                    common.print_msg("WARNING: %s" % ' '.join(res))
+                    self.logger.warning(' '.join(res))
+                    continue
+                
+                # Convert RAPI results to JSON
+                res_json = res.json()
+                
+                # Get the results from the JSON
+                cur_res = res_json['results']
+                
+                all_res += cur_res
+        
+                # answer = input("Press enter...")
+                    # all_res += cur_res
         
         # Convert results to ImageList
         self.results = eodms.ImageList()
@@ -1561,7 +1520,7 @@ class QueryBuilder:
     class QueryFilter:
         
         def __init__(self, query_builder, field=None, value=None, 
-                    operator='='):
+                    operator='=', val_range=False):
             """
             Initializer for the Filter object.
             
@@ -1578,6 +1537,7 @@ class QueryBuilder:
             self.field = field
             self.value = value
             self.operator = operator
+            self.val_range = val_range
             
         def get_field(self):
             return self.field
@@ -1608,9 +1568,12 @@ class QueryBuilder:
                     if isinstance(sub_val, str): return None
                     filter_query = "%s %s %s AND %s" % (self.field, \
                                     self.operator, sub_val[0], sub_val[1])
-                else:
+                elif self.val_range:
                     filter_query = '(%s>=%s AND %s<=%s)' % (self.field, \
                                     sub_val[0], self.field, sub_val[1])
+                else:
+                    filter_query = '(%s)' % ' OR '.join(["%s='%s'" % \
+                                    (self.field, v) for v in sub_val])
             else:
                 if isinstance(sub_val, list):
                     sub_val = sub_val[0]
@@ -1689,7 +1652,17 @@ class QueryBuilder:
         self.open_data = self.QueryFilter(self, 'CATALOG_IMAGE.OPEN_DATA', \
                         str(val).upper())
         
-    def add_filter(self, field, val, operator='='):
+    def add_filter(self, field, val, operator='=', replace=False):
+        
+        if replace:
+            # Remove existing filter field
+            remove_idx = None
+            for idx, f in enumerate(self.filters):
+                if f.get_field() == field:
+                    remove_idx = idx
+                    
+            if remove_idx is not None:
+                self.filters.pop(remove_idx)
         
         # print("3 - operator: %s" % operator)
         filt = self.QueryFilter(self, field, val, operator)
@@ -1702,7 +1675,7 @@ class QueryBuilder:
         
         angle_queries = []
         for f in fields:
-            qf = self.QueryFilter(self, f, vals)
+            qf = self.QueryFilter(self, f, vals, val_range=True)
             angle_queries.append(qf.get_fullQuery())
             
         self.angle_str = "(%s)" % " OR ".join(filter(None, angle_queries))

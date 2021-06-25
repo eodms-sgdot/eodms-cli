@@ -88,7 +88,7 @@ class EODMS_CSV:
                 # Get the satellite name
                 satellite = rec[k]
                 
-                print("satellite: %s" % satellite)
+                
                 
                 # Set the collection ID name
                 self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
@@ -185,6 +185,11 @@ class EODMS_CSV:
             if coll_id is None: continue
             
             rec['collection id'] = coll_id
+            
+            if 'order key' in rec.keys():
+                order_key = rec['order key']
+                if order_key.find(' ') > -1:
+                    rec['order key'] = order_key.split(' ')[0]
             
             # Add the record to the list of records
             records.append(rec)
