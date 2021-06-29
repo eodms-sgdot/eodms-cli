@@ -159,8 +159,6 @@ class EODMSRAPI:
         
         print("\nGetting a list of available collections for the script, please wait...")
         
-        # logger = logging.getLogger('eodms')
-        
         if self.rapi_collections and not redo:
             return self.rapi_collections
         
@@ -246,10 +244,7 @@ class EODMSRAPI:
                     or in_title.find(k) > -1 or k.find(in_title) > -1:
                     return k
         
-        # print("in_title: %s" % in_title)
         for k, v in self.rapi_collections.items():
-            # print("k: %s" % k)
-            # print("v: %s" % v)
             if v['title'].find(in_title) > -1:
                 return k
                 
@@ -289,9 +284,7 @@ class EODMSRAPI:
                 if k.find(coll_id) > -1:
                     return k
         
-        # print("coll_id: %s" % coll_id)
         for k in self.rapi_collections.keys():
-            # print("k: %s" % k)
             if k.find(coll_id) > -1:
                 return k
                 
@@ -311,6 +304,7 @@ class EODMSRAPI:
                     
         self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
                         query_url)
+                        
         # Send the query to the RAPI
         res = self.submit(query_url, common.TIMEOUT_QUERY, quiet=False)
                 
@@ -405,11 +399,7 @@ class EODMSRAPI:
         @return The response returned from the RAPI.
         """
         
-        #logger = logging.getLogger('eodms')
-        
         verify = True
-        # if query_url.find('www-pre-prod') > -1:
-            # verify = False
         
         if not quiet:
             common.print_msg("RAPI Query URL: %s" % query_url)
@@ -611,6 +601,12 @@ class Downloader:
                     # Get a list of order items in this order
                     ord_items = self.get_latestItems(ord_id)
                     
+                    if ord_items is None:
+                        err_msg = "Could not retrieve orders. Trying again..."
+                        common.print_msg(err_msg, False)
+                        self.logger.warning(err_msg)
+                        continue
+                    
                     # Track order items which have been newly processed this time 
                     #   around
                     new_complete = []
@@ -661,7 +657,8 @@ class Downloader:
                             new_complete]:
                             continue
                         
-                        if img_status == 'AVAILABLE_FOR_DOWNLOAD':
+                        if img_status == 'AVAILABLE_FOR_DOWNLOAD' or \
+                            img_status == 'EXPANDED':
                             
                             # Get the list of destinations
                             dests = item['destinations']
@@ -851,11 +848,15 @@ class Downloader:
         #   order items)
         time_start = datetime.datetime.now()
         
-        # query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
-        # self.logger.info("Getting order information (RAPI query): %s" % query)
-        # res = common.send_query(query, self.session, \
-                # timeout=common.TIMEOUT_ORDER)
         res = self.eodms_rapi.get_orders()        
+        
+        # Check for any errors
+        if isinstance(res, QueryError):
+            err_msg = "Query to RAPI failed due to '%s'" % \
+                        res.get_msg()
+            common.print_msg(err_msg, False)
+            self.logger.warning(err_msg)
+            return None
         
         res_json = res.json()
         time_end = datetime.datetime.now()
@@ -885,35 +886,67 @@ class Downloader:
         
         self.orders = eodms.OrderList()
         
+        cur_orders = None
+        
         for o_item in records:
-            # query = "%s/wes/rapi/order?itemId=%s" % (common.RAPI_DOMAIN, \
-                    # o_item['itemId'])
-            # self.logger.info("Getting order item %s (RAPI query): %s" % \
-                        # (o_item['itemId'], query))
-            # res = common.send_query(query, self.session, \
-                    # timeout=common.TIMEOUT_ORDER)
-            res = self.eodms_rapi.get_order(o_item['itemId'])
+            item_id = o_item.get('itemId')
+            
+            if item_id is None:
+                common.print_msg("The Order Item ID cannot be extracted " \
+                    "from the CSV file. Make sure the file has a column " \
+                    "named 'itemId'.")
+                return None
+                    
+            res = self.eodms_rapi.get_order(item_id)
             
             # Check for any errors
             if isinstance(res, QueryError):
                 err_msg = "Query to RAPI failed due to '%s'" % \
                             res.get_msg()
-                common.print_support(err_msg)
+                common.print_msg(err_msg)
                 self.logger.warning(err_msg)
                 continue
             
             res_json = res.json()
             
+            item_json = None
             if len(res_json['items']) == 0:
-                err_msg = "No Order exists with Item ID %s." % o_item['itemId']
-                common.print_support(err_msg)
+                
+                # Get all orders
+                if cur_orders is None:
+                    cur_orders = self.eodms_rapi.get_orders()
+                
+                # Determine Order Item using ParentItemId
+                cur_orders = cur_orders.json()
+                for o in cur_orders.get('items'):
+                    params = o.get('parameters')
+                    
+                    if params is None: continue
+                    
+                    parentItemId = params.get('ParentItemId')
+                    
+                    if parentItemId is None: continue
+                    
+                    if int(parentItemId) == int(item_id):
+                        item_json = o
+            else:
+                item_json = res_json['items'][0]
+                
+            if item_json is None:
+                err_msg = "No Order Item exists with Item ID %s." % \
+                    o_item.get('itemId')
+                common.print_msg(err_msg)
                 self.logger.warning(err_msg)
                 continue
             
             order_item = eodms.OrderItem()
-            order_item.parse_record(res_json['items'][0])
+            order_item.parse_record(item_json)
             
-            order_item.set_metadata('downloaded', o_item['downloaded'])
+            if 'downloaded' in o_item.keys():
+                downloaded = o_item.get('downloaded')
+            else:
+                downloaded = 'False'
+            order_item.set_metadata('downloaded', downloaded)
             
             self.orders.update_order(order_item.get_orderId(), \
                 order_item)
@@ -924,7 +957,7 @@ class Orderer:
         image results.
     """
     
-    def __init__(self, results=None, max_items=100):
+    def __init__(self, results=None, max_items=100, fn_str=''):
         """
         Initializer for Orderer.
         
@@ -939,6 +972,7 @@ class Orderer:
         
         self.eodms_rapi = common.EODMS_RAPI
         self.results = results
+        self.fn_str = fn_str
         if max_items is None:
             self.max_items = 100
         else:
@@ -952,25 +986,24 @@ class Orderer:
         self.logger = logging.getLogger('eodms')
                               
         
-    def export_csv(self, res_bname):
+    def export_csv(self):
         """
         Exports order results to the CSV file.
-        
-        @type  res_bname: str
-        @param res_bname: The base filename for the CSV file.
         """
         
-        # Create the order results CSV
-        csv_fn = "%s_OrderResults.csv" % res_bname
-        csv_f = open(csv_fn, 'w')
+        # # Create the order results CSV
+        # csv_fn = "%s_OrderResults.csv" % res_bname
+        # csv_f = open(csv_fn, 'w')
         
-        # Add header based on keys of results
-        header = list(self.final_results.values())[0][0].keys()
-        csv_f.write("%s\n" % ','.join(header))
+        # # Add header based on keys of results
+        # header = list(self.final_results.values())[0][0].keys()
+        # csv_f.write("%s\n" % ','.join(header))
         
-        # Export the results to the file
-        for ord_id, rec in self.final_results.items():
-            common.export_records(csv_f, header, rec)
+        # # Export the results to the file
+        # for ord_id, rec in self.final_results.items():
+            # common.export_records(csv_f, header, rec)
+            
+        self.final_results.export_csv(self.fn_str)
         
     def get_results(self):
         """
@@ -1062,9 +1095,6 @@ class Orderer:
                     sub_recs = img_lst.get_subset(idx)
                 else:
                     sub_recs = img_lst.get_subset(idx, self.max_items + idx)
-            
-                # # Add the 'Content-Type' option to the header
-                # self.session.headers.update({'Content-Type': 'application/json'})
                 
                 items = []
                 for r in sub_recs:
@@ -1090,46 +1120,6 @@ class Orderer:
                 
                 order_results += res.json()['items']
                 
-                # # Create the dictionary for the POST request JSON
-                # post_dict = {"destinations": [], 
-                            # "items": items}
-                
-                # # Dump the dictionary into a JSON object
-                # post_json = json.dumps(post_dict)
-                
-                # # Set the RAPI URL
-                # order_url = "%s/wes/rapi/order" % common.RAPI_DOMAIN
-                
-                # msg = "Submitting orders for images %s-%s..." % \
-                        # (str(idx + 1), str(idx + len(items)))
-                # common.print_msg(msg)
-                # self.logger.info(msg)
-                
-                # # Send the JSON request to the RAPI
-                # try:
-                    # order_res = self.session.post(url=order_url, data=post_json)
-                    # order_res.raise_for_status()
-                # except requests.exceptions.HTTPError as errh:
-                    # return "Http Error: %s" % errh
-                # except requests.exceptions.ConnectionError as errc:
-                    # return "Error Connecting: %s" % errc
-                # except requests.exceptions.Timeout as errt:
-                    # return "Timeout Error: %s" % errt
-                # except KeyboardInterrupt as err:
-                    # print("\nProcess ended by user.")
-                    # common.print_support()
-                    # self.logger.info("Process ended by user.")
-                    # sys.exit(1)
-                # except requests.exceptions.RequestException as err:
-                    # return "Exception: %s" % err
-                
-                # if not order_res.ok:
-                    # err = common.get_exception(order_res)
-                    # if isinstance(err, list):
-                        # return '; '.join(err)
-                
-                # order_results += order_res.json()['items']
-            
             msg = "Number of order items: %s" % len(order_results)
             common.print_msg(msg)
             self.logger.info(msg)
@@ -1143,9 +1133,12 @@ class Orderer:
             common.print_footer('Submitted Orders', order_info)
             self.logger.info("Submitted Orders: %s" % order_info)
             
+            self.export_csv()
+            
             return self.final_results
             
         except Exception as err:
+            self.export_csv()
             traceback.print_exc(file=sys.stdout)
             return err
             
@@ -1262,25 +1255,12 @@ class Query:
             
             coll_recs[collection] = rec_lst
         
-        # eodms_rapi = EODMSRAPI()
-        
         all_res = []
         
         for coll, recs in coll_recs.items():
             
             coll_filts = common.FILT_MAP[coll]
             
-            # for idx in range(0, len(recs), 2):
-                
-                # # Get the next 100 images
-                # if len(recs) < idx + 2:
-                    # sub_recs = recs[idx:]
-                # else:
-                    # sub_recs = recs[idx:2 + idx]
-                
-                #sequence_ids = []
-                #order_keys = []
-                
             for idx, rec in enumerate(recs):
                 
                 query_build = QueryBuilder(common.EODMS_RAPI.\
@@ -1336,9 +1316,6 @@ class Query:
                 cur_res = res_json['results']
                 
                 all_res += cur_res
-        
-                # answer = input("Press enter...")
-                    # all_res += cur_res
         
         # Convert results to ImageList
         self.results = eodms.ImageList()
@@ -1423,14 +1400,6 @@ class Query:
                 if not any(x in filt for x in common.OPERATORS):
                     print("Filter '%s' entered incorrectly." % filt)
                     continue
-                        
-                # split_pattern = r"\b|\b".join([o.strip() \
-                                # for o in common.OPERATORS])
-                # filt_split = re.split(split_pattern, filt)
-                # op = re.findall(r"(?=(" + '|'.join(common.OPERATORS) + \
-                        # r"))", filt)
-                # print("1 - op: %s" % op)
-                # answer = input("Press enter...")
                 
                 ops = [x for x in common.OPERATORS if x in filt]
 
@@ -1452,42 +1421,19 @@ class Query:
                 coll_filts = common.FILT_MAP[coll_id]
                 rapi_id = coll_filts[key]
                 
-                # if key.find('INCIDENCE_ANGLE') > -1:
-                    # ranges = []
-                    # rapi_ids = rapi_id.split(',')
-                    # if val.find('-') > -1:
-                        # start_end = val.split('-')
-                        # ranges.append(start_end)
-                    # else:
-                        # ranges.append(val)
-                        
-                    # query_build.add_incidenceAngle(rapi_ids, ranges)
-                # else:
-                    
                 if val.find('|') > -1:
                     vals = val.split('|')
                     
-                    # print("2 - op: %s" % op)
                     query_build.add_filter(rapi_id, vals, op)
                     
                 else:
-                    # print("2 - op: %s" % op)
                     query_build.add_filter(rapi_id, val, op)
-            
-            # full_query = query_build.get_query()
             
             if self.max_images is None or self.max_images == '':
                 maxResults = common.MAX_RESULTS
             else:
                 maxResults = self.max_images
             
-            # Get the BEAM_MNEMONIC field to add to resultField
-            # print("collections: %s" % collections)
-            # for k, v in collections.items():
-                # print("%s:" % k)
-                # for fk, fv in v['fields'].items():
-                    # print("  %s: %s" % (fk, fv))
-            # answer = input("Press enter...")
             for fk, fv in collections[coll_id]['fields'].items():
                 if fv['id'].find('BEAM_MNEMONIC') > -1:
                     beam_mnem = fv['id']
@@ -1579,8 +1525,6 @@ class QueryBuilder:
                     sub_val = sub_val[0]
                 # Convert the operator
                 for o in common.OPERATORS:
-                    # print("o: %s" % o.upper().strip())
-                    # print("self.operator: %s" % self.operator.strip().upper())
                     if o.strip().upper() == self.operator.strip().upper():
                         op = o
                 
@@ -1664,7 +1608,6 @@ class QueryBuilder:
             if remove_idx is not None:
                 self.filters.pop(remove_idx)
         
-        # print("3 - operator: %s" % operator)
         filt = self.QueryFilter(self, field, val, operator)
         self.filters.append(filt)
         

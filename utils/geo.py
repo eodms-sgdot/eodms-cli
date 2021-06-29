@@ -223,16 +223,12 @@ class Geo:
                 # Create the geometry
                 geom = feat.GetGeometryRef()
                 
-                # print("geom: %s" % geom)
-                
                 # Convert the geometry to WGS84
                 s_crs = geom.GetSpatialReference()
                 
                 # Get the EPSG codes from the spatial references
                 epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
                 epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
-                
-                # print("epsg_tCrs: %s" % type(epsg_tCrs))
                 
                 if not str(epsg_sCrs) == '4326':
                     if epsg_tCrs is None:
@@ -245,40 +241,17 @@ class Geo:
                         coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
                         geom.Transform(coordTrans)
                         
-                        # print("geom: %s" % geom)
-                        
                         # Reverse x and y of transformed geometry
                         ring = geom.GetGeometryRef(0)
                         for i in range(ring.GetPointCount()):
                             ring.SetPoint(i, ring.GetY(i), ring.GetX(i))
-                        
-                        # print("geom: %s" % geom)
-                        
-                        # #print("\npoint count: %s" % geom.GetPointCount())
-                        # new_ring = ogr.Geometry(ogr.wkbLinearRing)
-                        # for ring in geom:
-                            # print("\npoint count: %s" % ring.GetPointCount())
-                            # for i in range(0, ring.GetPointCount()):
-                                # # GetPoint returns a tuple not a Geometry
-                                # pt = ring.GetPoint(i)
-                                # point = ogr.Geometry(ogr.wkbPoint)
-                                # point.AddPoint(pt[0], pt[1])
-                                # print("Point: %s" % str(point))
-                                # point.Transform(coordTrans)
-                                # print("Point: %s" % str(point))
-                        
-                # print("geom: %s" % geom)
                 
                 # Convert multipolygon to polygon (if applicable)
                 if geom.GetGeometryType() == 6:
                     geom = geom.UnionCascaded()
-                    
-                # print("geom: %s" % geom)
                 
                 # Convert to WKT
                 aoi_feat = geom.ExportToWkt()
-                
-                # print("aoi_feat: %s" % aoi_feat)
                 
         else:
             # Determine the OGR driver of the input AOI
@@ -303,16 +276,10 @@ class Geo:
                 for c in coord_lst:
                     pnts = [p.strip('\n').strip('\t').split(',') for p in \
                             c.split(' ') if not p.strip('\n').strip('\t') == '']
-                    #print("pnts: %s" % pnts)
                     pnts_array += pnts
-                
-                # print("pnts_array: %s" % pnts_array)
                 
                 aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
                     for pnt in pnts_array])
-                    
-                # print("aoi_feat: %s" % aoi_feat)
-                # answer = input("Press enter...")
                 
             elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
                 with open(self.aoi_fn) as f:

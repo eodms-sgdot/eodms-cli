@@ -47,7 +47,6 @@ class EODMS_CSV:
         """
         
         self.csv_fn = csv_fn
-        # self.session = session
         self.open_csv = None
         self.header = None
         
@@ -87,8 +86,6 @@ class EODMS_CSV:
             elif k.lower() == 'satellite':
                 # Get the satellite name
                 satellite = rec[k]
-                
-                
                 
                 # Set the collection ID name
                 self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
@@ -150,6 +147,7 @@ class EODMS_CSV:
         
         # Check for columns in input file
         if 'sequence id' not in in_header and \
+            'sequence_id' not in in_header and \
             'order key' not in in_header and \
             'downlink segment id' not in in_header and \
             'image id' not in in_header and \

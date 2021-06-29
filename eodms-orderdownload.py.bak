@@ -84,6 +84,7 @@ def build_syntax(parser, params):
             
             if flag == '-f':
                 filt_lst = []
+                # print("pv: %s" % pv)
                 for k, v_lst in pv.items():
                     for v in v_lst:
                         v = v.replace('"', '').replace("'", '')
@@ -394,7 +395,7 @@ def search_orderDownload(params):
         query_imgs.trim(max_images)
     
     # Create order object
-    eodms_order = utils.Orderer(max_items=max_items, fn_str=fn_str)
+    eodms_order = utils.Orderer(max_items=max_items)
     if option == 'download_only':
         # If the user only wants to download a previous order
         #   query the RAPI using the AOI and then user the 
