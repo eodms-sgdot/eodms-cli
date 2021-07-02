@@ -62,6 +62,9 @@ class Geo:
         
         self.logger = logging.getLogger('eodms')
         
+        self.wkt_types = ['point', 'linestring', 'polygon', \
+                        'multipoint', 'multilinestring', 'multipolygon']
+        
     def convert_imageGeom(self, coords, output='array'):
         """
         Converts a list of coordinates from the RAPI to a polygon geometry, 
@@ -114,7 +117,29 @@ class Geo:
                     for pnt in pnt_array])
             else:
                 return pnt_array
-            
+    
+    def convert_coords(self, coord_lst, geom_type):
+        
+        pnts_array = []
+        for c in coord_lst:
+            pnts = [p.strip('\n').strip('\t').split(',') for p in \
+                    c.split(' ') if not p.strip('\n').strip('\t') == '']
+            pnts_array += pnts
+        
+        if geom_type == 'Point':
+            json_geom = {'type': 'Point', 'coordinates': \
+                        [float(pnts[0][0]), float(pnts[0][1])]}
+        elif geom_type == 'LineString':
+            json_geom = {'type': 'LineString', 'coordinates': \
+                        [[float(p[0]), float(p[1])] \
+                        for p in pnts]}
+        else:
+            json_geom = {'type': 'Polygon', 'coordinates': \
+                        [[[float(p[0]), float(p[1])] \
+                        for p in pnts]]}
+                        
+        return json_geom
+    
     def convert_fromWKT(self, in_feat):
         """
         Converts a WKT to a polygon geometry.
@@ -184,7 +209,7 @@ class Geo:
             # Save and close DataSources
             ds = None
         
-    def get_polygon(self):
+    def get_features(self):
         """
         Extracts the polygon from an AOI file.
         
@@ -192,6 +217,7 @@ class Geo:
         @return: The AOI in WKT format.
         """
         
+        out_feats = []
         if GDAL_INCLUDED:
             # Determine the OGR driver of the input AOI
             if self.aoi_fn.find('.gml') > -1:
@@ -251,9 +277,10 @@ class Geo:
                     geom = geom.UnionCascaded()
                 
                 # Convert to WKT
-                aoi_feat = geom.ExportToWkt()
+                out_feats.append(geom.ExportToWkt())
                 
         else:
+            
             # Determine the OGR driver of the input AOI
             if self.aoi_fn.find('.gml') > -1 or self.aoi_fn.find('.kml') > -1:
                 
@@ -262,24 +289,49 @@ class Geo:
                     root = tree.getroot()
                 
                 if self.aoi_fn.find('.gml') > -1:
-                    coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/' \
-                        'gml}coordinates'):
-                        coord_lst.append(coords.text)
-                else:
-                    coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/' \
-                        'kml/2.2}coordinates'):
-                        coord_lst.append(coords.text)
+                    for feat in root.findall('.//{http://www.opengis.net/' \
+                        'gml}featureMember'):
                         
-                pnts_array = []
-                for c in coord_lst:
-                    pnts = [p.strip('\n').strip('\t').split(',') for p in \
-                            c.split(' ') if not p.strip('\n').strip('\t') == '']
-                    pnts_array += pnts
-                
-                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
-                    for pnt in pnts_array])
+                        # Get geometry type
+                        geom_type = 'Polygon'
+                        for elem in feat.findall('*'):
+                            tag = elem.tag.replace('{http://ogr.maptools.' \
+                                'org/}', '')
+                            if tag.lower() in self.wkt_types:
+                                geom_type = tag
+                        
+                        coord_lst = []
+                        for coords in root.findall('.//{http://www.opengis' \
+                            '.net/gml}coordinates'):
+                            coord_lst.append(coords.text)
+                            
+                        json_geom = self.convert_coords(coord_lst, geom_type)
+                        
+                        wkt_feat = wkt.dumps(json_geom, decimals=3)
+                            
+                        out_feats.append(wkt_feat)
+                else:
+                    for plcmark in root.findall('.//{http://www.opengis.net/' \
+                        'kml/2.2}Placemark'):
+                        
+                        # Get geometry type
+                        geom_type = 'Polygon'
+                        for elem in plcmark.findall('*'):
+                            tag = elem.tag.replace('{http://www.opengis.net/' \
+                                    'kml/2.2}', '')
+                            if tag.lower() in self.wkt_types:
+                                geom_type = tag
+                        
+                        coord_lst = []
+                        for coords in plcmark.findall(\
+                            './/{http://www.opengis.net/kml/2.2}coordinates'):
+                            coord_lst.append(coords.text)
+                        
+                        json_geom = self.convert_coords(coord_lst, geom_type)
+                        
+                        wkt_feat = wkt.dumps(json_geom, decimals=3)
+                            
+                        out_feats.append(wkt_feat)
                 
             elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
                 with open(self.aoi_fn) as f:
@@ -287,16 +339,9 @@ class Geo:
                 
                 feats = data['features']
                 for f in feats:
-                    geo_type = f['geometry']['type']
-                    if geo_type == 'MultiPolygon':
-                        coords = f['geometry']['coordinates'][0][0]
-                    else:
-                        coords = f['geometry']['coordinates'][0]
-                
-                # Convert values in point array to strings
-                coords = [[str(p[0]), str(p[1])] for p in coords]
-                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
-                            for pnt in coords])
+                    wkt_feat = wkt.dumps(f['geometry'], decimals=3)
+                                
+                    out_feats.append(wkt_feat)
                             
             elif self.aoi_fn.find('.shp') > -1:
                 msg = "Could not open shapefile. The GDAL Python Package " \
@@ -309,4 +354,4 @@ class Geo:
                 self.logger.error(msg)
                 sys.exit(1)
             
-        return aoi_feat
+        return out_feats

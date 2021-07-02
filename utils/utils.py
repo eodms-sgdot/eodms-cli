@@ -585,8 +585,15 @@ class Downloader:
                 if self.max_images is not None and not self.max_images == '':
                     if len(self.completed_orders) >= int(self.max_images):
                         break
+                        
+                order_lst = cur_orders.get_orders()
                 
-                for order in cur_orders.get_orders():
+                if order_lst is None:
+                    warn_msg = "Could not get a list of orders."
+                    logger.warning(warn_msg)
+                    continue
+                
+                for order in order_lst:
                     
                     if self.max_images is not None and not self.max_images == '':
                         if len(self.completed_orders) >= int(self.max_images):
@@ -915,6 +922,13 @@ class Downloader:
                 # Get all orders
                 if cur_orders is None:
                     cur_orders = self.eodms_rapi.get_orders()
+                    
+                if isinstance(cur_orders, QueryError):
+                    err_msg = "Query to RAPI failed due to '%s'" % \
+                                cur_orders.get_msg()
+                    common.print_msg(err_msg)
+                    self.logger.warning(err_msg)
+                    continue
                 
                 # Determine Order Item using ParentItemId
                 cur_orders = cur_orders.json()
@@ -990,18 +1004,6 @@ class Orderer:
         """
         Exports order results to the CSV file.
         """
-        
-        # # Create the order results CSV
-        # csv_fn = "%s_OrderResults.csv" % res_bname
-        # csv_f = open(csv_fn, 'w')
-        
-        # # Add header based on keys of results
-        # header = list(self.final_results.values())[0][0].keys()
-        # csv_f.write("%s\n" % ','.join(header))
-        
-        # # Export the results to the file
-        # for ord_id, rec in self.final_results.items():
-            # common.export_records(csv_f, header, rec)
             
         self.final_results.export_csv(self.fn_str)
         
@@ -1031,17 +1033,16 @@ class Orderer:
         ##################################################
         
         common.print_msg("Getting order information. This may take a while...")
-        
-        # Send a query to the order RAPI, set the maximum to 10000 to ensure
-        #   all order items are processed (unless the user has more than 10000 
-        #   order items)
-        # query = "%s/wes/rapi/order?maxOrders=10000" % common.RAPI_DOMAIN
-        # self.logger.info("Getting a list of your orders (RAPI query): %s" % \
-                        # query)
-        # res = common.send_query(query, self.session, \
-                # timeout=common.TIMEOUT_ORDER)
                 
         res = self.eodms_rapi.get_orders(10000)
+        
+        # Check for any errors
+        if isinstance(res, QueryError):
+            err_msg = "Query to RAPI failed due to '%s'" % \
+                        res.get_msg()
+            common.print_msg(err_msg, False)
+            self.logger.warning(err_msg)
+            return None
                 
         res_json = res.json()
         
@@ -1117,6 +1118,14 @@ class Orderer:
                 
                 if isinstance(res, str):
                     return res
+                    
+                # Check for any errors
+                if isinstance(res, QueryError):
+                    err_msg = "Query to RAPI failed due to '%s'" % \
+                                res.get_msg()
+                    common.print_msg(err_msg, False)
+                    self.logger.warning(err_msg)
+                    continue
                 
                 order_results += res.json()['items']
                 
@@ -1338,7 +1347,7 @@ class Query:
         eodms_geo = geo.Geo(self.aoi)
         
         # Get the polygon from the AOI file
-        self.aoi_feat = eodms_geo.get_polygon()
+        self.aoi_feats = eodms_geo.get_features()
         
         all_res = []
         for coll in self.collections:
@@ -1364,7 +1373,7 @@ class Query:
             # Create query parameter for AOI
             collections = self.eodms_rapi.get_collections()
             footprint_id = collections[coll_id]['fields']['Footprint']['id']
-            query_build.add_aoi(footprint_id, self.aoi_feat)
+            query_build.add_aoi(footprint_id, self.aoi_feats)
             
             # Create query parameters for dates
             date_rngs = self.get_dates()
@@ -1378,8 +1387,11 @@ class Query:
                 end = common.convert_date(rng[1])
                 
                 # Get the specific Creation Date field for this collection
-                field_id = collections[coll_id]['fields']['Creation Date']\
-                            ['id']
+                fields = collections[coll_id]['fields']
+                if 'Acquisition Start Date' in fields.keys():
+                    field_id = fields['Acquisition Start Date']['id']
+                else:
+                    field_id = fields['Start Date']['id']
                 
                 # Add query parameter to list
                 query_build.add_dates(field_id, [start, end])
@@ -1485,6 +1497,14 @@ class QueryBuilder:
             self.operator = operator
             self.val_range = val_range
             
+        def convert_operator(self, op):
+            # Convert the operator
+            for o in common.OPERATORS:
+                if o.strip().upper() == self.operator.strip().upper():
+                    op = o
+                    
+            return op
+            
         def get_field(self):
             return self.field
         
@@ -1508,25 +1528,38 @@ class QueryBuilder:
             if sub_val is None:
                 sub_val = self.value
                 
+            # Convert the operator
+            op = self.convert_operator(self.operator)
+                
             if isinstance(sub_val, list) and len(sub_val) > 1:
-                # The value is a range
-                if self.operator.lower() == 'between':
-                    if isinstance(sub_val, str): return None
-                    filter_query = "%s %s %s AND %s" % (self.field, \
-                                    self.operator, sub_val[0], sub_val[1])
-                elif self.val_range:
-                    filter_query = '(%s>=%s AND %s<=%s)' % (self.field, \
-                                    sub_val[0], self.field, sub_val[1])
+            
+                if self.val_range:
+                    try:
+                        float(sub_val[0])
+                        is_float = True
+                    except ValueError:
+                        is_float = False
+                        
+                    if is_float:
+                        filter_query = '(%s>=%s AND %s<=%s)' % (self.field, \
+                                        sub_val[0], self.field, sub_val[1])
+                    else:
+                        filter_query = "(%s>='%s' AND %s<='%s')" % \
+                                        (self.field, sub_val[0], self.field, \
+                                        sub_val[1])
                 else:
-                    filter_query = '(%s)' % ' OR '.join(["%s='%s'" % \
-                                    (self.field, v) for v in sub_val])
+                    sub_queries = []
+                    wkt_types = geo.Geo().wkt_types
+                    for v in sub_val:
+                        if any(t in v.lower() for t in wkt_types):
+                            sub_queries.append("%s%s%s" % (self.field, op, v))
+                        else:
+                            sub_queries.append("%s%s'%s'" % \
+                                    (self.field, op, v))
+                    filter_query = '(%s)' % ' OR '.join(sub_queries)
             else:
                 if isinstance(sub_val, list):
                     sub_val = sub_val[0]
-                # Convert the operator
-                for o in common.OPERATORS:
-                    if o.strip().upper() == self.operator.strip().upper():
-                        op = o
                 
                 # Get the field type from the list of fields
                 if common.EODMS_RAPI.get_fieldType(self.query_builder.coll, \
@@ -1588,8 +1621,7 @@ class QueryBuilder:
         
     def add_dates(self, field, dates):
         
-        dates = ["DT'%s'" % d for d in dates]
-        self.dates = self.QueryFilter(self, field, dates, 'BETWEEN')
+        self.dates = self.QueryFilter(self, field, dates, val_range=True)
                             
     def set_open(self, val):
         

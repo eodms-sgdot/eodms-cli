@@ -401,6 +401,12 @@ def search_orderDownload(params):
         #   query results to get a list of orders
         orders = eodms_order.get_orders(query_imgs, max_images)
         
+        if orders is None:
+            err_msg = "Could not get previous orders."
+            common.print_support(err_msg)
+            logger.error(err_msg)
+            sys.exit(0)
+        
         if orders.count_items() == 0:
             if common.SILENT:
                 print("\nNo previous orders could be found.")
