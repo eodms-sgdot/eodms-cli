@@ -29,7 +29,6 @@ import sys
 from xml.etree import ElementTree
 import json
 import logging
-from geomet import wkt
 try:
     import ogr
     import osr
