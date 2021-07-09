@@ -30,6 +30,8 @@ import json
 import requests
 import logging
 import datetime
+import pytz
+import tzlocal
 import time
 from xml.etree import ElementTree
 import re
@@ -172,7 +174,9 @@ def get_dateRange(items):
     
     # print("items: %s" % items)
     
-    tz_diff = time.altzone
+    # tz_diff = time.altzone
+    
+    eastern = pytz.timezone('US/Eastern')
     
     dates = []
     for i in items:
@@ -182,7 +186,12 @@ def get_dateRange(items):
                 tm_form = "%Y-%m-%dT%H:%M:%SZ"
             else:
                 tm_form = "%Y-%m-%dT%H:%M:%S"
+            
             rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
+            
+            # Convert timezone to Eastern
+            loc_zone = tzlocal.get_localzone()
+            rapi_date = rapi_date.astimezone(eastern)
         else:
             rapi_str = i['dateSubmitted']
             # Adjust to local time
@@ -191,7 +200,9 @@ def get_dateRange(items):
             else:
                 tm_form = "%Y-%m-%dT%H:%M:%S"
             rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
-            rapi_date = rapi_date - datetime.timedelta(seconds=tz_diff)
+            
+            # Convert UTC to Eastern
+            rapi_date = rapi_date.astimezone(eastern)
         
         dates.append(rapi_date)
     
