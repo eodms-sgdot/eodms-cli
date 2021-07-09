@@ -461,8 +461,8 @@ def main():
                     'an AOI', \
                 'order_csv': 'Order & download images using EODMS UI ' \
                     'search results (CSV file)', 
-                'download_aoi': 'Download existing orders using AOI ' \
-                    'file and RAPI query', 
+                # 'download_aoi': 'Download existing orders using AOI ' \
+                    # 'file and RAPI query', 
                 'download_only': 'Download existing orders using a ' \
                     'CSV file from a previous order/download process ' \
                     '(files found under "results" folder)', 
@@ -907,8 +907,8 @@ def main():
                     logger.error(err_msg)
                     sys.exit(1)
                 
-                msg = "\nEnter the full path name the CSV file export from " \
-                        "the EODMS UI website"
+                msg = "\nEnter the full path name the CSV results file from " \
+                        "a previous run of this script"
                 err_msg = "No CSV specified. Please enter a valid CSV file"
                 input_fn = get_input(msg, err_msg)
                 

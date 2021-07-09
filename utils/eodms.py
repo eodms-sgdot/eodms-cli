@@ -168,8 +168,12 @@ class ImageList:
             if img.get_recordId() == str(record_id):
                 return img
                 
-    def get_images(self):
-        return self.img_lst
+    def get_images(self, as_list=False):
+        if as_list:
+            out_lst = [i.get_metadata() for i in self.img_lst]
+            return out_lst
+        else:
+            return self.img_lst
                 
     def get_subset(self, start=None, end=None):
         if start is None and end is None:
@@ -313,8 +317,22 @@ class Order:
     def add_item(self, order_item):
         self.order_items.append(order_item)
         
-    def get_items(self):
-        return self.order_items
+    def get_dateRange(self):
+        
+        # start = self.order_items[0].get_metadata()['rapiSubmitted']
+        # end = self.order_items[len(self.order_items) - 1].get_metadata()\
+                # ['rapiSubmitted']
+                
+        start, end = common.get_dateRange(self.get_items(True))
+        
+        return (start, end)
+        
+    def get_items(self, as_list=False):
+        if as_list:
+            items = [i.get_metadata() for i in self.order_items]
+            return items
+        else:
+            return self.order_items
         
     def get_item(self, item_id):
         for item in self.order_items:
@@ -360,6 +378,15 @@ class Order:
         
         if lst_idx > -1:
             self.order_items[lst_idx] = in_item
+            
+    def remove_item(self, order_itemId):
+        lst_idx = -1
+        for idx, item in enumerate(self.order_items):
+            if int(item.get_itemId()) == int(order_itemId):
+                lst_idx = idx
+                break
+                
+        self.order_items.pop(lst_idx)
             
     def trim_items(self, val):
         self.order_items = self.order_items[:val]
@@ -529,6 +556,12 @@ class OrderList:
                 rem_idx = idx
                 
         self.order_lst.pop(rem_idx)
+        
+    def remove_orderItem(self, order_itemId):
+        for o in self.order_lst:
+            for o_item in o.get_items():
+                if int(o_item.get_itemId()) == int(order_itemId):
+                    o.remove_item(order_itemId)
         
     def replace_item(self, order_id, item_obj):
         

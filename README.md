@@ -11,9 +11,8 @@ Search, Order and Download Imagery - eodms-orderdownload.py
 - [Usage](#usage)
   - [Option 1 - Search, order and download Images using AOI](#option-1---search-order-and-download-images-using-aoi)
   - [Option 2 - Order & download images using EODMS UI search results](#option-2---order--download-images-using-eodms-ui-search-results)
-  - [Option 3 - Download existing orders using AOI file and RAPI query](#option-3---download-existing-orders-using-aoi-file-and-rapi-query)
-  - [Option 4 - Download existing orders using a CSV file from a previous order/download process](#option-4---download-existing-orders-using-a-csv-file-from-a-previous-orderdownload-process)
-  - [Option 5 - Run only a search based on an AOI and input parameters](#option-5---run-only-a-search-based-on-an-aoi-and-input-parameters)
+  - [Option 3 - Download existing orders using a CSV file from a previous order/download process](#option-3---download-existing-orders-using-a-csv-file-from-a-previous-orderdownload-process)
+  - [Option 4 - Run only a search based on an AOI and input parameters](#option-4---run-only-a-search-based-on-an-aoi-and-input-parameters)
 - [Parameters](#parameters)
   - [Syntax Examples](#syntax-examples)
 - [Help Example](#help-example)
@@ -43,7 +42,7 @@ The eodms-orderdownload.py was designed using **Python 3.7** however it has been
 
 ### Options
 
-The script has 5 options for ordering and downloading images:
+The script has 4 options for ordering and downloading images:
 
 1. Search, order & download images using an AOI
 	
@@ -53,15 +52,11 @@ The script has 5 options for ordering and downloading images:
 	
 	- This option is used for ordering and downloading images already determined using the [EODMS UI](https://www.eodms-sgdot.nrcan-rncan.gc.ca/index-en.html).
 	
-3. Download existing orders using AOI file and RAPI query
-
-	- This option uses an AOI to search for image records, uses existing orders and downloads the images.
-	
-4. Download existing orders using a CSV file from a previous order/download process (files found under "results" folder)
+3. Download existing orders using a CSV file from a previous order/download process (files found under "results" folder)
 	
 	- This option allows the user to re-download an existing set of images from a previous session (all session results are save in the "results" folder as CSV files or in a location specified in the [configuration file](#config-results)).
 
-5. Run only a search based on an AOI and input parameters.
+4. Run only a search based on an AOI and input parameters.
 	
 	- This option only searches for images using an AOI. No ordering or downloading will occur.
 
@@ -170,38 +165,7 @@ Also, the items can take a while to become available so please be patient and le
 
 6. The remaining steps are the same as steps 8-12 in [Option 1](#option-1---search-order-and-download-images-using-aoi).
 
-### Option 3 - Download existing orders using AOI file and RAPI query
-
-1. Start the process by dragging-and-dropping an AOI (shapefile, GML, KML or GeoJSON) onto the **eodms-orderdownload.bat** batch file.
-
-	- You can also run the batch file without the drag-and-drop, however you will be prompted for the input file (AOI file) after entering step 3.
-	- If you would like to use a shapefile, install the **GDAL Python package** before running the script.
-	
-2. Enter your username and password when prompted.
-
-3. When prompted ```What would you like to do?```, enter ```3```.
-	
-	- You will be asked if you wish to store the username and password for a future session. If you choose yes, you will not be prompted for credentials in any future sessions. All credentials are stored in the "[config.ini file](#config-username)" (the password is encrypted). If you wish to replace the default username and password, remove the values from the [configuration file](#config-username), leaving the keys with equal signs, and the script will prompt you again.
-
-4. Enter the number corresponding to the collections you'd like to query, separating each with a comma.
-
-5. Next, you'll be asked for the query filters for each collection you specified in step 4. See [Filters](#filters) for more information on entering filters.
-
-6. Enter the date range separated with a dash. If you want to search all years, leave blank.
-	
-	- A date range can be entered or a statement representing a time-frame from the current time (ex: ```24 hours```).
-	- If entering date ranges, use a dash for the range.
-	- The entry can have multiple ranges separated by a comma (ex: ```20200601-20200701,20201013-20201113```).
-	- The date range can also include a time, separated by a T (ex: ```20200701T153455-20200801T000545```). Make sure the time is in UTC.
-	- Date format is ```yyyymmdd``` or ```yyyymmddThhmmss```.
-	
-7. Enter the total number of images you'd like to order/download (leave blank if you wish for no limit).
-
-8. Enter the total number of images you'd like for each order (leave blank for the maximum which is set to 100 by the EODMS).
-
-9. The process will query the RAPI for the image information, get the order information for the current user and download any existing image items in the orders.
-
-### Option 4 - Download existing orders using a CSV file from a previous order/download process
+### Option 3 - Download existing orders using a CSV file from a previous order/download process
 
 1. Start the process by dragging-and-dropping a CSV results file from a previous session of this script onto the **eodms-orderdownload.bat** batch file.
 
@@ -215,7 +179,7 @@ Also, the items can take a while to become available so please be patient and le
 
 4. The script will download any images with a "downloaded" column value of "False" in the CSV file. However, the script will ask you if you want to re-download images that have already been downloaded (i.e. "downloaded" set to "True").
 
-### Option 5 - Run only a search based on an AOI and input parameters
+### Option 4 - Run only a search based on an AOI and input parameters
 
 1. Start the process by dragging-and-dropping an AOI (shapefile, GML, KML or GeoJSON) onto the **eodms-orderdownload.bat** batch file.
 
@@ -386,18 +350,10 @@ Here is a list of parameters for the script:
 				</tr>
 				<tr>
 					<td>
-						<pre>download_aoi</pre>
-					</td>
-					<td>
-						Option 3 - Download existing orders using AOI file and RAPI query.
-					</td>
-				</tr>
-				<tr>
-					<td>
 						<pre>download_only</pre>
 					</td>
 					<td>
-						Option 4 - Download existing orders using a CSV file from a previous order/download process (files found under "results" folder).
+						Option 3 - Download existing orders using a CSV file from a previous order/download process (files found under "results" folder).
 					</td>
 				</tr>
 				<tr>
@@ -405,7 +361,7 @@ Here is a list of parameters for the script:
 						<pre>search_only</pre>
 					</td>
 					<td>
-						Option 5 - Conducts a search on the RAPI using an AOI and input parameters. No ordering or downloading will occur.
+						Option 4 - Conducts a search on the RAPI using an AOI and input parameters. No ordering or downloading will occur.
 					</td>
 				</tr>
 			</table>
@@ -573,7 +529,6 @@ For 2 collections, RCM and Radarsat-1:
 | Order & download RCM images within date range                               | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -d 20201019-20201119 -c RCM``` |
 | Order & download only 2 images from search in silent mode                   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\TEMP\AOI.shp" -m 2 -s``` |
 | Order & download only 5 images with maximum number of images per order at 2 | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -m 5:2``` |
-| Download existing orders for a specific AOI (Option 3)                      | ```python eodms-orderdownload.py -i "C:\TEMP\AOI.shp" -o download_aoi``` |
 | Download existing orders using CSV from a previous session in silent mode   | ```python eodms-orderdownload.py -u user -p passwrd -i "C:\eodms-rapi-orderdownload\results\20201214_155904_Results.csv" -o download_only -s``` |
 | Search for images acquired in the last 24 hours                             | ```python eodms-orderdownload.py -c "RCM Image Products" -d "24 hours" -i C:\TEMP\AOI.shp -o search_only -s``` |
 | Search for RCM images with incidence angles less than or equal to 20        | ```python eodms-orderdownload.py -c "RCM Image Products" -i C:\TEMP\AOI.shp -f "RCM.INCIDENCE_ANGLE<=20" -o search_only -s``` |
@@ -616,9 +571,7 @@ optional arguments:
                         The type of process to run from this list of options:
                         full: Search, order & download images using an AOI
                         order_csv: Order & download images using EODMS UI
-                        search results (CSV file) download_aoi: Download
-                        existing orders using AOI file and RAPI query
-                        download_only: Download existing orders using a CSV
+                        search results (CSV file) download_only: Download existing orders using a CSV
                         file from a previous order/download process (files
                         found under "results" folder)
   -s, --silent          Sets process to silent which supresses all questions.

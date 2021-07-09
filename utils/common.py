@@ -29,6 +29,8 @@ import sys
 import json
 import requests
 import logging
+import datetime
+import time
 from xml.etree import ElementTree
 import re
 
@@ -165,6 +167,49 @@ def export_records(csv_f, header, records):
                 
         out_vals = [str(i) for i in out_vals]
         csv_f.write('%s\n' % ','.join(out_vals))
+        
+def get_dateRange(items):
+    
+    # print("items: %s" % items)
+    
+    tz_diff = time.altzone
+    
+    dates = []
+    for i in items:
+        if 'rapiSubmitted' in i.keys():
+            rapi_str = i['rapiSubmitted']
+            if 'Z' in rapi_str:
+                tm_form = "%Y-%m-%dT%H:%M:%SZ"
+            else:
+                tm_form = "%Y-%m-%dT%H:%M:%S"
+            rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
+        else:
+            rapi_str = i['dateSubmitted']
+            # Adjust to local time
+            if 'Z' in rapi_str:
+                tm_form = "%Y-%m-%dT%H:%M:%SZ"
+            else:
+                tm_form = "%Y-%m-%dT%H:%M:%S"
+            rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
+            rapi_date = rapi_date - datetime.timedelta(seconds=tz_diff)
+        
+        dates.append(rapi_date)
+    
+    # if 'rapiSubmitted' in items[0].keys():
+        # dates = [i['rapiSubmitted'] for i in items]
+    # else:
+        # dates = [i['dateSubmitted'] for i in items]
+    # print("dates: %s" % dates)
+    dates.sort()
+    # print("dates: %s" % dates)
+    
+    start = dates[0]
+    start = start - datetime.timedelta(hours=0, minutes=1)
+    
+    end = dates[len(dates) - 1]
+    end = end + datetime.timedelta(hours=0, minutes=1)
+    
+    return (start, end)
 
 def get_lines(in_f):
     """

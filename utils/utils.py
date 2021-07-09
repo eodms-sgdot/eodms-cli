@@ -297,10 +297,18 @@ class EODMSRAPI:
                 
         return res
                 
-    def get_orders(self, maxOrders=10000):
+    def get_orders(self, dtstart=None, dtend=None, maxOrders=None):
         
-        query_url = "%s/order?maxOrders=%s&format=json" % (self.rapi_root,\
-                    maxOrders)
+        tm_frm = '%Y-%m-%dT%H:%M:%SZ'
+        params = {}
+        if dtstart is not None:
+            params['dtstart'] = dtstart.strftime(tm_frm)
+            params['dtend'] = dtend.strftime(tm_frm)
+        if maxOrders is not None:
+            params['maxOrders'] = maxOrders
+        param_str = urlencode(params)
+        
+        query_url = "%s/order?%s" % (self.rapi_root, param_str)
                     
         self.logger.info("Searching for images (RAPI query):\n\n%s\n" % \
                         query_url)
@@ -358,6 +366,7 @@ class EODMSRAPI:
         order_url = "%s/order" % self.rapi_root
         
         # Send the JSON request to the RAPI
+        time_submitted = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             order_res = self.session.post(url=order_url, data=post_json)
             order_res.raise_for_status()
@@ -380,7 +389,13 @@ class EODMSRAPI:
             if isinstance(err, list):
                 return '; '.join(err)
                 
-        return order_res
+        
+        items = order_res.json()['items']
+        
+        for i in items:
+            i['rapiSubmitted'] = time_submitted
+                
+        return items
         
     def submit(self, query_url, timeout=60.0, record_name=None, 
                 quiet=True):
@@ -602,17 +617,26 @@ class Downloader:
                     # Keep looping until all processed order items have been 
                     #   checked
                     
+                    start, end = order.get_dateRange()
+                    
                     # Get the current order ID
                     ord_id = order.get_orderId()
                     
                     # Get a list of order items in this order
-                    ord_items = self.get_latestItems(ord_id)
+                    ord_items = self.get_latestItems(ord_id, start, end)
                     
                     if ord_items is None:
                         err_msg = "Could not retrieve orders. Trying again..."
                         common.print_msg(err_msg, False)
                         self.logger.warning(err_msg)
                         continue
+                        
+                    if len(ord_items) == 0:
+                        err_msg = "No orders were submitted between %s and %s." % (start, end)
+                        self.export_csv()
+                        common.print_support(err_msg)
+                        self.logger.error(err_msg)
+                        sys.exit(0)
                     
                     # Track order items which have been newly processed this time 
                     #   around
@@ -657,11 +681,26 @@ class Downloader:
                         orderItem_obj.set_image(img_obj)
                         orderItem_obj.parse_record(item)
                         
+                        if orderitem_id in [i.get_itemId() for i in \
+                            self.completed_orders] \
+                            or orderitem_id in [i.get_itemId() for i in \
+                            new_complete]:
+                            continue
+                        
                         # If the order item has already been processed/downloaded
                         if record_id in [i.get_recordId() for i in \
                             self.completed_orders] \
                             or record_id in [i.get_recordId() for i in \
                             new_complete]:
+                            # Don't download the same image twice
+                            
+                            msg = "Image with Record ID %s has already " \
+                                    "been downloaded." % record_id
+                            common.print_msg(msg)
+                            self.logger.info(msg)
+                            
+                            # Remove order from cur_orders
+                            cur_orders.remove_orderItem(orderitem_id)
                             continue
                         
                         if img_status == 'AVAILABLE_FOR_DOWNLOAD' or \
@@ -836,7 +875,7 @@ class Downloader:
         
         return self.completed_orders
                     
-    def get_latestItems(self, order_id):
+    def get_latestItems(self, order_id, start, end):
         """
         Gets a list of order items from an order with a specified Order ID.
         
@@ -855,7 +894,7 @@ class Downloader:
         #   order items)
         time_start = datetime.datetime.now()
         
-        res = self.eodms_rapi.get_orders()        
+        res = self.eodms_rapi.get_orders(dtstart=start, dtend=end)        
         
         # Check for any errors
         if isinstance(res, QueryError):
@@ -893,7 +932,10 @@ class Downloader:
         
         self.orders = eodms.OrderList()
         
-        cur_orders = None
+        orders_range = None
+        
+        # Determine date range
+        self.start, self.end = common.get_dateRange(records)
         
         for o_item in records:
             item_id = o_item.get('itemId')
@@ -920,19 +962,22 @@ class Downloader:
             if len(res_json['items']) == 0:
                 
                 # Get all orders
-                if cur_orders is None:
-                    cur_orders = self.eodms_rapi.get_orders()
+                if orders_range is None:
+                    orders_range = self.eodms_rapi.get_orders(dtstart=self.start, \
+                            dtend=self.end)
                     
-                if isinstance(cur_orders, QueryError):
+                if isinstance(orders_range, QueryError):
                     err_msg = "Query to RAPI failed due to '%s'" % \
-                                cur_orders.get_msg()
+                                orders_range.get_msg()
                     common.print_msg(err_msg)
                     self.logger.warning(err_msg)
                     continue
                 
                 # Determine Order Item using ParentItemId
-                cur_orders = cur_orders.json()
-                for o in cur_orders.get('items'):
+                if not isinstance(orders_range, dict):
+                    orders_range = orders_range.json()
+                    
+                for o in orders_range.get('items'):
                     params = o.get('parameters')
                     
                     if params is None: continue
@@ -1033,8 +1078,10 @@ class Orderer:
         ##################################################
         
         common.print_msg("Getting order information. This may take a while...")
-                
-        res = self.eodms_rapi.get_orders(10000)
+        
+        start, end = common.get_dateRange(img_list.get_images(True))
+        
+        res = self.eodms_rapi.get_orders(dtstart=start, dtend=end)
         
         # Check for any errors
         if isinstance(res, QueryError):
@@ -1127,7 +1174,7 @@ class Orderer:
                     self.logger.warning(err_msg)
                     continue
                 
-                order_results += res.json()['items']
+                order_results += res
                 
             msg = "Number of order items: %s" % len(order_results)
             common.print_msg(msg)
