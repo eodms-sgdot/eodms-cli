@@ -143,7 +143,7 @@ class EODMSRAPI:
             
         return fields
         
-    def get_collections(self, as_list=False, redo=False):
+    def get_collections(self, as_list=False, titles=False, redo=False):
         """
         Gets a list of available collections for the current user.
         
@@ -211,7 +211,10 @@ class EODMSRAPI:
         
         # If as_list is True, convert dictionary to list of collection IDs
         if as_list:
-            collections = [i['title'] for i in self.rapi_collections.values()]
+            if titles:
+                collections = [i['title'] for i in self.rapi_collections.values()]
+            else:
+                collections = list(self.rapi_collections.keys())
             return collections
             
         if len(collections) == 0:
@@ -366,7 +369,7 @@ class EODMSRAPI:
         order_url = "%s/order" % self.rapi_root
         
         # Send the JSON request to the RAPI
-        time_submitted = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        time_submitted = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             order_res = self.session.post(url=order_url, data=post_json)
             order_res.raise_for_status()

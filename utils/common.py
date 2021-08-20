@@ -33,6 +33,7 @@ import datetime
 import pytz
 import tzlocal
 import time
+import dateutil
 from xml.etree import ElementTree
 import re
 
@@ -85,7 +86,8 @@ FILT_MAP = {'RCMImageProducts':
                     'INCIDENCE_ANGLE': 'RSAT1.INCIDENCE_ANGLE', 
                     # 'BEAM_MODE': 'RSAT1.SBEAM', 
                     'BEAM_MNEMONIC': 'RSAT1.BEAM_MNEMONIC', 
-                    'ORBIT': 'RSAT1.ORBIT_ABS'
+                    'ORBIT': 'RSAT1.ORBIT_ABS', 
+                    'ORDER_KEY': 'ARCHIVE_IMAGE.ORDER_KEY'
                 }, 
             'Radarsat2':
                 {
@@ -108,7 +110,8 @@ FILT_MAP = {'RCMImageProducts':
                     'COLOUR': 'PHOTO.SBEAM', 
                     'SCALE': 'FLIGHT_SEGMENT.SCALE', 
                     'ROLL': 'ROLL.ROLL_NUMBER', 
-                    'PHOTO_NUMBER': 'PHOTO.PHOTO_NUMBER' 
+                    'PHOTO_NUMBER': 'PHOTO.PHOTO_NUMBER', 
+                    'ORDER_KEY': 'ARCHIVE_IMAGE.ORDER_KEY'
                     # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
                 }
             }
@@ -172,47 +175,34 @@ def export_records(csv_f, header, records):
         
 def get_dateRange(items):
     
-    # print("items: %s" % items)
+    """
+    Gets the date range for a list of items (images).
     
-    # tz_diff = time.altzone
+    :param items: A list of items.
+    :type  items: list
+    
+    :return: A tuple with the start and end date of the range.
+    :rtype: tuple
+    """
     
     eastern = pytz.timezone('US/Eastern')
     
     dates = []
     for i in items:
+        
         if 'rapiSubmitted' in i.keys():
             rapi_str = i['rapiSubmitted']
-            if 'Z' in rapi_str:
-                tm_form = "%Y-%m-%dT%H:%M:%SZ"
-            else:
-                tm_form = "%Y-%m-%dT%H:%M:%S"
-            
-            rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
-            
-            # Convert timezone to Eastern
-            loc_zone = tzlocal.get_localzone()
-            rapi_date = rapi_date.astimezone(eastern)
         else:
             rapi_str = i['dateSubmitted']
-            # Adjust to local time
-            if 'Z' in rapi_str:
-                tm_form = "%Y-%m-%dT%H:%M:%SZ"
-            else:
-                tm_form = "%Y-%m-%dT%H:%M:%S"
-            rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
             
-            # Convert UTC to Eastern
-            rapi_date = rapi_date.astimezone(eastern)
+        rapi_date = dateutil.parser.parse(rapi_str)
+            
+        # Convert UTC to Eastern
+        rapi_date = rapi_date.astimezone(eastern)
         
         dates.append(rapi_date)
     
-    # if 'rapiSubmitted' in items[0].keys():
-        # dates = [i['rapiSubmitted'] for i in items]
-    # else:
-        # dates = [i['dateSubmitted'] for i in items]
-    # print("dates: %s" % dates)
     dates.sort()
-    # print("dates: %s" % dates)
     
     start = dates[0]
     start = start - datetime.timedelta(hours=0, minutes=1)
@@ -221,6 +211,56 @@ def get_dateRange(items):
     end = end + datetime.timedelta(hours=0, minutes=1)
     
     return (start, end)
+    
+    # # print("items: %s" % items)
+    
+    # # tz_diff = time.altzone
+    
+    # eastern = pytz.timezone('US/Eastern')
+    
+    # dates = []
+    # for i in items:
+        # if 'rapiSubmitted' in i.keys():
+            # rapi_str = i['rapiSubmitted']
+            # if 'Z' in rapi_str:
+                # tm_form = "%Y-%m-%dT%H:%M:%SZ"
+            # else:
+                # tm_form = "%Y-%m-%dT%H:%M:%S"
+            
+            # rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
+            
+            # # Convert timezone to Eastern
+            # loc_zone = tzlocal.get_localzone()
+            # rapi_date = rapi_date.astimezone(eastern)
+        # else:
+            # rapi_str = i['dateSubmitted']
+            # # Adjust to local time
+            # if 'Z' in rapi_str:
+                # tm_form = "%Y-%m-%dT%H:%M:%SZ"
+            # else:
+                # tm_form = "%Y-%m-%dT%H:%M:%S"
+            # rapi_date = datetime.datetime.strptime(rapi_str, tm_form)
+            
+            # # Convert UTC to Eastern
+            # rapi_date = rapi_date.astimezone(eastern)
+        
+        # dates.append(rapi_date)
+    
+    # # if 'rapiSubmitted' in items[0].keys():
+        # # dates = [i['rapiSubmitted'] for i in items]
+    # # else:
+        # # dates = [i['dateSubmitted'] for i in items]
+    # # print("dates: %s" % dates)
+    # dates.sort()
+    # # print("dates: %s" % dates)
+    
+    # start = dates[0]
+    # start = start - datetime.timedelta(hours=0, minutes=1)
+    
+    # end = dates[len(dates) - 1]
+    # end = end + datetime.timedelta(hours=0, minutes=1)
+    
+    # return (start, end)
 
 def get_lines(in_f):
     """
