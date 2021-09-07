@@ -1,4 +1,4 @@
-EODMS RAPI Search, Order & Download Python Script
+EODMS RAPI Orderer & Downloader
 =================================================
 
 ## Overview
