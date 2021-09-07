@@ -16,6 +16,7 @@ lib64/
 parts/
 sdist/
 var/
+log/
 results/
 wheels/
 share/python-wheels/
@@ -36,3 +37,4 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+_wiki_changes.txt

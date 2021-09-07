@@ -29,23 +29,22 @@ import sys
 import csv
 import logging
 
-from . import common
-from . import utils
-from . import eodms
+from utils import image
 
 class EODMS_CSV:
     
-    def __init__(self, csv_fn): #, session=None):
+    def __init__(self, eod, csv_fn):
         """
         Initializer for the EODMS_CSV which processes a CSV file exported 
             from the EODMS UI.
-            
-        @type  session: request.Session
-        @param session: A request session with authentication.
-        @type  csv_fn:  string
-        @param csv_fn:  The CSV filename.
+        
+        :param session: A request session with authentication.
+        :type  session: request.Session
+        :param csv_fn: The CSV filename.
+        :type  csv_fn: str
         """
         
+        self.eod = eod
         self.csv_fn = csv_fn
         self.open_csv = None
         self.header = None
@@ -56,19 +55,18 @@ class EODMS_CSV:
         """
         Adds header to a CSV file
         
-        @type  header: list
-        @param header: List of header column names.
+        :param header: List of header column names.
+        :type  header: list
         """
         self.header = header
         self.open_csv.write("%s\n" % ','.join(header))
         
     def determine_collection(self, rec):
         """
-        Determines the collection of the images in the input
-            CSV file.
-            
-        @type  rec: dict
-        @param rec: A record entry from the CSV file.
+        Determines the collection of the images in the input CSV file.
+        
+        :param rec: A record entry from the CSV file.
+        :type  rec: dict
         """
         
         for k in rec.keys():
@@ -88,11 +86,11 @@ class EODMS_CSV:
                 satellite = rec[k]
                 
                 # Set the collection ID name
-                self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite)
+                self.coll_id = self.eod.get_collIdByName(satellite)
                 
                 if self.coll_id is None:
                     # Check if the collection is supported in this script
-                    self.coll_id = common.EODMS_RAPI.get_collIdByName(satellite, True)
+                    self.coll_id = self.eod.get_collIdByName(satellite, True)
                     msg = "The satellite/collection '%s' is not supported " \
                             "with this script at this time." % self.coll_id
                     print("\n%s" % msg)
@@ -103,6 +101,12 @@ class EODMS_CSV:
                 if isinstance(self.coll_id, list): return None
                 
                 return self.coll_id
+                
+            elif k.lower() == 'title':
+                # Get the Collection ID name
+                self.coll_id = rec[k]
+                
+                return self.coll_id
         else:
             return None
             
@@ -110,10 +114,13 @@ class EODMS_CSV:
         """
         Exports an image to a CSV file.
         
-        @type  img: eodms.Image
-        @param img: An Image object containing image information.
+        :param img: An Image object containing image information.
+        :type  img: eodms.Image
         """
+        
         out_vals = []
+        #fields = self.eod.sort_fields(img.get_fields())
+        #print("fields: %s" % fields)
         for h in self.header:
             if h in img.get_fields():
                 val = str(img.get_metadata(h))
@@ -126,28 +133,73 @@ class EODMS_CSV:
         out_vals = [str(i) for i in out_vals]
         self.open_csv.write('%s\n' % ','.join(out_vals))
         
+    def export_results(self, results):
+        """
+        Exports order results to CSV
+        
+        :param results: A list of results to export.
+        :type  results: ImageList or OrderList
+        """
+        
+        if not os.path.exists(self.eod.results_path):
+            os.mkdir(self.eod.results_path)
+        
+        # # Create the query results CSV
+        self.open()
+        
+        # Add header based on the results
+        header = self.eod.sort_fields(results.get_fields())
+        self.add_header(header)
+        
+        # Export the results to the file
+        if isinstance(results, image.ImageList):
+            for img in results.get_images():
+                self.export_record(img)
+        elif isinstance(results, image.OrderList):
+            for oi in results.get_orderItems():
+                self.export_record(oi)
+            
+        # Close the CSV
+        self.close()
+        
+    def get_lines(self, in_f):
+        """
+        Reads a line from a file and checks for any errors.
+        
+        :param in_f: The input file to read from.
+        :type  in_f: file object
+        """
+        
+        # Check if the input file is bytes
+        try:
+            in_lines = in_f.readlines()
+            
+            return in_lines
+        except Exception:
+            err_msg = "The input file cannot be read."
+            print_support(err_msg)
+            logger = logging.getLogger('eodms')
+            logger.error(err_msg)
+            sys.exit(1)
+        
     def import_eodmsCSV(self):
         
         """
-        Imports the rows from the EODMS CSV file into a dictionary of 
-            records.
-            
-        @rtype:  list
-        @return: A list of records extracted from the CSV file.
-        """
+        Imports the rows from the EODMS CSV file into a dictionary of records.
         
-        query_obj = utils.Query()
+        :return: A list of records extracted from the CSV file.
+        :rtype: list
+        """
         
         # Open the input file
         in_f = open(self.csv_fn, 'r')
-        in_lines = common.get_lines(in_f)
+        in_lines = self.get_lines(in_f)
         
         # Get the header from the first row
         in_header = in_lines[0].lower().replace('\n', '').split(',')
         
         # Check for columns in input file
         if 'sequence id' not in in_header and \
-            'sequence_id' not in in_header and \
             'order key' not in in_header and \
             'downlink segment id' not in in_header and \
             'image id' not in in_header and \
@@ -163,7 +215,7 @@ class EODMS_CSV:
     Order Key
     Image Info
     A combination of Downlink Segment ID and Order Key'''
-            common.print_support(err_msg)
+            eod.print_support(err_msg)
             sys.exit(1)
         
         # Populate the list of records from the input file
@@ -176,18 +228,15 @@ class EODMS_CSV:
                 continue
             
             for idx, h in enumerate(in_header):
-                rec[h.lower()] = l_split[idx]
+                prev_val = rec.get(h.lower())
+                if prev_val is None or prev_val == '':
+                    rec[h.lower()] = l_split[idx]
                 
             coll_id = self.determine_collection(rec)
             
             if coll_id is None: continue
             
-            rec['collection id'] = coll_id
-            
-            if 'order key' in rec.keys():
-                order_key = rec['order key']
-                if order_key.find(' ') > -1:
-                    rec['order key'] = order_key.split(' ')[0]
+            rec['collectionId'] = coll_id
             
             # Add the record to the list of records
             records.append(rec)
@@ -195,20 +244,56 @@ class EODMS_CSV:
         # Close the input file
         in_f.close()
         
-        out_recs = query_obj.query_csvRecords(records)
+        return records
         
-        return out_recs
+    def import_resCSV(self, in_fn):
+        """
+        Imports images from a previous results CSV file.
+        
+        :param in_fn: The results CSV filename.
+        :type  in_fn: str
+        """
+        
+        if in_fn is None: return None
+        
+        records = self.import_csv()
+        
+        self.orders = eodms.OrderList()
+        
+        for o_item in records:
+            res = self.eodms_rapi.get_order(o_item['itemId'])
+            
+            # Check for any errors
+            if isinstance(res, QueryError):
+                err_msg = "Query to RAPI failed due to '%s'" % \
+                            res.get_msg()
+                common.print_support(err_msg)
+                self.logger.warning(err_msg)
+                continue
+            
+            res_json = res.json()
+            
+            if len(res_json['items']) == 0:
+                err_msg = "No Order exists with Item ID %s." % o_item['itemId']
+                common.print_support(err_msg)
+                self.logger.warning(err_msg)
+                continue
+            
+            order_item = eodms.OrderItem()
+            order_item.parse_record(res_json['items'][0])
+            
+            order_item.set_metadata('downloaded', o_item['downloaded'])
+            
+            self.orders.update_order(order_item.get_orderId(), \
+                order_item)
         
     def import_csv(self, required=[]):
         """
-        Imports the rows from the CSV file into a dictionary of 
-            records.
-            
-        @rtype:  list
-        @return: A list of records extracted from the CSV file.
-        """
+        Imports the rows from the CSV file into a dictionary of records.
         
-        query_obj = utils.Query()
+        :return: A list of records extracted from the CSV file.
+        :rtype: list
+        """
         
         reader = csv.reader(open(self.csv_fn, 'r'))
         records = []
@@ -225,12 +310,19 @@ class EODMS_CSV:
         
     def close(self):
         """
-        Closes a CSV file
+        Closes a CSV file.
         """
         if self.open_csv is not None:
             self.open_csv.close()
             self.open_csv = None
         
     def open(self, mode='w'):
+        """
+        Opens a CSV file.
+        
+        :param mode: The mode of the file object ('r' for read, 'a' to append and 'w' to write).
+        :type  mode: str
+        """
         
         self.open_csv = open(self.csv_fn, mode)
+        
