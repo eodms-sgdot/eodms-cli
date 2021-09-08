@@ -29,7 +29,7 @@ __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from the EODMS using the REST API (RAPI) service.'
-__version__ = '2.0.0'
+__version__ = '2.0.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -281,7 +281,7 @@ class Prompter():
                 
                 # Ask for the filters for the given collection(s)
                 for coll in self.params['collections']:
-                    coll_id = self.eod.get_collIdByName(coll)
+                    coll_id = self.eod.get_fullCollId(coll)
                     
                     if coll_id in self.eod.get_fieldMap().keys():
                         field_map = self.eod.get_fieldMap()[coll_id]
@@ -346,7 +346,7 @@ class Prompter():
                                 if f.find('.') > -1 \
                                 else f for f in filt_items]
                             filt_dict[coll_id] = filt_items
-                            
+            
         else:
             # User specified in command-line
             
@@ -365,10 +365,12 @@ class Prompter():
                 for f in filt_lst:
                     if f == '': continue
                     if f.find('.') > -1:
-                        coll_id, filt_items = f.split('.')
-                        filt_items = self.eod.validate_filters(filt_items, coll_id)
+                        coll, filt_items = f.split('.')
+                        filt_items = self.eod.validate_filters(filt_items, \
+                                        coll)
                         if not filt_items:
                             sys.exit(1)
+                        coll_id = self.eod.get_fullCollId(coll)
                         if coll_id in filt_dict.keys():
                             coll_filters = filt_dict[coll_id]
                         else:
@@ -384,7 +386,7 @@ class Prompter():
                             coll_filters = []
                         coll_filters.append(f)
                         filt_dict[coll_id] = coll_filters
-                    
+        
         return filt_dict
         
     def ask_inputFile(self, input_fn, msg):
@@ -1010,7 +1012,7 @@ def main():
     sys.stdout.write("\x1b]2;%s\x07" % cmd_title)
     
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
-        print("\n  %s, version %s" % (__title__, __version__))
+        print("\n  %s, version %s\n" % (__title__, __version__))
         sys.exit(0)
     
     print("\n##########################################################" \

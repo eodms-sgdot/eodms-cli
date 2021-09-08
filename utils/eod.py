@@ -752,7 +752,7 @@ class Eodms_OrderDownload:
             print("\nFor help, please contact the EODMS Support Team at " \
                     "%s" % self.email)
                     
-    def get_fieldMap(self):
+    def get_fieldMap(self, coll_id=None):
         """
         Gets the dictionary containing the field IDs for RAPI query.
         
@@ -760,68 +760,55 @@ class Eodms_OrderDownload:
         :rtype: dict
         """
         
-        return {
-            'COSMO-SkyMed1':
-                {
+        mapping = {}
+        
+        for key in ['COSMO-SkyMed1']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Absolute Orbit', 
                     'PIXEL_SPACING': 'Spatial Resolution'
-                }, 
-            'DMC':
-                {
+                }
+        
+        for key in ['DMC', ]:
+            mapping[key] = {
                     'CLOUD_COVER': 'Cloud Cover', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     'INCIDENCE_ANGLE': 'Incidence Angle'
-                }, 
-            'Gaofen-1':
-                {
+                }
+                
+        for key in ['Gaofen-1', 'PlanetScope', 'SPOT']:
+            mapping[key] = {
                     'CLOUD_COVER': 'Cloud Cover', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
-                }, 
-            'GeoEye-1':
-                {
+                }
+        
+        for key in ['GeoEye-1', 'IKONOS', 'IRS', 'QuickBird-2', 'RapidEye', 
+            'WorldView-1', 'WorldView-2', 'WorldView-3', 'WV1', 'WV2', 'WV3']:
+            mapping[key] = {
                     'CLOUD_COVER': 'Cloud Cover', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
                     'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'IKONOS': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
+                }
+                
+        for key in ['TerraSarX']:
+            mapping[key] = {
+                    'ORBIT_DIRECTION': 'Orbit Direction', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'IRS': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'NAPL':
-                {
+                    'INCIDENCE_ANGLE': 'Incidence Angle'
+                }
+                
+        for key in ['NAPL']:
+            mapping[key] = {
                     'COLOUR': 'Sensor Mode', 
                     'SCALE': 'Scale', 
                     'ROLL': 'Roll Number', 
                     'PHOTO_NUMBER': 'Photo Number' 
                     # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
-                }, 
-            'PlanetScope': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
-                }, 
-            'QuickBird-2': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'RCMImageProducts': 
-                {
+                }
+                
+        for key in ['RCMImageProducts', 'RCM']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction', 
                     # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
@@ -840,9 +827,10 @@ class Eodms_OrderDownload:
                     'ORDER_KEY': 'Order Key', 
                     'SEQUENCE_ID': 'Sequence Id', 
                     'SPECIAL_HANDLING_REQUIRED': 'Special Handling Required'
-                }, 
-            'RCMScienceData': 
-                {
+                }
+            
+        for key in ['RCMScienceData']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction', 
                     'INCIDENCE_ANGLE': 'Incidence Angle', 
                     'BEAM_MODE': 'Beam Mode Type', 
@@ -850,10 +838,10 @@ class Eodms_OrderDownload:
                     'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
                     'RECEIVE POLARIZATION': 'Receive Polarization', 
                     'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID'
-
-                }, 
-            'Radarsat1': 
-                {
+                }
+        
+        for key in ['Radarsat1', 'R1']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction',
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
@@ -861,9 +849,10 @@ class Eodms_OrderDownload:
                     # 'BEAM_MODE': 'RSAT1.SBEAM', 
                     'BEAM_MNEMONIC': 'Position', 
                     'ORBIT': 'Absolute Orbit'
-                }, 
-            'Radarsat1RawProducts': 
-                {
+                }
+        
+        for key in ['Radarsat1RawProducts']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction',
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     'INCIDENCE_ANGLE': 'Incidence Angle', 
@@ -873,9 +862,10 @@ class Eodms_OrderDownload:
                     'BEAM_MODE': 'Sensor Mode', 
                     'BEAM_MNEMONIC': 'Position', 
                     'ABSOLUTE_ORBIT': 'Absolute Orbit'
-                }, 
-            'Radarsat2':
-                {
+                }
+                
+        for key in ['Radarsat2', 'R2']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
@@ -889,9 +879,10 @@ class Eodms_OrderDownload:
                     'IMAGE_ID': 'Image Id', 
                     'RELATIVE_ORBIT': 'Relative Orbit', 
                     'ORDER_KEY': 'Order Key'
-                }, 
-            'Radarsat2RawProducts': 
-                {
+                }
+                
+        for key in ['Radarsat2RawProducts']:
+            mapping[key] = {
                     'ORBIT_DIRECTION': 'Orbit Direction', 
                     'PIXEL_SPACING': 'Spatial Resolution', 
                     'INCIDENCE_ANGLE': 'Incidence Angle', 
@@ -901,59 +892,222 @@ class Eodms_OrderDownload:
                     'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
                     'RECEIVE_POLARIZATION': 'Receive Polarization', 
                     'IMAGE_ID': 'Image Id'
-                }, 
-            'RapidEye': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'SGBAirPhotos': 
-                {
+                }
+                
+        for key in ['SGBAirPhotos']:
+            mapping[key] = {
                     'SCALE': 'Scale', 
                     'ROLL_NUMBER': 'Roll Number', 
                     'PHOTO_NUMBER': 'Photo Number', 
                     'AREA': 'Area'
-                }, 
-            'SPOT': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
-                }, 
-            'TerraSarX': 
-                {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle'
-                }, 
-            'VASP': 
-                {
-                    'VASP_OPTIONS': 'Sequence Id'
-                }, 
-            'WorldView-1': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'WorldView-2': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }, 
-            'WorldView-3': 
-                {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
                 }
-            }
+                
+        for key in ['VASP']:
+            mapping[key] = {
+                    'VASP_OPTIONS': 'Sequence Id'
+                }
+        
+        if coll_id is None:
+            return mapping
+        else:
+            coll_id = self.get_fullCollId(coll_id)
+            return mapping[coll_id]
+        
+        # mapping = {
+            # 'COSMO-SkyMed1':
+                # {
+                    # 'ORBIT_DIRECTION': 'Absolute Orbit', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution'
+                # }, 
+            # 'DMC':
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle'
+                # }, 
+            # 'Gaofen-1':
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
+                # }, 
+            # 'GeoEye-1':
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'IKONOS': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'IRS': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'NAPL':
+                # {
+                    # 'COLOUR': 'Sensor Mode', 
+                    # 'SCALE': 'Scale', 
+                    # 'ROLL': 'Roll Number', 
+                    # 'PHOTO_NUMBER': 'Photo Number' 
+                    # # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
+                # }, 
+            # 'PlanetScope': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
+                # }, 
+            # 'QuickBird-2': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'RCMImageProducts': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction', 
+                    # # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # 'BEAM_MNEMONIC': 'Beam Mnemonic', 
+                    # 'BEAM_MODE_QUALIFIER': 'Beam Mode Qualifier', 
+                    # # 'BEAM_MODE_TYPE': 'RCM.SBEAM',
+                    # 'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID', 
+                    # 'LUT_APPLIED': 'LUT Applied', 
+                    # 'OPEN_DATA': 'Open Data', 
+                    # 'POLARIZATION': 'Polarization', 
+                    # 'PRODUCT_FORMAT': 'Product Format', 
+                    # 'PRODUCT_TYPE': 'Product Type', 
+                    # 'RELATIVE_ORBIT': 'Relative Orbit', 
+                    # 'WITHIN_ORBIT_TUBE': 'Within Orbit Tube', 
+                    # 'ORDER_KEY': 'Order Key', 
+                    # 'SEQUENCE_ID': 'Sequence Id', 
+                    # 'SPECIAL_HANDLING_REQUIRED': 'Special Handling Required'
+                # }, 
+            # 'RCMScienceData': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # 'BEAM_MODE': 'Beam Mode Type', 
+                    # 'BEAM_MNEMONIC': 'Beam Mnemonic', 
+                    # 'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
+                    # 'RECEIVE POLARIZATION': 'Receive Polarization', 
+                    # 'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID'
+
+                # }, 
+            # 'Radarsat1': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction',
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # # 'BEAM_MODE': 'RSAT1.SBEAM', 
+                    # 'BEAM_MNEMONIC': 'Position', 
+                    # 'ORBIT': 'Absolute Orbit'
+                # }, 
+            # 'Radarsat1RawProducts': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction',
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # 'DATASET_ID': 'Dataset Id', 
+                    # 'ARCHIVE_FACILITY': 'Reception Facility', 
+                    # 'RECEPTION FACILITY': 'Reception Facility', 
+                    # 'BEAM_MODE': 'Sensor Mode', 
+                    # 'BEAM_MNEMONIC': 'Position', 
+                    # 'ABSOLUTE_ORBIT': 'Absolute Orbit'
+                # }, 
+            # 'Radarsat2':
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # 'SEQUENCE_ID': 'Sequence Id', 
+                    # # 'BEAM_MODE': 'RSAT2.SBEAM', 
+                    # 'BEAM_MNEMONIC': 'Position', 
+                    # 'LOOK_DIRECTION': 'Look Direction', 
+                    # 'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
+                    # 'RECEIVE_POLARIZATION': 'Receive Polarization', 
+                    # 'IMAGE_ID': 'Image Id', 
+                    # 'RELATIVE_ORBIT': 'Relative Orbit', 
+                    # 'ORDER_KEY': 'Order Key'
+                # }, 
+            # 'Radarsat2RawProducts': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle', 
+                    # 'LOOK_ORIENTATION': 'Look Orientation', 
+                    # 'BEAM_MODE': 'Sensor Mode', 
+                    # 'BEAM_MNEMONIC': 'Position', 
+                    # 'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
+                    # 'RECEIVE_POLARIZATION': 'Receive Polarization', 
+                    # 'IMAGE_ID': 'Image Id'
+                # }, 
+            # 'RapidEye': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'SGBAirPhotos': 
+                # {
+                    # 'SCALE': 'Scale', 
+                    # 'ROLL_NUMBER': 'Roll Number', 
+                    # 'PHOTO_NUMBER': 'Photo Number', 
+                    # 'AREA': 'Area'
+                # }, 
+            # 'SPOT': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
+                # }, 
+            # 'TerraSarX': 
+                # {
+                    # 'ORBIT_DIRECTION': 'Orbit Direction', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Incidence Angle'
+                # }, 
+            # 'VASP': 
+                # {
+                    # 'VASP_OPTIONS': 'Sequence Id'
+                # }, 
+            # 'WorldView-1': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'WorldView-2': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }, 
+            # 'WorldView-3': 
+                # {
+                    # 'CLOUD_COVER': 'Cloud Cover', 
+                    # 'PIXEL_SPACING': 'Spatial Resolution', 
+                    # 'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
+                    # 'SENSOR_MODE': 'Sensor Mode'
+                # }
+        #     }  
+        
     
     def query_entries(self, collections, **kwargs):
         """
@@ -990,6 +1144,7 @@ class Eodms_OrderDownload:
             
             # Parse filters
             if filters:
+                
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
                     filters = self._parse_filters(coll_filts)
@@ -1003,9 +1158,6 @@ class Eodms_OrderDownload:
             if self.coll_id == 'NAPL':
                 filters = {}
                 filters['Price'] = ('=', True)
-                
-            # print("filters: %s" % filters)
-            # answer = input("Press enter...")
             
             result_fields = []
             if filters is not None:
@@ -1216,7 +1368,8 @@ class Eodms_OrderDownload:
             return False
             
         # Check if filter name is valid
-        coll_fields = self.get_fieldMap()[coll_id]
+        coll_fields = self.get_fieldMap(coll_id)
+        
         filts = filt_items.split(',')
         
         for f in filts:
