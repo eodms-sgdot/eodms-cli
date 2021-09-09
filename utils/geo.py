@@ -48,7 +48,7 @@ class Geo:
     The Geo class contains all the methods and functions used to perform geographic processes mainly using OGR.
     """
     
-    def __init__(self, aoi_fn=None):
+    def __init__(self, eod=None, aoi_fn=None):
         """
         Initializer for the Geo object.
         
@@ -57,6 +57,7 @@ class Geo:
         """
         
         self.aoi_fn = aoi_fn
+        self.eod = eod
         
         self.logger = logging.getLogger('EODMSRAPI')
         
@@ -141,6 +142,13 @@ class Geo:
         
         if out_fn is None or out_fn == '':
             return None
+            
+        if out_fn.lower() == 'geojson' or \
+            out_fn.lower() == 'kml' or \
+            out_fn.lower() == 'gml' or \
+            out_fn.lower() == 'shp':
+            fn = self.eod.fn_str
+            out_fn = '%s_outlines.%s' % (fn, out_fn.lower())
         
         # If the output GeoJSON exists, remove it
         if os.path.exists(out_fn):

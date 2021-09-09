@@ -582,7 +582,7 @@ class Eodms_OrderDownload:
             if self.silent:
                 print("\nNo previous orders could be found.")
                 # Export polygons of images
-                eodms_geo = geo.Geo()
+                eodms_geo = geo.Geo(self)
                 eodms_geo.export_results(query_imgs, self.output)
                 self.export_results()
                 self.print_support()
@@ -597,7 +597,7 @@ class Eodms_OrderDownload:
                     order_res = self.eodms_rapi.order(json_res)
                 else:
                     # Export polygons of images
-                    eodms_geo = geo.Geo()
+                    eodms_geo = geo.Geo(self)
                     eodms_geo.export_results(query_imgs, self.output)
                     
                     self.export_results()
@@ -1161,7 +1161,12 @@ class Eodms_OrderDownload:
             
             result_fields = []
             if filters is not None:
-                result_fields = list(filters.keys())
+                av_fields = self.eodms_rapi.get_availableFields(\
+                                self.coll_id, 'title')
+                
+                for k in filters.keys():
+                    if k in av_fields['results']:
+                        result_fields.append(k)
             
             # Send a query to the EODMSRAPI object
             self.eodms_rapi.search(self.coll_id, filters, feats, dates, \
@@ -1536,7 +1541,7 @@ class Eodms_OrderDownload:
         
         self._print_results(query_imgs)
         
-        eodms_geo = geo.Geo()
+        eodms_geo = geo.Geo(self)
         eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
@@ -1637,7 +1642,7 @@ class Eodms_OrderDownload:
         query_imgs.update_downloads(download_items)
         
         # Export polygons of images
-        eodms_geo = geo.Geo()
+        eodms_geo = geo.Geo(self)
         eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
@@ -1747,7 +1752,7 @@ class Eodms_OrderDownload:
         self._print_results(query_imgs)
         
         # Export polygons of images
-        eodms_geo = geo.Geo()
+        eodms_geo = geo.Geo(self)
         eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
@@ -1820,7 +1825,7 @@ class Eodms_OrderDownload:
         self._print_results(query_imgs)
         
         # Export polygons of images
-        eodms_geo = geo.Geo()
+        eodms_geo = geo.Geo(self)
         eodms_geo.export_results(query_imgs, self.output)
         
         self.export_results()
@@ -1903,7 +1908,7 @@ class Eodms_OrderDownload:
         self.print_footer('Query Results', msg)
         
         # Export polygons of images
-        eodms_geo = geo.Geo()
+        eodms_geo = geo.Geo(self)
         eodms_geo.export_results(query_imgs, self.output)
         
         # Export results to a CSV file and end process.
