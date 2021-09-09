@@ -26,13 +26,16 @@
 
 import sys
 import os
-# import re
+import re
 # import requests
 # import argparse
 # import traceback
 # import getpass
 import datetime
+import dateparser
+import dateutil.parser as util_parser
 import json
+import glob
 # import configparser
 # import base64
 import logging
@@ -108,6 +111,14 @@ class Eodms_OrderDownload:
         self.max_results = 1000
         if kwargs.get('max_res') is not None:
             self.max_results = int(kwargs.get('max_res'))
+            
+        self.keep_results = "1 month"
+        if kwargs.get('keep_results') is not None:
+            self.keep_results = str(kwargs.get('keep_results'))
+            
+        self.keep_downloads = "1 month"
+        if kwargs.get('keep_downloads') is not None:
+            self.keep_downloads = str(kwargs.get('keep_downloads'))
         
         self.silent = False
         if kwargs.get('silent') is not None:
@@ -433,6 +444,47 @@ class Eodms_OrderDownload:
                 msg += "    Status Message: %s\n" % stat_msg
             self.print_footer('Failed Downloads', msg)
             self.logger.info("Failed Downloads: %s" % msg)
+            
+    def cleanup_folders(self):
+        """
+        Clean-ups the results and downloads folder.
+        """
+        
+        # Cleanup results folder
+        results_start = dateparser.parse(self.keep_results)
+        
+        if results_start is not None:        
+            msg = "Cleaning up files older than %s in 'results' folder..." % \
+                    self.keep_results
+            print("\n%s" % msg)
+            self.logger.info(msg)
+            
+            res_files = glob.glob(os.path.join(os.sep, self.results_path, '*.*'))
+            
+            for f in res_files:
+                file_date = util_parser.parse(f, fuzzy=True)
+                
+                if file_date < results_start:
+                    os.remove(f)
+                
+        # Cleanup downloads folder
+        downloads_start = dateparser.parse(self.keep_downloads)
+        
+        if downloads_start is not None:
+            msg = "Cleaning up files older than %s in 'downloads' folder..." % \
+                    self.keep_downloads
+            print(msg)
+            self.logger.info(msg)
+            
+            downloads_files = glob.glob(os.path.join(os.sep, \
+                                self.download_path, '*.*'))
+                                
+            for f in downloads_files:
+                file_date = datetime.datetime.fromtimestamp(os.path.getmtime(f))
+                
+                if file_date < downloads_start:
+                    # # print("The file %s will be deleted." % r)
+                    os.remove(f)
         
     def convert_date(self, in_date):
         """

@@ -1098,6 +1098,9 @@ def main():
         except ValueError:
             timeout_order = 180.0
             
+        keep_results = config_info.get('Script', 'keep_results')
+        keep_downloads = config_info.get('Script', 'keep_downloads')
+            
         # Get the total number of results per query
         max_results = config_info.get('RAPI', 'max_results')
         
@@ -1105,9 +1108,13 @@ def main():
                                 results=res_path, log=log_loc, 
                                 timeout_query=timeout_query, 
                                 timeout_order=timeout_order, 
-                                max_res=max_results)
+                                max_res=max_results, 
+                                keep_results=keep_results, 
+                                keep_downloads=keep_downloads)
             
         print("\nCSV Results will be placed in '%s'." % eod.results_path)
+        
+        eod.cleanup_folders()
         
         #########################################
         # Get authentication if not specified
