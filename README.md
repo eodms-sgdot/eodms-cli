@@ -41,6 +41,19 @@ The eodms_orderdownload.py was designed using **Python 3.7** however it has been
 	```dos
 	> eodms_orderdownload.bat
 	```
+	
+## Configuration
+
+Configuration for the script can be found in the **config.ini** file.
+
+In the config file, you can: 
+
+- Store credentials **(these must be entered using the script)**
+- Set the paths for downloading images, saving results files and storing log file(s).
+- Set the timeout interval for querying and ordering
+- Set the minimum dates for keeping downloaded images and results files
+
+For more in-depth information on the configuration file, visit [Config File](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki/Config-File).
 
 ## User Guide
 
