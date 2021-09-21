@@ -112,11 +112,11 @@ class Eodms_OrderDownload:
         if kwargs.get('max_res') is not None:
             self.max_results = int(kwargs.get('max_res'))
             
-        self.keep_results = "1 month"
+        self.keep_results = ""
         if kwargs.get('keep_results') is not None:
             self.keep_results = str(kwargs.get('keep_results'))
             
-        self.keep_downloads = "1 month"
+        self.keep_downloads = ""
         if kwargs.get('keep_downloads') is not None:
             self.keep_downloads = str(kwargs.get('keep_downloads'))
         
@@ -900,7 +900,9 @@ class Eodms_OrderDownload:
                     'INCIDENCE_ANGLE': 'Incidence Angle', 
                     # 'BEAM_MODE': 'RSAT1.SBEAM', 
                     'BEAM_MNEMONIC': 'Position', 
-                    'ORBIT': 'Absolute Orbit'
+                    'ORBIT': 'Absolute Orbit', 
+                    'PRODUCT_TYPE': 'Product Type', 
+                    'PROCESSING_LEVEL': 'Processing Level'
                 }
         
         for key in ['Radarsat1RawProducts']:
