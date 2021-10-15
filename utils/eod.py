@@ -132,6 +132,8 @@ class Eodms_OrderDownload:
         self.cur_res = None
         
         self.email = 'eodms-sgdot@nrcan-rncan.gc.ca'
+        
+        self.eodms_geo = geo.Geo(self)
             
     def _parse_dates(self, in_dates):
         """
@@ -445,6 +447,74 @@ class Eodms_OrderDownload:
             self.print_footer('Failed Downloads', msg)
             self.logger.info("Failed Downloads: %s" % msg)
             
+    def _parse_aws(self, query_res):
+        
+        aws_lst = []
+        eodms_lst = []
+        for res in query_res.get_raw():
+            downloadLink = res.get('downloadLink')
+            if downloadLink is not None and downloadLink.find('aws') > -1:
+                aws_lst.append(res)
+            else:
+                eodms_lst.append(res)
+        
+        aws_imgs = image.ImageList(self)
+        aws_imgs.ingest_results(aws_lst)
+        
+        eodms_imgs = image.ImageList(self)
+        eodms_imgs.ingest_results(eodms_lst)
+                
+        print("Number of AWS images: %s" % aws_imgs.count())
+        print("Number of EODMS images: %s" % eodms_imgs.count())
+        
+        # answer = input("Press enter...")
+        
+        return eodms_imgs, aws_imgs
+            
+    def _submit_orders(self, imgs, priority=None, max_items=None):
+        
+        #############################################
+        # Order Images
+        #############################################
+        
+        # Convert results to JSON
+        json_res = imgs.get_raw()
+        
+        # Separated AWS images from order list
+        # Convert results to an OrderList
+        
+        orders = image.OrderList(self, imgs)
+        
+        # Send orders to the RAPI
+        if max_items is None or max_items == 0:
+            # Order all images in a single order
+            order_res = self.eodms_rapi.order(json_res, priority)
+            orders.ingest_results(order_res)
+        else:
+            # Divide the images into the specified number of images per order
+            for idx in range(0, len(json_res), max_items):
+                # Get the next 100 images
+                if len(json_res) < idx + max_items:
+                    sub_recs = json_res[idx:]
+                else:
+                    sub_recs = json_res[idx:max_items + idx]
+                    
+                order_res = self.eodms_rapi.order(sub_recs, priority)
+                orders.ingest_results(order_res)
+                
+        # Update the self.cur_res for output results
+        self.cur_res = imgs
+        
+        if orders.count_items() == 0:
+            # If no orders could be found
+            self.export_results()
+            err_msg = "No orders were submitted successfully."
+            self.print_support(err_msg)
+            self.logger.error(err_msg)
+            sys.exit(1)
+            
+        return orders
+            
     def cleanup_folders(self):
         """
         Clean-ups the results and downloads folder.
@@ -634,8 +704,7 @@ class Eodms_OrderDownload:
             if self.silent:
                 print("\nNo previous orders could be found.")
                 # Export polygons of images
-                eodms_geo = geo.Geo(self)
-                eodms_geo.export_results(query_imgs, self.output)
+                self.eodms_geo.export_results(query_imgs, self.output)
                 self.export_results()
                 self.print_support()
                 self.logger.info("No previous orders could be found.")
@@ -649,8 +718,7 @@ class Eodms_OrderDownload:
                     order_res = self.eodms_rapi.order(json_res)
                 else:
                     # Export polygons of images
-                    eodms_geo = geo.Geo(self)
-                    eodms_geo.export_results(query_imgs, self.output)
+                    self.eodms_geo.export_results(query_imgs, self.output)
                     
                     self.export_results()
                     self.print_support()
@@ -1463,13 +1531,21 @@ class Eodms_OrderDownload:
         priority = params.get('priority')
         
         # Validate AOI
-        aoi_check = self.validate_file(aoi, True)
-        if not aoi_check:
-            err_msg = "The provided input file is not a valid AOI " \
+        if os.path.exists(aoi):
+            aoi_check = self.validate_file(aoi, True)
+            if not aoi_check:
+                err_msg = "The provided input file is not a valid AOI " \
                         "file. Exiting process."
-            self.print_support()
-            self.logger.error(err_msg)
-            sys.exit(1)
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
+        else:
+            if not self.eodms_geo.is_wkt(aoi):
+                err_msg = "The provided WKT feature is not valid. " \
+                        "Exiting process."
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1542,61 +1618,28 @@ class Eodms_OrderDownload:
         # Order Images
         #############################################
         
-        # Convert results to JSON
-        json_res = query_imgs.get_raw()
-        
-        # Convert results to an OrderList
-        orders = image.OrderList(self, query_imgs)
-        
-        # Send orders to the RAPI
-        if max_items is None or max_items == 0:
-            # Order all images in a single order
-            order_res = self.eodms_rapi.order(json_res, priority)
-            orders.ingest_results(order_res)
-        else:
-            # Divide the images into the specified number of images per order
-            for idx in range(0, len(json_res), max_items):
-                # Get the next 100 images
-                if len(json_res) < idx + max_items:
-                    sub_recs = json_res[idx:]
-                else:
-                    sub_recs = json_res[idx:max_items + idx]
-                    
-                order_res = self.eodms_rapi.order(sub_recs, priority)
-                orders.ingest_results(order_res)
-                
-        # Update the self.cur_res for output results
-        self.cur_res = query_imgs
-        
-        if orders.count_items() == 0:
-            # If no orders could be found
-            self.export_results()
-            err_msg = "No orders were submitted successfully."
-            self.print_support(err_msg)
-            self.logger.error(err_msg)
-            sys.exit(1)
+        orders = self._submit_orders(query_imgs, priority)
         
         #############################################
         # Download Images
         #############################################
         
-        # Get a list of order items in JSON format for the EODMSRAPI
-        items = orders.get_raw()
-        
         # Make the download folder if it doesn't exist
         if not os.path.exists(self.download_path):
             os.mkdir(self.download_path)
         
+        # Get a list of order items in JSON format for the EODMSRAPI
+        items = orders.get_raw()
+            
         # Download images using the EODMSRAPI
         download_items = self.eodms_rapi.download(items, self.download_path)
-        
+            
         # Update the images with the download info
         query_imgs.update_downloads(download_items)
         
         self._print_results(query_imgs)
         
-        eodms_geo = geo.Geo(self)
-        eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1658,25 +1701,7 @@ class Eodms_OrderDownload:
         # Order Images
         #############################################
         
-        json_res = query_imgs.get_raw()
-        
-        # Send orders to the RAPI
-        order_res = self.eodms_rapi.order(json_res, priority)
-        
-        # Convert results to an OrderList
-        orders = image.OrderList(self, query_imgs)
-        orders.ingest_results(order_res)
-        
-        # Update the self.cur_res for output results
-        self.cur_res = query_imgs
-        
-        if orders.count_items() == 0:
-            # If no orders could be found
-            self.export_results()
-            err_msg = "No orders were submitted successfully."
-            self.print_support(err_msg)
-            self.logger.error(err_msg)
-            sys.exit(1)
+        orders = self._submit_orders(query_imgs, priority)
         
         # Get a list of order items in JSON format for the EODMSRAPI
         items = orders.get_raw()
@@ -1696,8 +1721,7 @@ class Eodms_OrderDownload:
         query_imgs.update_downloads(download_items)
         
         # Export polygons of images
-        eodms_geo = geo.Geo(self)
-        eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1730,13 +1754,21 @@ class Eodms_OrderDownload:
         priority = params.get('priority')
         
         # Validate AOI
-        aoi_check = self.validate_file(aoi, True)
-        if not aoi_check:
-            err_msg = "The provided input file is not a valid AOI " \
-                        "file. Exiting process."
-            self.print_support()
-            self.logger.error(err_msg)
-            sys.exit(1)
+        if os.path.exists(aoi):
+            aoi_check = self.validate_file(aoi, True)
+            if not aoi_check:
+                err_msg = "The provided input file is not a valid AOI " \
+                            "file. Exiting process."
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
+        else:
+            if not self.eodms_geo.is_wkt(aoi):
+                err_msg = "The provided WKT feature is not valid. " \
+                        "Exiting process."
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1806,8 +1838,7 @@ class Eodms_OrderDownload:
         self._print_results(query_imgs)
         
         # Export polygons of images
-        eodms_geo = geo.Geo(self)
-        eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(query_imgs, self.output)
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1879,8 +1910,7 @@ class Eodms_OrderDownload:
         self._print_results(query_imgs)
         
         # Export polygons of images
-        eodms_geo = geo.Geo(self)
-        eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(query_imgs, self.output)
         
         self.export_results()
         
@@ -1911,13 +1941,21 @@ class Eodms_OrderDownload:
         priority = params.get('priority')
         
         # Validate AOI
-        aoi_check = self.validate_file(aoi, True)
-        if not aoi_check:
-            err_msg = "The provided input file is not a valid AOI " \
-                        "file. Exiting process."
-            self.print_support()
-            self.logger.error(err_msg)
-            sys.exit(1)
+        if os.path.exists(aoi):
+            aoi_check = self.validate_file(aoi, True)
+            if not aoi_check:
+                err_msg = "The provided input file is not a valid AOI " \
+                            "file. Exiting process."
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
+        else:
+            if not self.eodms_geo.is_wkt(aoi):
+                err_msg = "The provided WKT feature is not valid. " \
+                        "Exiting process."
+                self.print_support()
+                self.logger.error(err_msg)
+                sys.exit(1)
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1962,8 +2000,7 @@ class Eodms_OrderDownload:
         self.print_footer('Query Results', msg)
         
         # Export polygons of images
-        eodms_geo = geo.Geo(self)
-        eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(query_imgs, self.output)
         
         # Export results to a CSV file and end process.
         self.export_results()

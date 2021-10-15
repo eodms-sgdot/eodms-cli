@@ -26,18 +26,19 @@
 
 import os
 import sys
+from geomet import wkt
 from xml.etree import ElementTree
 import json
 import logging
 try:
-    import ogr
-    import osr
+    import osgeo.ogr as ogr
+    import osgeo.osr as osr
     GDAL_INCLUDED = True
 except ImportError:
     # print("error with gdal import")
     try:
-        import osgeo.ogr as ogr
-        import osgeo.osr as osr
+        import ogr
+        import osr
         GDAL_INCLUDED = True
     except ImportError:
         # print("error with osgeo gdal import")
@@ -370,6 +371,24 @@ class Geo:
                 sys.exit(1)
             
         return aoi_feat
+        
+    def is_wkt(self, in_feat):
+        """
+        Checks if a string is a valid WKT
+        
+        :param in_feat: Input string containing a WKT.
+        :type  in_feat: str
+        
+        :return: If the input is a valid WKT, return WKT if return_wkt is True or return just True; False if not valid.
+        :rtype: str or boolean
+        """
+        
+        try:
+            wkt_val = wkt.loads(in_feat.upper())
+        except (ValueError, TypeError) as e:
+            return False
+            
+        return True
     
     def reverse_coords(self, geom):
         """

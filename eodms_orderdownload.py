@@ -29,7 +29,7 @@ __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from the EODMS using the REST API (RAPI) service.'
-__version__ = '2.1.1'
+__version__ = '2.1.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -41,6 +41,7 @@ import argparse
 import traceback
 import getpass
 import datetime
+from geomet import wkt
 # import json
 import configparser
 import base64
@@ -103,50 +104,57 @@ class Prompter():
         if input_fn is None or input_fn == '':
                     
             if self.eod.silent:
-                err_msg = "No AOI file specified. Exiting process."
+                err_msg = "No AOI file or feature specified. Exiting process."
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
                 
-            print("\n--------------Enter Input Geospatial File--------------")
+            print("\n--------------Enter Input Geospatial File or Feature--------------")
             
             msg = "Enter the full path name of a GML, KML, Shapefile or " \
-                    "GeoJSON containing an AOI to restrict the search " \
-                    "to a specific location\n"
-            err_msg = "No AOI specified. Please enter a valid GML, KML, " \
-                    "Shapefile or GeoJSON file"
+                    "GeoJSON containing an AOI or a WKT feature to " \
+                    "restrict the search to a specific location\n"
+            err_msg = "No AOI or feature specified. Please enter a WKT " \
+                    "feature or a valid GML, KML, Shapefile or GeoJSON file"
             input_fn = self.get_input(msg, err_msg)
-            
-        if input_fn.find('.shp') > -1:
-            try:
-                import ogr
-                import osr
-                GDAL_INCLUDED = True
-            except ImportError:
+        
+        if os.path.exists(input_fn):
+            if input_fn.find('.shp') > -1:
                 try:
                     import osgeo.ogr as ogr
                     import osgeo.osr as osr
                     GDAL_INCLUDED = True
                 except ImportError:
-                    err_msg = "Cannot open a Shapefile without GDAL. Please install " \
-                        "the GDAL Python package if you'd like to use a Shapefile " \
-                        "for your AOI."
-                    self.eod.print_support(err_msg)
-                    self.logger.error(err_msg)
-                    sys.exit(1)
-                    
-        input_fn = input_fn.strip()
-        input_fn = input_fn.strip("'")
-        input_fn = input_fn.strip('"')
-        
-        #---------------------------------
-        # Check validity of the input file
-        #---------------------------------
-        
-        input_fn = self.eod.validate_file(input_fn, True)
-        
-        if not input_fn:
-            sys.exit(1)
+                    try:
+                        import ogr
+                        import osr
+                        GDAL_INCLUDED = True
+                    except ImportError:
+                        err_msg = "Cannot open a Shapefile without GDAL. Please install " \
+                            "the GDAL Python package if you'd like to use a Shapefile " \
+                            "for your AOI."
+                        self.eod.print_support(err_msg)
+                        self.logger.error(err_msg)
+                        sys.exit(1)
+                        
+            input_fn = input_fn.strip()
+            input_fn = input_fn.strip("'")
+            input_fn = input_fn.strip('"')
+            
+            #---------------------------------
+            # Check validity of the input file
+            #---------------------------------
+            
+            input_fn = self.eod.validate_file(input_fn, True)
+            
+            if not input_fn:
+                sys.exit(1)
+        else:
+            if not self.eod.eodms_geo.is_wkt(input_fn):
+                err_msg = "Input feature is not a valid WKT."
+                self.eod.print_support(err_msg)
+                self.logger.error(err_msg)
+                sys.exit(1)
             
         return input_fn
         
@@ -702,8 +710,8 @@ class Prompter():
                         'the EODMS account used for authentication.')
         self.parser.add_argument('-p', '--password', help='The password of ' \
                             'the EODMS account used for authentication.')
-        input_help = '''An input file, can either be an AOI or a CSV file 
-    exported from the EODMS UI. Valid AOI formats are GeoJSON, 
+        input_help = '''An input file (can either be an AOI or a CSV file 
+    exported from the EODMS UI) or a WKT feature. Valid AOI formats are GeoJSON, 
     KML or Shapefile (Shapefile requires the GDAL Python package).'''
         self.parser.add_argument('-i', '--input', help=input_help)
         coll_help = '''The collection of the images being ordered 
