@@ -62,6 +62,18 @@ class Geo:
         
         self.logger = logging.getLogger('EODMSRAPI')
         
+    def _check_ogr(self):
+        
+        # There is another ogr Python package that might have been imported
+        #   Check if its the wrong ogr
+        if ogr.__doc__ is not None and \
+            ogr.__doc__.find("Module providing one api for multiple git " \
+            "services") > -1:
+            print("Another package named 'ogr' is installed.")
+            return False
+            
+        return True
+        
     def convert_imageGeom(self, coords, output='array'):
         """
         Converts a list of coordinates from the RAPI to a polygon geometry, 
@@ -84,7 +96,8 @@ class Geo:
         
         pnt_array = [pnt1, pnt2, pnt3, pnt4]
         
-        if GDAL_INCLUDED:
+        if GDAL_INCLUDED and self._check_ogr():
+            
             # Create ring
             ring = ogr.Geometry(ogr.wkbLinearRing)
             ring.AddPoint(pnt1[0], pnt1[1])
@@ -126,7 +139,7 @@ class Geo:
         :rtype: ogr.Geometry
         """
         
-        if GDAL_INCLUDED:
+        if GDAL_INCLUDED and self._check_ogr():
             out_poly = ogr.CreateGeometryFromWkt(in_feat)
         
         return out_poly
@@ -158,7 +171,7 @@ class Geo:
         ext = os.path.splitext(out_fn)[1]
         lyr_name = os.path.basename(out_fn).replace(ext, '')
         
-        if GDAL_INCLUDED:
+        if GDAL_INCLUDED and self._check_ogr():
             
             if ext == '.gml':
                 ogr_driver = 'GML'
@@ -256,7 +269,7 @@ class Geo:
         :rtype: str
         """
         
-        if GDAL_INCLUDED:
+        if GDAL_INCLUDED and self._check_ogr():
             # Determine the OGR driver of the input AOI
             if self.aoi_fn.find('.gml') > -1:
                 ogr_driver = 'GML'

@@ -85,6 +85,7 @@ class Image:
         :return: The Collection Id of the image.
         :rtype: str
         """
+        # print("self.metadata: %s" % self.metadata)
         return self.metadata['collectionId']
         
     def get_title(self):
@@ -207,6 +208,8 @@ class Image:
         
         geo_util = geo.Geo()
         
+        # print("in_rec: %s" % in_rec)
+        
         self.metadata = {}
         for k, v in in_rec.items():
             if k == 'metadata2': continue
@@ -216,9 +219,10 @@ class Image:
                 self.metadata['wkt'] = geo_util.convert_imageGeom(\
                                             coords, 'wkt')
             elif k == 'metadata':
-                for m in v:
-                    key = to_camelCase(m[0])
-                    self.metadata[key] = m[1]
+                if isinstance(v, list):
+                    for m in v:
+                        key = to_camelCase(m[0])
+                        self.metadata[key] = m[1]
             else:
                 self.metadata[k] = v
                 
@@ -260,6 +264,27 @@ class ImageList:
             image = Image()
             image.parse_record(in_image)
         self.img_lst.append(image)
+        
+    def add_images(self, in_imgs):
+        """
+        Adds a set of Image objects to the ImageList.
+        
+        :param in_imgs: A list of Image objects to add.
+        :type  in_imgs: list
+        """
+        
+        self.img_lst += in_imgs
+        
+    def combine(self, img_list):
+        """
+        Combines the Images of an ImageList object to the list of Images.
+        
+        :param img_list: The ImageList object.
+        :type  img_list: image.ImageList
+        """
+        
+        imgs = img_list.get_images()
+        self.add_images(imgs)
         
     def count(self):
         """
@@ -353,6 +378,7 @@ class ImageList:
         """
         
         for r in results:
+            if 'errors' in r.keys(): continue
             image = Image()
             if isCsv:
                 image.parse_row(r)
@@ -415,6 +441,8 @@ class ImageList:
             if params is not None:
                 for k, v in params.items():
                     img.set_metadata(v, k)
+                    
+            # print("params: %s" % params)
     
 class OrderItem:
     """
@@ -544,6 +572,8 @@ class OrderItem:
             image = Image()
             image.parse_record(in_image)
         self.image = image
+        
+        # print("self.image.get_collId(): %s" % self.image.get_collId())
         
         fields = self.eod.eodms_rapi.get_collections()[self.image.get_collId()]\
                 ['fields']

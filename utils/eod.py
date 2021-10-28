@@ -27,7 +27,8 @@
 import sys
 import os
 import re
-# import requests
+import requests
+from tqdm.auto import tqdm
 # import argparse
 # import traceback
 # import getpass
@@ -405,7 +406,8 @@ class Eodms_OrderDownload:
         failed_orders = []
         
         for img in images.get_images():
-            if img.get_metadata('status') == 'AVAILABLE_FOR_DOWNLOAD':
+            if img.get_metadata('status') == 'AVAILABLE_FOR_DOWNLOAD' or \
+                img.get_metadata('status') == 'SUCCESS':
                 success_orders.append(img)
             else:
                 failed_orders.append(img)
@@ -447,11 +449,11 @@ class Eodms_OrderDownload:
             self.print_footer('Failed Downloads', msg)
             self.logger.info("Failed Downloads: %s" % msg)
             
-    def _parse_aws(self, query_res):
+    def _parse_aws(self, query_imgs):
         
         aws_lst = []
         eodms_lst = []
-        for res in query_res.get_raw():
+        for res in query_imgs.get_raw():
             downloadLink = res.get('downloadLink')
             if downloadLink is not None and downloadLink.find('aws') > -1:
                 aws_lst.append(res)
@@ -464,8 +466,8 @@ class Eodms_OrderDownload:
         eodms_imgs = image.ImageList(self)
         eodms_imgs.ingest_results(eodms_lst)
                 
-        print("Number of AWS images: %s" % aws_imgs.count())
-        print("Number of EODMS images: %s" % eodms_imgs.count())
+        print("\nNumber of AWS images: %s" % aws_imgs.count())
+        print("Number of EODMS images: %s\n" % eodms_imgs.count())
         
         # answer = input("Press enter...")
         
@@ -597,6 +599,77 @@ class Eodms_OrderDownload:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
+        
+    def download_aws(self, aws_imgs):
+        """
+        Downloads a set of AWS images.
+        
+        :param aws_imgs: An ImageList object with a set of Image objects.
+        :type  aws_imgs: image.ImageList
+        """
+        
+        self.print_msg("Downloading AWS images first...")
+        
+        res = []
+        for img in aws_imgs.get_images():
+            dl_link = img.get_metadata('downloadLink')
+            # for k, v in img.get_metadata().items():
+            #     print("%s: %s" % (k, v))
+            # answer = input("Press enter...")
+            
+            aws_f = os.path.basename(dl_link)
+            dest_fn = os.path.join(self.download_path, aws_f)
+            
+            # print("dest_fn: %s" % dest_fn)
+            
+            # Get the file size of the link
+            resp = requests.head(dl_link)
+            # print("resp: %s" % resp.headers)
+            fsize = resp.headers['content-length']
+            
+            # print("fsize: %s" % type(fsize))
+            # print("dest_size: %s" % type(os.stat(dest_fn).st_size))
+            # answer = input("Press enter...")
+            
+            if os.path.exists(dest_fn):
+                # if all-good, continue to next file
+                if os.stat(dest_fn).st_size == int(fsize):
+                    msg = "No download necessary. " \
+                        "Local file already exists: %s" % dest_fn
+                    self.print_msg(msg)
+                    continue
+                # Otherwise, delete the incomplete/malformed local file and redownload
+                else:
+                    msg = 'Filesize mismatch with %s. Re-downloading...' % \
+                        os.path.basename(dest_fn)
+                    self.print_msg(msg, 'warning')
+                    os.remove(dest_fn)
+            # answer = input("Press enter...")
+            
+            # Use streamed download so we can wrap nicely with tqdm
+            with requests.get(dl_link, stream=True) as stream:
+                with open(dest_fn, 'wb') as pipe:
+                    with tqdm.wrapattr(
+                        pipe,
+                        method='write',
+                        miniters=1,
+                        total=float(fsize),
+                        desc=os.path.basename(dest_fn)
+                    ) as file_out:
+                        for chunk in stream.iter_content(chunk_size=1024):
+                            file_out.write(chunk)
+            
+            download_paths = [{'url': dl_link, 'local_destination': dest_fn}]
+            
+            img.set_metadata('SUCCESS', 'status')
+            img.set_metadata(True, 'downloaded')
+            img.set_metadata(download_paths, 'downloadPaths')
+            img.set_metadata('N/A', 'itemId')
+            img.set_metadata('N/A', 'orderId')
+            
+            res.append(img)
+            
+        return res
         
     def export_results(self):
         """
@@ -1529,6 +1602,7 @@ class Eodms_OrderDownload:
         maximum = params.get('maximum')
         self.output = params.get('output')
         priority = params.get('priority')
+        aws_download = params.get('aws')
         
         # Validate AOI
         if os.path.exists(aoi):
@@ -1613,12 +1687,20 @@ class Eodms_OrderDownload:
                 self.print_msg("Proceeding to order and download the first %s " \
                     "images from each collection." % max_images)
                 query_imgs.trim(max_images, collections)
+                
+        # Parse out AWS
+        if aws_download:
+            eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
+        else:
+            eodms_imgs = query_imgs
+            aws_imgs = None
             
         #############################################
         # Order Images
         #############################################
-        
-        orders = self._submit_orders(query_imgs, priority)
+        orders = None
+        if eodms_imgs.count() > 0:
+            orders = self._submit_orders(eodms_imgs, priority)
         
         #############################################
         # Download Images
@@ -1627,22 +1709,31 @@ class Eodms_OrderDownload:
         # Make the download folder if it doesn't exist
         if not os.path.exists(self.download_path):
             os.mkdir(self.download_path)
+            
+        # Download all AWS images first
+        aws_downloads = None
+        if aws_imgs:
+            aws_downloads = self.download_aws(aws_imgs)
         
         # Get a list of order items in JSON format for the EODMSRAPI
-        items = orders.get_raw()
-            
-        # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
-            
-        # Update the images with the download info
-        query_imgs.update_downloads(download_items)
+        if orders:
+            items = orders.get_raw()
+                
+            # Download images using the EODMSRAPI
+            download_items = self.eodms_rapi.download(items, self.download_path)
+                
+            # Update the images with the download info
+            eodms_imgs.update_downloads(download_items)
         
-        self._print_results(query_imgs)
+        if aws_downloads:
+            eodms_imgs.add_images(aws_downloads)
         
-        self.eodms_geo.export_results(query_imgs, self.output)
+        self._print_results(eodms_imgs)
+        
+        self.eodms_geo.export_results(eodms_imgs, self.output)
         
         # Update the self.cur_res for output results
-        self.cur_res = query_imgs
+        self.cur_res = eodms_imgs
         
         self.export_results()
         
@@ -1725,6 +1816,115 @@ class Eodms_OrderDownload:
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
+        self.export_results()
+        
+        end_time = datetime.datetime.now()
+        end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        self.logger.info("End time: %s" % end_str)
+        
+    def order_ids(self, params):
+        """
+        Orders and downloads a single or set of images using Record IDs.
+        
+        :param params: A dictionary containing the arguments and values.
+        :type  params: dict
+        """
+        
+        in_ids = params.get('input')
+        priority = params.get('priority')
+        self.output = params.get('output')
+        aws_download = params.get('aws')
+        
+        # Log the parameters
+        self.log_parameters(params)
+        
+        # Create info folder, if it doesn't exist, to store CSV files
+        start_time = datetime.datetime.now()
+        start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+        self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
+        folder_str = start_time.strftime("%Y-%m-%d")
+        
+        self.logger.info("Process start time: %s" % start_str)
+        
+        #############################################
+        # Search for Images
+        #############################################
+        
+        self.eodms_rapi.get_collections()
+        
+        ids_lst = in_ids.split(',')
+        
+        all_res = []
+        for i in ids_lst:
+            coll, rec_id = i.split(':')
+            
+            res = self.eodms_rapi.get_record(coll, rec_id)
+            
+            all_res.append(res)
+        
+        # print("all_res: %s" % all_res)
+        
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(all_res)
+        
+        # # Parse the maximum number of orders and items per order
+        # max_images, max_items = self.parse_max(maximum)
+        
+        # # Import and query entries from the CSV
+        # query_imgs = self._get_eodmsRes(csv_fn)
+        
+        # Update the self.cur_res for output results
+        self.cur_res = query_imgs
+        
+        # Parse out AWS
+        if aws_download:
+            eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
+        else:
+            eodms_imgs = query_imgs
+            aws_imgs = None
+        
+        #############################################
+        # Order Images
+        #############################################
+        
+        orders = None
+        if eodms_imgs.count() > 0:
+            orders = self._submit_orders(eodms_imgs, priority)
+            
+        #############################################
+        # Download Images
+        #############################################
+        
+        # Make the download folder if it doesn't exist
+        if not os.path.exists(self.download_path):
+            os.mkdir(self.download_path)
+            
+        # Download all AWS images first
+        aws_downloads = None
+        if aws_imgs:
+            aws_downloads = self.download_aws(aws_imgs)
+        
+        # Get a list of order items in JSON format for the EODMSRAPI
+        if orders:
+            items = orders.get_raw()
+                
+            # Download images using the EODMSRAPI
+            download_items = self.eodms_rapi.download(items, self.download_path)
+                
+            # Update the images with the download info
+            eodms_imgs.update_downloads(download_items)
+            
+        if aws_downloads:
+            eodms_imgs.add_images(aws_downloads)
+        
+        self._print_results(eodms_imgs)
+        
+        # Export polygons of images
+        self.eodms_geo.export_results(eodms_imgs, self.output)
+        
+        # Update the self.cur_res for output results
+        self.cur_res = eodms_imgs
         self.export_results()
         
         end_time = datetime.datetime.now()

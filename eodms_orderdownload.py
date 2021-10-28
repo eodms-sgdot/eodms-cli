@@ -29,7 +29,7 @@ __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from the EODMS using the REST API (RAPI) service.'
-__version__ = '2.1.2'
+__version__ = '2.1.3'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -88,7 +88,9 @@ class Prompter():
         from a previous order/download process (files found under "results" 
         folder)''', 
                 'search_only': 'Run only a search based on an AOI '\
-                    'and input parameters'}
+                    'and input parameters', 
+                'record_id': 'Order and download a single or set of ' \
+                    'images using Record IDs'}
 
     def ask_aoi(self, input_fn):
         """
@@ -149,6 +151,13 @@ class Prompter():
             
             if not input_fn:
                 sys.exit(1)
+        
+        elif any(s in input_fn for s in self.eod.aoi_extensions):
+            err_msg = "Input file %s does not exist." % os.path.abspath(input_fn)
+            self.eod.print_support(err_msg)
+            self.logger.error(err_msg)
+            sys.exit(1)
+        
         else:
             if not self.eod.eodms_geo.is_wkt(input_fn):
                 err_msg = "Input feature is not a valid WKT."
@@ -157,6 +166,38 @@ class Prompter():
                 sys.exit(1)
             
         return input_fn
+        
+    def ask_aws(self, aws):
+        """
+        Asks the user if they'd like to download the image using AWS, if applicable.
+        
+        :param aws: If already entered by the command-line, True if the user wishes to download from AWS.
+        :type  aws: boolean
+        
+        :return: True if the user wishes to download from AWS.
+        :rtype: boolean
+        """
+        
+        if not aws:
+                    
+            if not self.eod.silent:
+                print("\n--------------Download from AWS?--------------")
+                
+                print("\nSome Radarsat-1 images contain direct download " \
+                    "links to GeoTIFF files in an Open Data AWS " \
+                    "Repository.")
+                
+                msg = "For images that have an AWS link, would you like to " \
+                    "download the GeoTIFFs from the repository instead of " \
+                    "submitting an order to the EODMS? (Yes/No)\n"
+                aws = self.get_input(msg, required=False)
+                
+                if aws.lower().find('y') > -1:
+                    aws = True
+                else:
+                    aws = False
+                
+        return aws
         
     def ask_collection(self, coll, coll_lst=None):
         """
@@ -604,6 +645,27 @@ class Prompter():
                     process = list(self.choices.keys())[int(process) - 1]
                     
         return process
+        
+    def ask_recordIds(self, ids):
+        """
+        Asks the user for a single or set of Record IDs.
+        
+        :param ids: A single or set of Record IDs with their collections.
+        :type  ids: str
+        """
+        
+        if ids is None or ids == '':
+            
+            if not self.eod.silent:
+                print("\n--------------Enter Record ID(s)--------------")
+                
+                msg = "\nEnter a single or set of Record IDs. Include the " \
+                        "Collection ID next to each ID separated by a " \
+                        "colon. Separate each ID with a comma. " \
+                        "(Ex: RCMImageProducts:7625368,NAPL:3736869)\n"
+                ids = self.get_input(msg, required=False)
+                
+        return ids
 
     def build_syntax(self):
         """
@@ -643,6 +705,12 @@ class Prompter():
                             filt_lst.append("%s.%s" % (k, v))
                     if len(filt_lst) == 0: continue
                     pv = '"%s"' % ','.join(filt_lst)
+                    
+            elif isinstance(pv, bool):
+                if not pv:
+                    continue
+                else:
+                    pv = ''
             else:
                 if isinstance(pv, str) and pv.find(' ') > -1:
                     pv = '"%s"' % pv
@@ -710,9 +778,10 @@ class Prompter():
                         'the EODMS account used for authentication.')
         self.parser.add_argument('-p', '--password', help='The password of ' \
                             'the EODMS account used for authentication.')
-        input_help = '''An input file (can either be an AOI or a CSV file 
-    exported from the EODMS UI) or a WKT feature. Valid AOI formats are GeoJSON, 
-    KML or Shapefile (Shapefile requires the GDAL Python package).'''
+        input_help = '''An input file (can either be an AOI, a CSV file 
+    exported from the EODMS UI), a WKT feature or a set of Record IDs. 
+    Valid AOI formats are GeoJSON, KML or Shapefile (Shapefile requires 
+    the GDAL Python package).'''
         self.parser.add_argument('-i', '--input', help=input_help)
         coll_help = '''The collection of the images being ordered 
     (separate multiple collections with a comma).'''
@@ -742,6 +811,9 @@ The output parameter can be:
 - Shapefile: The output will be ESRI Shapefile (requires GDAL Python package) 
     (use extension .shp)'''
         self.parser.add_argument('-o', '--output', help=output_help)
+        self.parser.add_argument('-a', '--aws', action='store_true', \
+                        help='Determines whether to download from AWS ' \
+                        '(only applies to Radarsat-1 imagery).')
         self.parser.add_argument('-s', '--silent', action='store_true', \
                         help='Sets process to silent which supresses all ' \
                         'questions.')
@@ -754,12 +826,13 @@ The output parameter can be:
         password = args.password
         coll = args.collections
         dates = args.dates
-        input_fn = args.input
+        inputs = args.input
         filters = args.filters
         priority = args.priority
         maximum = args.maximum
         process = args.process
         output = args.output
+        aws = args.aws
         silent = args.silent
         version = args.version
         
@@ -827,7 +900,7 @@ The output parameter can be:
         
         self.params = {'collections': coll, 
                         'dates': dates, 
-                        'input': input_fn, 
+                        'input': inputs, 
                         'maximum': maximum, 
                         'process': process}
         
@@ -860,12 +933,17 @@ The output parameter can be:
                         "using an AOI.")
                         
             # Get the AOI file
-            input_fn = self.ask_aoi(input_fn)
-            self.params['input'] = input_fn
+            inputs = self.ask_aoi(inputs)
+            self.params['input'] = inputs
             
             # Get the collection(s)
             coll = self.ask_collection(coll)
             self.params['collections'] = coll
+            
+            # If Radarsat-1, ask user if they want to download from AWS
+            if 'Radarsat1' in coll:
+                aws = self.ask_aws(aws)
+                self.params['aws'] = aws
             
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
@@ -903,8 +981,8 @@ The output parameter can be:
             
             msg = "Enter the full path of the CSV file exported "\
                         "from the EODMS UI website"
-            input_fn = self.ask_inputFile(input_fn, msg)
-            self.params['input'] = input_fn
+            inputs = self.ask_inputFile(inputs, msg)
+            self.params['input'] = inputs
             
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -932,8 +1010,8 @@ The output parameter can be:
                 self.logger.info("Searching for images using an AOI.")
             
             # Get the AOI file
-            input_fn = self.ask_aoi(input_fn)
-            self.params['input'] = input_fn
+            inputs = self.ask_aoi(inputs)
+            self.params['input'] = inputs
             
             # Get the collection(s)
             coll = self.ask_collection(coll)
@@ -968,8 +1046,8 @@ The output parameter can be:
             # Get the CSV file
             msg = "Enter the full path of the CSV Results file from a " \
                 "previous session"
-            input_fn = self.ask_inputFile(input_fn, msg)
-            self.params['input'] = input_fn
+            inputs = self.ask_inputFile(inputs, msg)
+            self.params['input'] = inputs
             
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -980,6 +1058,34 @@ The output parameter can be:
             
             # Run the download_only process
             self.eod.download_only(self.params)
+            
+        elif self.process == 'record_id':
+            # Order and download a single or set of images using Record IDs
+            
+            self.logger.info("Ordering and downloading images using " \
+                "Record IDs")
+            
+            inputs = self.ask_recordIds(inputs)
+            self.params['input'] = inputs
+            
+            # If Radarsat-1, ask user if they want to download from AWS
+            if 'Radarsat1' in inputs:
+                aws = self.ask_aws(aws)
+                self.params['aws'] = aws
+            
+            # Get the output geospatial filename
+            output = self.ask_output(output)
+            self.params['output'] = output
+            
+            # Get the priority
+            priority = self.ask_priority(priority)
+            self.params['priority'] = priority
+            
+            # Print command-line syntax for future processes
+            self.print_syntax()
+            
+            # Run the order_csv process
+            self.eod.order_ids(self.params)
         
         else:
             self.eod.print_support("That is not a valid process type.")
