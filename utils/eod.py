@@ -55,7 +55,7 @@ except:
 
 from . import csv_util
 from . import image
-from . import geo
+from . import spatial
 
 class Eodms_OrderDownload:
     
@@ -134,7 +134,7 @@ class Eodms_OrderDownload:
         
         self.email = 'eodms-sgdot@nrcan-rncan.gc.ca'
         
-        self.eodms_geo = geo.Geo(self)
+        self.eodms_geo = spatial.Geo(self)
             
     def _parse_dates(self, in_dates):
         """

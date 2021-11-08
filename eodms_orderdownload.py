@@ -29,7 +29,7 @@ __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from the EODMS using the REST API (RAPI) service.'
-__version__ = '2.1.3'
+__version__ = '2.1.4'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -291,7 +291,7 @@ class Prompter():
             if not self.eod.silent:
                 print("\n--------------Enter Date Range--------------")
                 
-                msg = "Enter a date range (ex: 20200525-20200630) " \
+                msg = "Enter a date range (ex: 20200525-20200630T200950) " \
                         "or a previous time-frame (24 hours) " \
                         "(leave blank to search all years)\n"
                 dates = self.get_input(msg, required=False)

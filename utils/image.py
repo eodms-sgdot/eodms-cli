@@ -30,7 +30,7 @@ import os
 import re
 
 from . import csv_util
-from . import geo
+from . import spatial
 
 def to_camelCase(in_str):
     """
@@ -185,7 +185,7 @@ class Image:
         :rtype: str or ogr.Geometry
         """
         
-        geo_util = geo.Geo()
+        geo_util = spatial.Geo()
         
         if self.geometry[output] is None:
             geometry = self.metadata['geometry']
@@ -206,7 +206,7 @@ class Image:
         :type  in_rec: dict
         """
         
-        geo_util = geo.Geo()
+        geo_util = spatial.Geo()
         
         # print("in_rec: %s" % in_rec)
         
