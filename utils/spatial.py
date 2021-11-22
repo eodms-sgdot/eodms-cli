@@ -46,7 +46,8 @@ except ImportError:
 
 class Geo:
     """
-    The Geo class contains all the methods and functions used to perform geographic processes mainly using OGR.
+    The Geo class contains all the methods and functions used to perform
+        geographic processes mainly using OGR.
     """
     
     def __init__(self, eod=None, aoi_fn=None):
@@ -67,14 +68,14 @@ class Geo:
         # There is another ogr Python package that might have been imported
         #   Check if its the wrong ogr
         if ogr.__doc__ is not None and \
-            ogr.__doc__.find("Module providing one api for multiple git " \
-            "services") > -1:
+            ogr.__doc__.find("Module providing one api for multiple git "
+                             "services") > -1:
             print("Another package named 'ogr' is installed.")
             return False
             
         return True
         
-    def convert_imageGeom(self, coords, output='array'):
+    def convert_image_geom(self, coords, output='array'):
         """
         Converts a list of coordinates from the RAPI to a polygon geometry, 
             array of points or as WKT.
@@ -128,7 +129,7 @@ class Geo:
             else:
                 return pnt_array
             
-    def convert_fromWKT(self, in_feat):
+    def convert_from_wkt(self, in_feat):
         """
         Converts a WKT to a polygon geometry.
         
@@ -138,7 +139,8 @@ class Geo:
         :return: The polygon geometry of the input WKT.
         :rtype: ogr.Geometry
         """
-        
+
+        out_poly = None
         if GDAL_INCLUDED and self._check_ogr():
             out_poly = ogr.CreateGeometryFromWkt(in_feat)
         
@@ -148,8 +150,8 @@ class Geo:
         """
         Exports the results of the query to a GeoJSON.
         
-        :param img_lst: A list of results containing coordinates.
-        :type  img_lst: list
+        :param img_lst: An ImageList of images.
+        :type  img_lst: ImageList
         :param out_fn: The output geospatial filename.
         :type  out_fn: str
         """
@@ -208,7 +210,7 @@ class Geo:
                 lyr.CreateField(field_name)
             
             for r in img_lst.get_images():
-                record_id = r.get_recordId()
+                record_id = r.get_record_id()
                 poly = r.get_geometry('geom')
 
                 # Create a new feature
@@ -268,20 +270,22 @@ class Geo:
         :return: The AOI in WKT format.
         :rtype: str
         """
-        
+
+        aoi_feat = None
         if GDAL_INCLUDED and self._check_ogr():
             # Determine the OGR driver of the input AOI
             if self.aoi_fn.find('.gml') > -1:
                 ogr_driver = 'GML'
             elif self.aoi_fn.find('.kml') > -1:
                 ogr_driver = 'KML'
-            elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
+            elif self.aoi_fn.find('.json') > -1 \
+                    or self.aoi_fn.find('.geojson') > -1:
                 ogr_driver = 'GeoJSON'
             elif self.aoi_fn.find('.shp') > -1:
                 ogr_driver = 'ESRI Shapefile'
             else:
                 err_msg = "The AOI file type could not be determined."
-                common.print_support(err_msg)
+                self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
                 
@@ -337,13 +341,13 @@ class Geo:
                 
                 if self.aoi_fn.find('.gml') > -1:
                     coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/' \
-                        'gml}coordinates'):
+                    for coords in root.findall('.//{http://www.opengis.net/'
+                                               'gml}coordinates'):
                         coord_lst.append(coords.text)
                 else:
                     coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/' \
-                        'kml/2.2}coordinates'):
+                    for coords in root.findall('.//{http://www.opengis.net/'
+                                               'kml/2.2}coordinates'):
                         coord_lst.append(coords.text)
                         
                 pnts_array = []
@@ -355,7 +359,8 @@ class Geo:
                 aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
                     for pnt in pnts_array])
                 
-            elif self.aoi_fn.find('.json') > -1 or self.aoi_fn.find('.geojson') > -1:
+            elif self.aoi_fn.find('.json') > -1 \
+                    or self.aoi_fn.find('.geojson') > -1:
                 with open(self.aoi_fn) as f:
                     data = json.load(f)
                 
@@ -375,11 +380,12 @@ class Geo:
             elif self.aoi_fn.find('.shp') > -1:
                 msg = "Could not open shapefile. The GDAL Python Package " \
                         "must be installed to use shapefiles."
-                common.print_support(msg)
+                self.eod.print_support(msg)
                 self.logger.error(msg)
                 sys.exit(1)
             else:
-                common.print_support("The AOI file type could not be determined.")
+                msg = "The AOI file type could not be determined."
+                self.eod.print_support(msg)
                 self.logger.error(msg)
                 sys.exit(1)
             

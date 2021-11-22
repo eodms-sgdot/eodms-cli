@@ -26,21 +26,21 @@
 
 import sys
 import os
-import re
+# import re
 import requests
 from tqdm.auto import tqdm
 # import argparse
 # import traceback
 # import getpass
 import datetime
-import dateparser
+# import dateparser
 import dateutil.parser as util_parser
 import json
 import glob
 # import configparser
 # import base64
 import logging
-import logging.handlers as handlers
+# import logging.handlers as handlers
 # import pathlib
 
 from eodms_rapi import EODMSRAPI
@@ -48,14 +48,16 @@ from eodms_rapi import EODMSRAPI
 try:
     import dateparser
 except:
-    msg = "Dateparser package is not installed. Please install and run script again."
-    common.print_support(msg)
-    logger.error(msg)
+    msg = "Dateparser package is not installed. Please install and run " \
+          "script again."
+    print(msg)
+    # logger.error(msg)
     sys.exit(1)
 
 from . import csv_util
 from . import image
 from . import spatial
+from . import field
 
 class Eodms_OrderDownload:
     
@@ -66,23 +68,27 @@ class Eodms_OrderDownload:
         :param kwargs: Options include:<br>
                 username (str): The username of the EODMS account.<br>
                 password (str): The password of the EODMS account.<br>
-                downloads (str): The path where the image files will be downloaded.<br>
-                results (str): The path where the results CSV files will be stored.<br>
+                downloads (str): The path where the image files will be
+                    downloaded.<br>
+                results (str): The path where the results CSV files will
+                    be stored.<br>
                 log (str): The path where the log file is stored.<br>
                 timeout_query (float): The timeout for querying the RAPI.<br>
-                timeout_order (float): The timeout for ordering in the RAPI.<br>
+                timeout_order (float): The timeout for ordering in the
+                    RAPI.<br>
                 max_res (int): The maximum number of results to order.<br>
-                silent (boolean): False to prompt the user and print info, True to suppress it.<br>
+                silent (boolean): False to prompt the user and print info,
+                    True to suppress it.<br>
         :type  kwargs: dict
         """
         
         self.rapi_domain = 'https://www.eodms-sgdot.nrcan-rncan.gc.ca'
         self.indent = 3
 
-        self.operators = ['=', '<', '>', '<>', '<=', '>=', ' LIKE ', \
-                        ' STARTS WITH ', ' ENDS WITH ', ' CONTAINS ', \
-                        ' CONTAINED BY ', ' CROSSES ', ' DISJOINT WITH ', \
-                        ' INTERSECTS ', ' OVERLAPS ', ' TOUCHES ', ' WITHIN ']
+        self.operators = ['=', '<', '>', '<>', '<=', '>=', ' LIKE ',
+                          ' STARTS WITH ', ' ENDS WITH ', ' CONTAINS ',
+                          ' CONTAINED BY ', ' CROSSES ', ' DISJOINT WITH ',
+                          ' INTERSECTS ', ' OVERLAPS ', ' TOUCHES ', ' WITHIN ']
         
         self.username = kwargs.get('username')
         self.password = kwargs.get('password')
@@ -135,6 +141,8 @@ class Eodms_OrderDownload:
         self.email = 'eodms-sgdot@nrcan-rncan.gc.ca'
         
         self.eodms_geo = spatial.Geo(self)
+
+        self.field_mapper = field.EodFieldMapper()
             
     def _parse_dates(self, in_dates):
         """
@@ -218,16 +226,17 @@ class Eodms_OrderDownload:
             
             # Convert the input field for EODMS_RAPI
             key = filt_split[0].strip()
-            coll_fields = self.get_fieldMap()[coll_id]
-            
-            if not key in coll_fields.keys():
+            # coll_fields = self.get_fieldMap()[coll_id]
+            coll_fields = self.field_mapper.get_fields(coll_id)
+
+            if not key in coll_fields.get_eod_fieldnames():
                 err = "Filter '%s' is not available for Collection '%s'." \
                         % (key, coll_id)
                 self.print_msg("WARNING: %s" % err)
                 self.logger.warning(err)
                 continue
                 
-            field = coll_fields[key]
+            field = coll_fields.get_field(key).get_rapi_id()
             
             val = filt_split[1].strip()
             val = val.replace('"', '').replace("'", '')
@@ -239,10 +248,10 @@ class Eodms_OrderDownload:
                 continue
                 
             out_filters[field] = (op, val.split('|'))
-            
+
         return out_filters
         
-    def _get_eodmsRes(self, csv_fn):
+    def _get_eodms_res(self, csv_fn):
         """
         Gets the results based on a CSV file from the EODMS UI.
         
@@ -255,11 +264,11 @@ class Eodms_OrderDownload:
         """
         
         eodms_csv = csv_util.EODMS_CSV(self, csv_fn)
-        csv_res = eodms_csv.import_eodmsCSV()
+        csv_res = eodms_csv.import_eodms_csv()
         
         ##################################################
-        self.print_heading("Retrieving Record IDs for the list of " \
-            "entries in the CSV file")
+        self.print_heading("Retrieving Record IDs for the list of "
+                           "entries in the CSV file")
         ##################################################
         
         # Group all records into different collections
@@ -280,7 +289,7 @@ class Eodms_OrderDownload:
         
         for coll, recs in coll_recs.items():
             
-            coll_id = self.get_fullCollId(coll)
+            coll_id = self.get_full_collid(coll)
             
             filters = {}
             
@@ -298,8 +307,8 @@ class Eodms_OrderDownload:
                     
                     id_val = None
                     for k in rec.keys():
-                        if k.lower() in ['sequence id', 'record id', \
-                            'recordid']:
+                        if k.lower() in ['sequence id', 'record id',
+                                         'recordid']:
                             # If the Sequence ID is in the image dictionary, 
                             #   return it as the Record ID
                             id_val = rec.get(k)
@@ -312,8 +321,9 @@ class Eodms_OrderDownload:
                         
                         if order_key is None or order_key == '':
                             msg = "Cannot determine record " \
-                                    "ID for Result Number '%s' in the CSV file. " \
-                                    "Skipping image." % rec.get('result number')
+                                  "ID for Result Number '%s' in the CSV " \
+                                  "file. Skipping image." \
+                                  % rec.get('result number')
                             self.print_msg("WARNING: %s" % msg)
                             self.logger.warning(msg)
                             continue
@@ -327,8 +337,9 @@ class Eodms_OrderDownload:
                         
                         if len(res) > 1:
                             msg = "Cannot determine record " \
-                                    "ID for Result Number '%s' in the CSV file. " \
-                                    "Skipping image." % rec.get('result number')
+                                  "ID for Result Number '%s' in the CSV " \
+                                  "file. Skipping image." \
+                                  % rec.get('result number')
                             self.print_msg("WARNING: %s" % msg)
                             self.logger.warning(msg)
                             continue
@@ -360,9 +371,9 @@ class Eodms_OrderDownload:
                 # If no results, return as error
                 if len(res) == 0:
                     err = "No images could be found."
-                    common.print_msg("WARNING: %s" % err)
+                    self.print_msg("WARNING: %s" % err)
                     self.logger.warning(err)
-                    common.print_msg("Skipping this entry", False)
+                    self.print_msg("Skipping this entry", False)
                     self.logger.warning("Skipping this entry")
                     continue
                 
@@ -374,7 +385,7 @@ class Eodms_OrderDownload:
         
         return self.results
         
-    def _get_prevRes(self, csv_fn):
+    def _get_prev_res(self, csv_fn):
         """
         Creates a EODMSRAPI instance.
         
@@ -382,7 +393,7 @@ class Eodms_OrderDownload:
         :type  csv_fn: str
         
         :return: A list of rows from the CSV file.
-        :rtype: list
+        :rtype: image.ImageList
         """
         
         eodms_csv = csv_util.EODMS_CSV(self, csv_fn)
@@ -399,7 +410,7 @@ class Eodms_OrderDownload:
         Prints the results of image downloads.
         
         :param images: A list of images after they've been downloaded.
-        :type  images: list
+        :type  images: image.ImageList
         """
         
         success_orders = []
@@ -417,7 +428,7 @@ class Eodms_OrderDownload:
             #   including the download location
             msg = "The following images have been downloaded:\n"
             for img in success_orders:
-                rec_id = img.get_recordId()
+                rec_id = img.get_record_id()
                 order_id = img.get_metadata('orderId')
                 orderitem_id = img.get_metadata('itemId')
                 dests = img.get_metadata('downloadPaths')
@@ -435,7 +446,7 @@ class Eodms_OrderDownload:
         if len(failed_orders) > 0:
             msg = "The following images did not download:\n"
             for img in failed_orders:
-                rec_id = img.get_recordId()
+                rec_id = img.get_record_id()
                 order_id = img.get_metadata('orderId')
                 orderitem_id = img.get_metadata('itemId')
                 status = img.get_metadata('status')
@@ -531,7 +542,8 @@ class Eodms_OrderDownload:
             print("\n%s" % msg)
             self.logger.info(msg)
             
-            res_files = glob.glob(os.path.join(os.sep, self.results_path, '*.*'))
+            res_files = glob.glob(os.path.join(os.sep, self.results_path,
+                                               '*.*'))
             
             for f in res_files:
                 file_date = util_parser.parse(f, fuzzy=True)
@@ -548,8 +560,8 @@ class Eodms_OrderDownload:
             print(msg)
             self.logger.info(msg)
             
-            downloads_files = glob.glob(os.path.join(os.sep, \
-                                self.download_path, '*.*'))
+            downloads_files = glob.glob(os.path.join(os.sep,
+                                                     self.download_path, '*.*'))
                                 
             for f in downloads_files:
                 file_date = datetime.datetime.fromtimestamp(os.path.getmtime(f))
@@ -577,7 +589,8 @@ class Eodms_OrderDownload:
             hour = tme[:2]
             minute = tme[2:4]
             sec = tme[4:]
-            out_date = '%s-%s-%sT%s:%s:%sZ' % (year, mth, day, hour, minute, sec)
+            out_date = '%s-%s-%sT%s:%s:%sZ' % (year, mth, day, hour, minute,
+                                               sec)
         else:
             year = in_date[:4]
             mth = in_date[4:6]
@@ -638,11 +651,12 @@ class Eodms_OrderDownload:
                         "Local file already exists: %s" % dest_fn
                     self.print_msg(msg)
                     continue
-                # Otherwise, delete the incomplete/malformed local file and redownload
+                # Otherwise, delete the incomplete/malformed local file and
+                #   redownload
                 else:
                     msg = 'Filesize mismatch with %s. Re-downloading...' % \
                         os.path.basename(dest_fn)
-                    self.print_msg(msg, 'warning')
+                    self.print_msg(msg) #, 'warning')
                     os.remove(dest_fn)
             # answer = input("Press enter...")
             
@@ -679,8 +693,8 @@ class Eodms_OrderDownload:
         if self.cur_res is None: return None
         
         # Create EODMS_CSV object to export results
-        res_fn = os.path.join(self.results_path, \
-                "%s_Results.csv" % self.fn_str)
+        res_fn = os.path.join(self.results_path,
+                              "%s_Results.csv" % self.fn_str)
         res_csv = csv_util.EODMS_CSV(self, res_fn)
         
         res_csv.export_results(self.cur_res)
@@ -715,11 +729,12 @@ class Eodms_OrderDownload:
             out_vals = [str(i) for i in out_vals]
             csv_f.write('%s\n' % ','.join(out_vals))
             
-    def get_collIdByName(self, in_title): #, unsupported=False):
+    def get_collid_by_name(self, in_title): #, unsupported=False):
         """
         Gets the Collection ID based on the tile/name of the collection.
         
-        :param in_title: The title/name of the collection. (ex: 'RCM Image Products' for ID 'RCMImageProducts')
+        :param in_title: The title/name of the collection. (ex: 'RCM Image
+                        Products' for ID 'RCMImageProducts')
         :type  in_title: str
         
         :return: The full Collection ID.
@@ -733,9 +748,9 @@ class Eodms_OrderDownload:
             if v['title'].find(in_title) > -1:
                 return k
                 
-        return self.get_fullCollId(in_title)
+        return self.get_full_collid(in_title)
         
-    def get_fullCollId(self, coll_id):
+    def get_full_collid(self, coll_id):
         """
         Gets the full collection ID using the input collection ID which can be a 
             substring of the collection ID.
@@ -784,8 +799,8 @@ class Eodms_OrderDownload:
                 sys.exit(0)
             else:
                 # Ask user if they'd like to order the images
-                msg = "\nNo existing orders could be found for the given AOI. " \
-                        "Would you like to order the images? (y/n): "
+                msg = "\nNo existing orders could be found. Would you like " \
+                      "to order the images? (y/n): "
                 answer = input(msg)
                 if answer.lower().find('y') > -1:
                     order_res = self.eodms_rapi.order(json_res)
@@ -852,7 +867,8 @@ class Eodms_OrderDownload:
         :param maximum: The maximum value(s) entered by the user.
         :type  maximum: str
         
-        :return: The maximum number of images to order and the total number of images per order.
+        :return: The maximum number of images to order and the total number
+                of images per order.
         :rtype: tuple
         """
         
@@ -883,7 +899,7 @@ class Eodms_OrderDownload:
         :param nl: If True, a newline will be added to the start of the message.
         :type  nl: boolean
         :param indent: A string with the indentation.
-        :type  indent: str
+        :type  indent: boolean
         """
         
         indent_str = ''
@@ -904,12 +920,13 @@ class Eodms_OrderDownload:
         :type  msg: str
         """
         
-        print("\n%s-----%s%s" % (' '*self.indent, title, str((59 - len(title))*'-')))
+        print("\n%s-----%s%s" % (' '*self.indent, title,
+                                 str((59 - len(title))*'-')))
         msg = msg.strip('\n')
         for m in msg.split('\n'):
             print("%s| %s" % (' '*self.indent, m))
-        print("%s--------------------------------------------------------------" \
-                "--" % str(' '*self.indent))
+        print("%s------------------------------------------------------------"
+              "----" % str(' '*self.indent))
         
     def print_heading(self, msg):
         """
@@ -919,11 +936,11 @@ class Eodms_OrderDownload:
         :type  msg: str
         """
         
-        print("\n**************************************************************" \
-                "************")
+        print("\n**********************************************************"
+              "****************")
         print(" %s" % msg)
-        print("****************************************************************" \
-                "**********")
+        print("************************************************************"
+              "**************")
         
     def print_support(self, err_str=None):
         """
@@ -934,179 +951,683 @@ class Eodms_OrderDownload:
         """
         
         if err_str is None:
-            print("\nIf you have any questions or require support, " \
-                    "please contact the EODMS Support Team at " \
+            print("\nIf you have any questions or require support, " 
+                    "please contact the EODMS Support Team at " 
                     "%s" % self.email)
         else:
             print("\nERROR: %s" % err_str)
             
             print("\nExiting process.")
             
-            print("\nFor help, please contact the EODMS Support Team at " \
+            print("\nFor help, please contact the EODMS Support Team at " 
                     "%s" % self.email)
+
+    # def _map_fields(self):
+    #     """
+    #     Sets the mapping of the fields to the labels used on the EODMS UI.
+    #     """
+    #
+    #     self.field_map = {'COSMO-SkyMed1':
+    #             [{'collectionId': 'COSMO-SkyMed1',
+    #                 'fieldId': 'csmed.ORBIT_ABS',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Absolute Orbit'},
+    #              {'collectionId': 'COSMO-SkyMed1',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing',
+    #                 'rapiField': 'Spatial Resolution'}],
+    #         'DMC':
+    #             [{'collectionId': 'DMC',
+    #                 'fieldId': 'DMC.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover (Not all ' \
+    #                         'vendors supply cloud cover data)',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'DMC',
+    #                 'fieldId': 'Spatial Resolution',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'DMC',
+    #                 'fieldId': 'DMC.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'}],
+    #         'Gaofen-1':
+    #             [{'collectionId': 'Gaofen-1',
+    #                 'fieldId': 'SATOPT.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'Gaofen-1',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'Gaofen-1',
+    #                 'fieldId': 'SATOPT.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'}],
+    #         'GeoEye-1':
+    #             [{'collectionId': 'GeoEye-1',
+    #                 'fieldId': 'GE1.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'GeoEye-1',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'GeoEye-1',
+    #                 'fieldId': 'GE1.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'GeoEye-1',
+    #                 'fieldId': 'GE1.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'IKONOS':
+    #             [{'collectionId': 'IKONOS',
+    #                 'fieldId': 'IKONOS.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'IKONOS',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'IKONOS',
+    #                 'fieldId': 'IKONOS.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'IKONOS',
+    #                 'fieldId': 'IKONOS.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'IRS':
+    #             [{'collectionId': 'IRS',
+    #                 'fieldId': 'IRS.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'IRS',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'IRS',
+    #                 'fieldId': 'IRS.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'IRS',
+    #                 'fieldId': 'IRS.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'NAPL':
+    #             [{'collectionId': 'NAPL',
+    #               'fieldId': 'PHOTO.SBEAM',
+    #               'uiField': 'Colour',
+    #               'rapiField': 'Sensor Mode'},
+    #              {'collectionId': 'NAPL',
+    #               'fieldId': 'FLIGHT_SEGMENT.SCALE',
+    #               'uiField': 'Scale',
+    #               'rapiField': 'Scale'},
+    #              {'collectionId': 'NAPL',
+    #               'fieldId': 'ROLL.ROLL_NUMBER',
+    #               'uiField': 'Roll',
+    #               'rapiField': 'Roll Number'},
+    #              {'collectionId': 'NAPL',
+    #               'fieldId': 'PHOTO.PHOTO_NUMBER',
+    #               'uiField': 'Photo Number',
+    #               'rapiField': 'Photo Number'},
+    #              {'collectionId': 'NAPL',
+    #               'fieldId': 'PREVIEW_AVAILABLE',
+    #               'uiField': 'Preview Available',
+    #               'rapiField': 'Preview Available'}
+    #              ],
+    #         'PlanetScope':
+    #             [{'collectionId': 'PlanetScope',
+    #                 'fieldId': 'SATOPT.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'PlanetScope',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'PlanetScope',
+    #                 'fieldId': 'SATOPT.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'}],
+    #         'QuickBird-2':
+    #             [{'collectionId': 'QuickBird-2',
+    #                 'fieldId': 'QB2.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'QuickBird-2',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'QuickBird-2',
+    #                 'fieldId': 'QB2.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'QuickBird-2',
+    #                 'fieldId': 'QB2.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'Radarsat1': [{'collectionId': 'Radarsat1',
+    #                 'fieldId': 'RSAT1.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'Radarsat1',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'Radarsat1',
+    #                 'fieldId': 'RSAT1.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'Radarsat1',
+    #                 'fieldId': 'RSAT1.SBEAM',
+    #                 'uiField': 'Beam Mode',
+    #                 'rapiField': 'Sensor Mode'},
+    #              {'collectionId': 'Radarsat1',
+    #                 'fieldId': 'RSAT1.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Position'},
+    #              {'collectionId': 'Radarsat1',
+    #                 'fieldId': 'RSAT1.ORBIT_ABS',
+    #                 'uiField': 'Orbit',
+    #                 'rapiField': 'Absolute Orbit'}],
+    #         'Radarsat1RawProducts': [{'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.DATASET_ID',
+    #                 'uiField': 'Dataset Id',
+    #                 'rapiField': 'Dataset Id'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'ARCHIVE_CUF.ARCHIVE_FACILITY',
+    #                 'uiField': 'Archive Facility',
+    #                 'rapiField': 'Reception Facility'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'ARCHIVE_CUF.RECEPTION_FACILITY',
+    #                 'uiField': 'Reception Facility',
+    #                 'rapiField': 'Reception Facility'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.SBEAM',
+    #                 'uiField': 'Beam Mode',
+    #                 'rapiField': 'Sensor Mode'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Position'},
+    #              {'collectionId': 'Radarsat1RawProducts',
+    #                 'fieldId': 'RSAT1.ORBIT_ABS',
+    #                 'uiField': 'Orbit',
+    #                 'rapiField': 'Absolute Orbit'}],
+    #         'Radarsat2': [{'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'CATALOG_IMAGE.SEQUENCE_ID',
+    #                 'uiField': 'Sequence Id',
+    #                 'rapiField': 'Sequence Id'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.SBEAM',
+    #                 'uiField': 'Beam Mode',
+    #                 'rapiField': 'Sensor Mode'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Position'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.ANTENNA_ORIENTATION',
+    #                 'uiField': 'Look Direction',
+    #                 'rapiField': 'Look Direction'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.TR_POL',
+    #                 'uiField': 'Transmit Polarization',
+    #                 'rapiField': 'Transmit Polarization'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.REC_POL',
+    #                 'uiField': 'Receive Polarization',
+    #                 'rapiField': 'Receive Polarization'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.IMAGE_ID',
+    #                 'uiField': 'Image Identification',
+    #                 'rapiField': 'Image Id'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'RSAT2.ORBIT_REL',
+    #                 'uiField': 'Relative Orbit',
+    #                 'rapiField': 'Relative Orbit'},
+    #              {'collectionId': 'Radarsat2',
+    #                 'fieldId': 'ARCHIVE_IMAGE.ORDER_KEY',
+    #                 'uiField': 'Order Key',
+    #                 'rapiField': 'Order Key'}],
+    #         'Radarsat2RawProducts': [{'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.ANTENNA_ORIENTATION',
+    #                 'uiField': 'Look Orientation',
+    #                 'rapiField': 'Look Orientation'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.SBEAM',
+    #                 'uiField': 'Beam Mode',
+    #                 'rapiField': 'Sensor Mode'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Position'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.TR_POL',
+    #                 'uiField': 'Transmit Polarization',
+    #                 'rapiField': 'Transmit Polarization'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.REC_POL',
+    #                 'uiField': 'Receive Polarization',
+    #                 'rapiField': 'Receive Polarization'},
+    #              {'collectionId': 'Radarsat2RawProducts',
+    #                 'fieldId': 'RSAT2.IMAGE_ID',
+    #                 'uiField': 'Image Identification',
+    #                 'rapiField': 'Image Id'}],
+    #         'RapidEye': [{'collectionId': 'RapidEye',
+    #                 'fieldId': 'RE.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'RapidEye',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'RapidEye',
+    #                 'fieldId': 'RE.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'RapidEye',
+    #                 'fieldId': 'RE.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'RCMImageProducts': [{'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Beam Mnemonic'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'SENSOR_BEAM_CONFIG.BEAM_MODE_QUALIFIER',
+    #                 'uiField': 'Beam Mode Qualifier',
+    #                 'rapiField': 'Beam Mode Qualifier'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.SBEAM',
+    #                 'uiField': 'Beam Mode Type',
+    #                 'rapiField': 'Beam Mode Type'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.DOWNLINK_SEGMENT_ID',
+    #                 'uiField': 'Downlink segment ID',
+    #                 'rapiField': 'Downlink segment ID'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'LUTApplied',
+    #                 'uiField': 'LUT Applied',
+    #                 'rapiField': 'LUT Applied'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'CATALOG_IMAGE.OPEN_DATA',
+    #                 'uiField': 'Open Data',
+    #                 'rapiField': 'Open Data'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.POLARIZATION',
+    #                 'uiField': 'Polarization',
+    #                 'rapiField': 'Polarization'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'PRODUCT_FORMAT.FORMAT_NAME_E',
+    #                 'uiField': 'Product Format',
+    #                 'rapiField': 'Product Format'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'ARCHIVE_IMAGE.PRODUCT_TYPE',
+    #                 'uiField': 'Product Type',
+    #                 'rapiField': 'Product Type'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.ORBIT_REL',
+    #                 'uiField': 'Relative Orbit',
+    #                 'rapiField': 'Relative Orbit'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.WITHIN_ORBIT_TUBE',
+    #                 'uiField': 'Within Orbital Tube',
+    #                 'rapiField': 'Within Orbital Tube'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'ARCHIVE_IMAGE.ORDER_KEY',
+    #                 'uiField': 'Order Key',
+    #                 'rapiField': 'Order Key'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'CATALOG_IMAGE.SEQUENCE_ID',
+    #                 'uiField': 'Sequence Id',
+    #                 'rapiField': 'Sequence Id'},
+    #              {'collectionId': 'RCMImageProducts',
+    #                 'fieldId': 'RCM.SPECIAL_HANDLING_REQUIRED',
+    #                 'uiField': 'Special Handling Required',
+    #                 'rapiField': 'Special Handling Required'}],
+    #         'RCMScienceData': [{'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'RCM.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'RCM.INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'RCM.SBEAM',
+    #                 'uiField': 'Beam Mode',
+    #                 'rapiField': 'Beam Mode Type'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'RCM.BEAM_MNEMONIC',
+    #                 'uiField': 'Beam Mnemonic',
+    #                 'rapiField': 'Beam Mnemonic'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'CUF_RCM.TR_POL',
+    #                 'uiField': 'Transmit Polarization',
+    #                 'rapiField': 'Transmit Polarization'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'CUF_RCM.REC_POL',
+    #                 'uiField': 'Receive Polarization',
+    #                 'rapiField': 'Receive Polarization'},
+    #              {'collectionId': 'RCMScienceData',
+    #                 'fieldId': 'RCM.DOWNLINK_SEGMENT_ID',
+    #                 'uiField': 'Downlink Segment ID',
+    #                 'rapiField': 'Downlink Segment ID'}],
+    #         'SGBAirPhotos': [{'collectionId': 'SGBAirPhotos',
+    #                           'fieldId': 'FLIGHT_SEGMENT.SCALE',
+    #                           'uiField': 'Scale',
+    #                           'rapiField': 'Scale'},
+    #                          {'collectionId': 'SGBAirPhotos',
+    #                           'fieldId': 'ROLL.ROLL_NUMBER',
+    #                           'uiField': 'Roll',
+    #                           'rapiField': 'Roll Number'},
+    #                          {'collectionId': 'SGBAirPhotos',
+    #                           'fieldId': 'PHOTO.PHOTO_NUMBER',
+    #                           'uiField': 'Photo Number',
+    #                           'rapiField': 'Photo Number'},
+    #                          {'collectionId': 'SGBAirPhotos',
+    #                           'fieldId': 'Area',
+    #                           'uiField': 'Area',
+    #                           'rapiField': 'Area'}
+    #                          ],
+    #         'SPOT': [{'collectionId': 'SPOT',
+    #                 'fieldId': 'SPOT.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover (Not all vendors supply cloud cover data)',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'SPOT',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'SPOT',
+    #                 'fieldId': 'SPOT.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'}],
+    #         'TerraSarX': [{'collectionId': 'TerraSarX',
+    #                 'fieldId': 'TSX1.ORBIT_DIRECTION',
+    #                 'uiField': 'Orbit Direction',
+    #                 'rapiField': 'Orbit Direction'},
+    #              {'collectionId': 'TerraSarX',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'TerraSarX',
+    #                 'fieldId': 'INCIDENCE_ANGLE',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Incidence Angle'}],
+    #         'VASP': [{'collectionId': 'VASP',
+    #                 'fieldId': 'CATALOG_SERIES.CEOID',
+    #                 'uiField': 'Value-added Satellite Product Options',
+    #                 'rapiField': 'Sequence Id'}],
+    #         'WorldView-1': [{'collectionId': 'WorldView-1',
+    #                 'fieldId': 'WV1.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'WorldView-1',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'WorldView-1',
+    #                 'fieldId': 'WV1.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'WorldView-1',
+    #                 'fieldId': 'WV1.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'WorldView-2': [{'collectionId': 'WorldView-2',
+    #                 'fieldId': 'WV2.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'WorldView-2',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId': 'WorldView-2',
+    #                 'fieldId': 'WV2.SENS_INC',
+    #                 'uiField': 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField': 'Sensor Incidence Angle'},
+    #              {'collectionId': 'WorldView-2',
+    #                 'fieldId': 'WV2.SBEAM',
+    #                 'uiField': 'Sensor Mode',
+    #                 'rapiField': 'Sensor Mode'}],
+    #         'WorldView-3': [{'collectionId': 'WorldView-3',
+    #                 'fieldId': 'WV3.CLOUD_PERCENT',
+    #                 'uiField': 'Maximum Cloud Cover',
+    #                 'rapiField': 'Cloud Cover'},
+    #              {'collectionId': 'WorldView-3',
+    #                 'fieldId': 'SENSOR_BEAM.SPATIAL_RESOLUTION',
+    #                 'uiField': 'Pixel Spacing (Metres)',
+    #                 'rapiField': 'Spatial Resolution'},
+    #              {'collectionId', 'WorldView-3',
+    #                 'fieldId', 'WV3.SENS_INC',
+    #                 'uiField', 'Incidence Angle (Decimal Degrees)',
+    #                 'rapiField', 'Sensor Incidence Angle'},
+    #              {'collectionId', 'WorldView-3',
+    #                 'fieldId', 'WV3.SBEAM',
+    #                 'uiField', 'Sensor Mode',
+    #                 'rapiField', 'Sensor Mode'}]}
                     
-    def get_fieldMap(self, coll_id=None):
-        """
-        Gets the dictionary containing the field IDs for RAPI query.
-        
-        :return: A dictionary containing a mapping of the English field name to the fied ID.
-        :rtype: dict
-        """
-        
-        mapping = {}
-        
-        for key in ['COSMO-SkyMed1']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Absolute Orbit', 
-                    'PIXEL_SPACING': 'Spatial Resolution'
-                }
-        
-        for key in ['DMC', ]:
-            mapping[key] = {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle'
-                }
-                
-        for key in ['Gaofen-1', 'PlanetScope', 'SPOT']:
-            mapping[key] = {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
-                }
-        
-        for key in ['GeoEye-1', 'IKONOS', 'IRS', 'QuickBird-2', 'RapidEye', 
-            'WorldView-1', 'WorldView-2', 'WorldView-3', 'WV1', 'WV2', 'WV3']:
-            mapping[key] = {
-                    'CLOUD_COVER': 'Cloud Cover', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Sensor Incidence Angle', 
-                    'SENSOR_MODE': 'Sensor Mode'
-                }
-                
-        for key in ['TerraSarX']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle'
-                }
-                
-        for key in ['NAPL']:
-            mapping[key] = {
-                    'COLOUR': 'Sensor Mode', 
-                    'SCALE': 'Scale', 
-                    'ROLL': 'Roll Number', 
-                    'PHOTO_NUMBER': 'Photo Number' 
-                    # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
-                }
-                
-        for key in ['RCMImageProducts', 'RCM']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    'BEAM_MNEMONIC': 'Beam Mnemonic', 
-                    'BEAM_MODE_QUALIFIER': 'Beam Mode Qualifier', 
-                    # 'BEAM_MODE_TYPE': 'RCM.SBEAM',
-                    'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID', 
-                    'LUT_APPLIED': 'LUT Applied', 
-                    'OPEN_DATA': 'Open Data', 
-                    'POLARIZATION': 'Polarization', 
-                    'PRODUCT_FORMAT': 'Product Format', 
-                    'PRODUCT_TYPE': 'Product Type', 
-                    'RELATIVE_ORBIT': 'Relative Orbit', 
-                    'WITHIN_ORBIT_TUBE': 'Within Orbit Tube', 
-                    'ORDER_KEY': 'Order Key', 
-                    'SEQUENCE_ID': 'Sequence Id', 
-                    'SPECIAL_HANDLING_REQUIRED': 'Special Handling Required'
-                }
-            
-        for key in ['RCMScienceData']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    'BEAM_MODE': 'Beam Mode Type', 
-                    'BEAM_MNEMONIC': 'Beam Mnemonic', 
-                    'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
-                    'RECEIVE POLARIZATION': 'Receive Polarization', 
-                    'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID'
-                }
-        
-        for key in ['Radarsat1', 'R1']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction',
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    # 'BEAM_MODE': 'RSAT1.SBEAM', 
-                    'BEAM_MNEMONIC': 'Position', 
-                    'ORBIT': 'Absolute Orbit', 
-                    'PRODUCT_TYPE': 'Product Type', 
-                    'PROCESSING_LEVEL': 'Processing Level'
-                }
-        
-        for key in ['Radarsat1RawProducts']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction',
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    'DATASET_ID': 'Dataset Id', 
-                    'ARCHIVE_FACILITY': 'Reception Facility', 
-                    'RECEPTION FACILITY': 'Reception Facility', 
-                    'BEAM_MODE': 'Sensor Mode', 
-                    'BEAM_MNEMONIC': 'Position', 
-                    'ABSOLUTE_ORBIT': 'Absolute Orbit'
-                }
-                
-        for key in ['Radarsat2', 'R2']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    'SEQUENCE_ID': 'Sequence Id', 
-                    # 'BEAM_MODE': 'RSAT2.SBEAM', 
-                    'BEAM_MNEMONIC': 'Position', 
-                    'LOOK_DIRECTION': 'Look Direction', 
-                    'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
-                    'RECEIVE_POLARIZATION': 'Receive Polarization', 
-                    'IMAGE_ID': 'Image Id', 
-                    'RELATIVE_ORBIT': 'Relative Orbit', 
-                    'ORDER_KEY': 'Order Key'
-                }
-                
-        for key in ['Radarsat2RawProducts']:
-            mapping[key] = {
-                    'ORBIT_DIRECTION': 'Orbit Direction', 
-                    'PIXEL_SPACING': 'Spatial Resolution', 
-                    'INCIDENCE_ANGLE': 'Incidence Angle', 
-                    'LOOK_ORIENTATION': 'Look Orientation', 
-                    'BEAM_MODE': 'Sensor Mode', 
-                    'BEAM_MNEMONIC': 'Position', 
-                    'TRANSMIT_POLARIZATION': 'Transmit Polarization', 
-                    'RECEIVE_POLARIZATION': 'Receive Polarization', 
-                    'IMAGE_ID': 'Image Id'
-                }
-                
-        for key in ['SGBAirPhotos']:
-            mapping[key] = {
-                    'SCALE': 'Scale', 
-                    'ROLL_NUMBER': 'Roll Number', 
-                    'PHOTO_NUMBER': 'Photo Number', 
-                    'AREA': 'Area'
-                }
-                
-        for key in ['VASP']:
-            mapping[key] = {
-                    'VASP_OPTIONS': 'Sequence Id'
-                }
-        
-        if coll_id is None:
-            return mapping
-        else:
-            coll_id = self.get_fullCollId(coll_id)
-            return mapping[coll_id]
+    # def get_fieldMap(self, coll_id=None):
+    #     """
+    #     Gets the dictionary containing the field IDs for RAPI query.
+    #
+    #     :return: A dictionary containing a mapping of the English field
+    #             name to the fied ID.
+    #     :rtype: dict
+    #     """
+    #
+    #     mapping = {}
+    #
+    #     for key in ['COSMO-SkyMed1']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Absolute Orbit',
+    #                 'PIXEL_SPACING': 'Spatial Resolution'
+    #             }
+    #
+    #     for key in ['DMC', ]:
+    #         mapping[key] = {
+    #                 'CLOUD_COVER': 'Cloud Cover',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle'
+    #             }
+    #
+    #     for key in ['Gaofen-1', 'PlanetScope', 'SPOT']:
+    #         mapping[key] = {
+    #                 'CLOUD_COVER': 'Cloud Cover',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Sensor Incidence Angle'
+    #             }
+    #
+    #     for key in ['GeoEye-1', 'IKONOS', 'IRS', 'QuickBird-2', 'RapidEye',
+    #         'WorldView-1', 'WorldView-2', 'WorldView-3', 'WV1', 'WV2', 'WV3']:
+    #         mapping[key] = {
+    #                 'CLOUD_COVER': 'Cloud Cover',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Sensor Incidence Angle',
+    #                 'SENSOR_MODE': 'Sensor Mode'
+    #             }
+    #
+    #     for key in ['TerraSarX']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle'
+    #             }
+    #
+    #     for key in ['NAPL']:
+    #         mapping[key] = {
+    #                 'COLOUR': 'Sensor Mode',
+    #                 'SCALE': 'Scale',
+    #                 'ROLL': 'Roll Number',
+    #                 'PHOTO_NUMBER': 'Photo Number'
+    #                 # 'PREVIEW_AVAILABLE': 'PREVIEW_AVAILABLE'
+    #             }
+    #
+    #     for key in ['RCMImageProducts', 'RCM']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,
+    #                 #   SENSOR_BEAM_CONFIG.INCIDENCE_HIGH',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 'BEAM_MNEMONIC': 'Beam Mnemonic',
+    #                 'BEAM_MODE_QUALIFIER': 'Beam Mode Qualifier',
+    #                 # 'BEAM_MODE_TYPE': 'RCM.SBEAM',
+    #                 'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID',
+    #                 'LUT_APPLIED': 'LUT Applied',
+    #                 'OPEN_DATA': 'Open Data',
+    #                 'POLARIZATION': 'Polarization',
+    #                 'PRODUCT_FORMAT': 'Product Format',
+    #                 'PRODUCT_TYPE': 'Product Type',
+    #                 'RELATIVE_ORBIT': 'Relative Orbit',
+    #                 'WITHIN_ORBIT_TUBE': 'Within Orbit Tube',
+    #                 'ORDER_KEY': 'Order Key',
+    #                 'SEQUENCE_ID': 'Sequence Id',
+    #                 'SPECIAL_HANDLING_REQUIRED': 'Special Handling Required'
+    #             }
+    #
+    #     for key in ['RCMScienceData']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 'BEAM_MODE': 'Beam Mode Type',
+    #                 'BEAM_MNEMONIC': 'Beam Mnemonic',
+    #                 'TRANSMIT_POLARIZATION': 'Transmit Polarization',
+    #                 'RECEIVE POLARIZATION': 'Receive Polarization',
+    #                 'DOWNLINK_SEGMENT_ID': 'Downlink Segment ID'
+    #             }
+    #
+    #     for key in ['Radarsat1', 'R1']:
+    #         mapping[key] = {
+    #                 'ORDER_KEY': 'Order Key',
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,
+    #                 #   SENSOR_BEAM_CONFIG.INCIDENCE_HIGH',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 # 'BEAM_MODE': 'RSAT1.SBEAM',
+    #                 'BEAM_MNEMONIC': 'Position',
+    #                 'ORBIT': 'Absolute Orbit',
+    #                 'PRODUCT_TYPE': 'Product Type',
+    #                 'PRODUCT_ID': 'Product Id',
+    #                 'PROCESSING_LEVEL': 'Processing Level'
+    #             }
+    #
+    #     for key in ['Radarsat1RawProducts']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 'DATASET_ID': 'Dataset Id',
+    #                 'ARCHIVE_FACILITY': 'Reception Facility',
+    #                 'RECEPTION FACILITY': 'Reception Facility',
+    #                 'BEAM_MODE': 'Sensor Mode',
+    #                 'BEAM_MNEMONIC': 'Position',
+    #                 'ABSOLUTE_ORBIT': 'Absolute Orbit'
+    #             }
+    #
+    #     for key in ['Radarsat2', 'R2']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,
+    #                 #    SENSOR_BEAM_CONFIG.INCIDENCE_HIGH',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 'SEQUENCE_ID': 'Sequence Id',
+    #                 # 'BEAM_MODE': 'RSAT2.SBEAM',
+    #                 'BEAM_MNEMONIC': 'Position',
+    #                 'LOOK_DIRECTION': 'Look Direction',
+    #                 'TRANSMIT_POLARIZATION': 'Transmit Polarization',
+    #                 'RECEIVE_POLARIZATION': 'Receive Polarization',
+    #                 'IMAGE_ID': 'Image Id',
+    #                 'RELATIVE_ORBIT': 'Relative Orbit',
+    #                 'ORDER_KEY': 'Order Key'
+    #             }
+    #
+    #     for key in ['Radarsat2RawProducts']:
+    #         mapping[key] = {
+    #                 'ORBIT_DIRECTION': 'Orbit Direction',
+    #                 'PIXEL_SPACING': 'Spatial Resolution',
+    #                 'INCIDENCE_ANGLE': 'Incidence Angle',
+    #                 'LOOK_ORIENTATION': 'Look Orientation',
+    #                 'BEAM_MODE': 'Sensor Mode',
+    #                 'BEAM_MNEMONIC': 'Position',
+    #                 'TRANSMIT_POLARIZATION': 'Transmit Polarization',
+    #                 'RECEIVE_POLARIZATION': 'Receive Polarization',
+    #                 'IMAGE_ID': 'Image Id'
+    #             }
+    #
+    #     for key in ['SGBAirPhotos']:
+    #         mapping[key] = {
+    #                 'SCALE': 'Scale',
+    #                 'ROLL_NUMBER': 'Roll Number',
+    #                 'PHOTO_NUMBER': 'Photo Number',
+    #                 'AREA': 'Area'
+    #             }
+    #
+    #     for key in ['VASP']:
+    #         mapping[key] = {
+    #                 'VASP_OPTIONS': 'Sequence Id'
+    #             }
+    #
+    #     if coll_id is None:
+    #         return mapping
+    #     else:
+    #         coll_id = self.get_fullCollId(coll_id)
+    #         return mapping[coll_id]
         
         # mapping = {
             # 'COSMO-SkyMed1':
@@ -1171,7 +1692,8 @@ class Eodms_OrderDownload:
             # 'RCMImageProducts': 
                 # {
                     # 'ORBIT_DIRECTION': 'Orbit Direction', 
-                    # # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,SENSOR_BEAM_CONFIG.INCIDENCE_HIGH', 
+                    # # 'INCIDENCE_ANGLE': 'SENSOR_BEAM_CONFIG.INCIDENCE_LOW,
+                    #    SENSOR_BEAM_CONFIG.INCIDENCE_HIGH',
                     # 'PIXEL_SPACING': 'Spatial Resolution', 
                     # 'INCIDENCE_ANGLE': 'Incidence Angle', 
                     # 'BEAM_MNEMONIC': 'Beam Mnemonic', 
@@ -1328,17 +1850,21 @@ class Eodms_OrderDownload:
         aoi = kwargs.get('aoi')
         dates = kwargs.get('dates')
         max_images = kwargs.get('max_images')
-        
-        feats = [('INTERSECTS', aoi)]
+
+        feats = None
+        if aoi is not None:
+            feats = [('INTERSECTS', aoi)]
         
         all_res = []
         for coll in collections:
             
             # Get the full Collection ID
-            self.coll_id = self.get_fullCollId(coll)
+            self.coll_id = self.get_full_collid(coll)
             
             # Parse filters
             if filters:
+
+                # print("filters: %s" % filters)
                 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
@@ -1356,15 +1882,16 @@ class Eodms_OrderDownload:
             
             result_fields = []
             if filters is not None:
-                av_fields = self.eodms_rapi.get_availableFields(\
-                                self.coll_id, 'title')
+                av_fields = self.eodms_rapi.get_availableFields(self.coll_id,
+                                                                'title')
                 
                 for k in filters.keys():
                     if k in av_fields['results']:
                         result_fields.append(k)
             
             # Send a query to the EODMSRAPI object
-            self.eodms_rapi.search(self.coll_id, filters, feats, dates, \
+            # print("filters: %s" % filters)
+            self.eodms_rapi.search(self.coll_id, filters, feats, dates,
                 result_fields, max_images)
             
             res = self.eodms_rapi.get_results()
@@ -1412,7 +1939,8 @@ class Eodms_OrderDownload:
         """
         Sets the silence of the script.
         
-        :param silent: Determines whether the script will be silent. If True, the user is not prompted for info.
+        :param silent: Determines whether the script will be silent. If True,
+                    the user is not prompted for info.
         :type  silent: boolean
         """
         
@@ -1433,7 +1961,7 @@ class Eodms_OrderDownload:
         
         aliases = [v['aliases'] for v in colls.values()]
         
-        coll_vals = list(colls.keys()) + [v['title'] for v in \
+        coll_vals = list(colls.keys()) + [v['title'] for v in
                     colls.values()]
         
         for a in aliases:
@@ -1467,7 +1995,8 @@ class Eodms_OrderDownload:
         
         :param val: A string (or integer) of an integer.
         :type  val: str or int
-        :param limit: A number to check whether the val is less than a certain limit.
+        :param limit: A number to check whether the val is less than a certain
+                    limit.
         :type  limit: int
         
         :return: Returns the val if valid, False if not.
@@ -1488,9 +2017,7 @@ class Eodms_OrderDownload:
                         self.print_msg(err_msg, indent=False)
                         self.logger.warning(err_msg)
                         return False
-                    out_val = [int(v) for v in val]
-                else:
-                    out_val = int(val)
+                out_val = [int(v) for v in val]
             else:
                 if limit is not None:
                     if int(val) > limit:
@@ -1518,7 +2045,8 @@ class Eodms_OrderDownload:
         :param aoi: Determines whether the file is an AOI.
         :type  aoi: boolean
         
-        :return: If the file is invalid (wrong format or does not exist), False is returned. Otherwise the original filename is returned.
+        :return: If the file is invalid (wrong format or does not exist),
+                False is returned. Otherwise the original filename is returned.
         :rtype: str or boolean
         """
         
@@ -1548,12 +2076,14 @@ class Eodms_OrderDownload:
         """
         Checks if a list of filters entered by the user is valid.
         
-        :param filt_items: A list of filters entered by the user for a given collection.
-        :type  filt_items: list
+        :param filt_items: A list of filters entered by the user for a
+                            given collection.
+        :type  filt_items: str
         :param coll_id: The Collection ID of the filter.
         :type  coll_id: str
         
-        :return: If one of the filters is invalid, False is returned. Otherwise the original filters are returned.
+        :return: If one of the filters is invalid, False is returned.
+                Otherwise the original filters are returned.
         :rtype: boolean or str
         """
         
@@ -1568,12 +2098,14 @@ class Eodms_OrderDownload:
             return False
             
         # Check if filter name is valid
-        coll_fields = self.get_fieldMap(coll_id)
+        coll_fields = self.field_mapper.get_fields(coll_id)
+        #coll_fields = self.get_fieldMap(coll_id)
         
         filts = filt_items.split(',')
         
         for f in filts:
-            if not any(x in f.upper() for x in coll_fields.keys()):
+            if not any(x in f.upper()
+                       for x in coll_fields.get_eod_fieldnames()):
                 err_msg = "Filter '%s' is not available for collection " \
                             "'%s'." % (f, coll_id)
                 self.print_support(err_msg)
@@ -1582,7 +2114,7 @@ class Eodms_OrderDownload:
                 
         return filt_items
         
-    def search_orderDownload(self, params):
+    def search_order_download(self, params):
         """
         Runs all steps: querying, ordering and downloading
         
@@ -1605,21 +2137,18 @@ class Eodms_OrderDownload:
         aws_download = params.get('aws')
         
         # Validate AOI
-        if os.path.exists(aoi):
-            aoi_check = self.validate_file(aoi, True)
-            if not aoi_check:
-                err_msg = "The provided input file is not a valid AOI " \
-                        "file. Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
-        else:
-            if not self.eodms_geo.is_wkt(aoi):
-                err_msg = "The provided WKT feature is not valid. " \
-                        "Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
+        if aoi is not None:
+            if os.path.exists(aoi):
+                aoi_check = self.validate_file(aoi, True)
+                if not aoi_check:
+                    msg = "The provided input file is not a valid AOI file."
+                    self.logger.warning(msg)
+                    aoi = None
+            else:
+                if not self.eodms_geo.is_wkt(aoi):
+                    msg = "The provided WKT feature is not valid."
+                    self.logger.warning(msg)
+                    aoi = None
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1644,12 +2173,12 @@ class Eodms_OrderDownload:
             dates = self._parse_dates(dates)
             
         # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters, \
+        query_imgs = self.query_entries(collections, filters=filters,
             aoi=aoi, dates=dates, max_images=max_images)
             
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
-            msg = "Sorry, no results found for given AOI."
+            msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
             self.print_msg("Exiting process.")
             self.print_support()
@@ -1667,8 +2196,8 @@ class Eodms_OrderDownload:
             # Inform the user of the total number of found images and ask if 
             #   they'd like to continue
             if not self.silent:
-                answer = input("\n%s images found intersecting your AOI. " \
-                            "Proceed with ordering? (y/n): " % \
+                answer = input("\n%s images found for your search filters. " 
+                            "Proceed with ordering? (y/n): " %
                             query_imgs.count())
                 if answer.lower().find('n') > -1:
                     self.export_results()
@@ -1680,12 +2209,12 @@ class Eodms_OrderDownload:
             # If the user specified a maximum number of orders, 
             #   trim the results
             if len(collections) == 1:
-                self.print_msg("Proceeding to order and download the first %s " \
-                    "images." % max_images)
+                self.print_msg("Proceeding to order and download the first "
+                               "%s images." % max_images)
                 query_imgs.trim(max_images)
             else:
-                self.print_msg("Proceeding to order and download the first %s " \
-                    "images from each collection." % max_images)
+                self.print_msg("Proceeding to order and download the first "
+                               "%s images from each collection." % max_images)
                 query_imgs.trim(max_images, collections)
                 
         # Parse out AWS
@@ -1783,7 +2312,7 @@ class Eodms_OrderDownload:
         max_images, max_items = self.parse_max(maximum)
         
         # Import and query entries from the CSV
-        query_imgs = self._get_eodmsRes(csv_fn)
+        query_imgs = self._get_eodms_res(csv_fn)
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1948,27 +2477,28 @@ class Eodms_OrderDownload:
         dates = params.get('dates')
         aoi = params.get('input')
         filters = params.get('filters')
-        process = params.get('process')
+        # process = params.get('process')
         maximum = params.get('maximum')
         self.output = params.get('output')
-        priority = params.get('priority')
+        # priority = params.get('priority')
         
         # Validate AOI
-        if os.path.exists(aoi):
-            aoi_check = self.validate_file(aoi, True)
-            if not aoi_check:
-                err_msg = "The provided input file is not a valid AOI " \
-                            "file. Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
-        else:
-            if not self.eodms_geo.is_wkt(aoi):
-                err_msg = "The provided WKT feature is not valid. " \
-                        "Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
+        if aoi is not None:
+            if os.path.exists(aoi):
+                aoi_check = self.validate_file(aoi, True)
+                if not aoi_check:
+                    err_msg = "The provided input file is not a valid AOI " \
+                                "file. Exiting process."
+                    self.print_support()
+                    self.logger.error(err_msg)
+                    sys.exit(1)
+            else:
+                if not self.eodms_geo.is_wkt(aoi):
+                    err_msg = "The provided WKT feature is not valid. " \
+                            "Exiting process."
+                    self.print_support()
+                    self.logger.error(err_msg)
+                    sys.exit(1)
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1993,12 +2523,12 @@ class Eodms_OrderDownload:
             dates = self._parse_dates(dates)
             
         # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters, \
-            aoi=aoi, dates=dates)
+        query_imgs = self.query_entries(collections, filters=filters,
+                                        aoi=aoi, dates=dates)
             
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
-            msg = "Sorry, no results found for given AOI."
+            msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
             self.print_msg("Exiting process.")
             self.print_support()
@@ -2051,7 +2581,8 @@ class Eodms_OrderDownload:
         
     def download_only(self, params):
         """
-        Downloads existing images using the CSV results file from a previous session.
+        Downloads existing images using the CSV results file from a previous
+            session.
         
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
@@ -2082,7 +2613,7 @@ class Eodms_OrderDownload:
         # Get results from Results CSV
         ################################################
         
-        query_imgs = self._get_prevRes(csv_fn)
+        query_imgs = self._get_prev_res(csv_fn)
         
         ################################################
         # Get Existing Orders
@@ -2135,27 +2666,24 @@ class Eodms_OrderDownload:
         dates = params.get('dates')
         aoi = params.get('input')
         filters = params.get('filters')
-        process = params.get('process')
+        # process = params.get('process')
         maximum = params.get('maximum')
         self.output = params.get('output')
-        priority = params.get('priority')
-        
+        # priority = params.get('priority')
+
         # Validate AOI
-        if os.path.exists(aoi):
-            aoi_check = self.validate_file(aoi, True)
-            if not aoi_check:
-                err_msg = "The provided input file is not a valid AOI " \
-                            "file. Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
-        else:
-            if not self.eodms_geo.is_wkt(aoi):
-                err_msg = "The provided WKT feature is not valid. " \
-                        "Exiting process."
-                self.print_support()
-                self.logger.error(err_msg)
-                sys.exit(1)
+        if aoi is not None:
+            if os.path.exists(aoi):
+                aoi_check = self.validate_file(aoi, True)
+                if not aoi_check:
+                    msg = "The provided input file is not a valid AOI file."
+                    self.logger.warning(msg)
+                    aoi = None
+            else:
+                if not self.eodms_geo.is_wkt(aoi):
+                    msg = "The provided WKT feature is not valid."
+                    self.logger.warning(msg)
+                    aoi = None
             
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -2180,12 +2708,13 @@ class Eodms_OrderDownload:
             dates = self._parse_dates(dates)
             
         # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters, \
-            aoi=aoi, dates=dates, max_images=max_images)
+        query_imgs = self.query_entries(collections, filters=filters,
+                                        aoi=aoi, dates=dates,
+                                        max_images=max_images)
             
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
-            msg = "Sorry, no results found for given AOI."
+            msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
             self.print_msg("Exiting process.")
             self.print_support()
@@ -2205,8 +2734,7 @@ class Eodms_OrderDownload:
         # Export results to a CSV file and end process.
         self.export_results()
         
-        print("\n%s images found intersecting your AOI." % \
-            query_imgs.count())
+        print("\n%s images found for your filters." % query_imgs.count())
         print("\nPlease check the results folder for more info.")
         print("\nExiting process.")
         

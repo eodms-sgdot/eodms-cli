@@ -28,8 +28,9 @@ __title__ = 'EODMS RAPI Orderer & Downloader'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
-__description__ = 'Script used to search, order and download imagery from the EODMS using the REST API (RAPI) service.'
-__version__ = '2.1.4'
+__description__ = 'Script used to search, order and download imagery from ' \
+                  'the EODMS using the REST API (RAPI) service.'
+__version__ = '2.2.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -49,19 +50,21 @@ import logging
 import logging.handlers as handlers
 import pathlib
 
-from eodms_rapi import EODMSRAPI
+# from eodms_rapi import EODMSRAPI
 
 from utils import eod as eod_util
+from utils import field
+
+
 # from utils import csv_util
 # from utils import image
 # from utils import geo
-        
+
 class Prompter():
-    
     """
     Class used to prompt the user for all inputs.
     """
-    
+
     def __init__(self, eod, config_info, params):
         """
         Initializer for the Prompter class.
@@ -73,24 +76,24 @@ class Prompter():
         :param params: An empty dictionary of parameters.
         :type  params: dict
         """
-        
+
         self.eod = eod
         self.config_info = config_info
         self.params = params
-        
+
         self.logger = logging.getLogger('eodms')
-        
-        self.choices = {'full': 'Search, order & download images using ' \
-                    'an AOI', \
-                'order_csv': 'Order & download images using EODMS UI ' \
-                    'search results (CSV file)', 
-                'download_only': '''Download existing orders using a CSV file 
+
+        self.choices = {'full': 'Search, order & download images using '
+                                'an AOI and/or filters',
+                        'order_csv': 'Order & download images using EODMS UI '
+                                     'search results (CSV file)',
+                        'download_only': '''Download existing orders using a CSV file 
         from a previous order/download process (files found under "results" 
-        folder)''', 
-                'search_only': 'Run only a search based on an AOI '\
-                    'and input parameters', 
-                'record_id': 'Order and download a single or set of ' \
-                    'images using Record IDs'}
+        folder)''',
+                        'search_only': 'Run only a search based on an AOI '
+                                       'and/or filters',
+                        'record_id': 'Order and download a single or set of '
+                                     'images using Record IDs'}
 
     def ask_aoi(self, input_fn):
         """
@@ -102,24 +105,28 @@ class Prompter():
         :return: The geospatial filename entered by the user.
         :rtype: str
         """
-        
+
         if input_fn is None or input_fn == '':
-                    
-            if self.eod.silent:
-                err_msg = "No AOI file or feature specified. Exiting process."
-                self.eod.print_support(err_msg)
-                self.logger.error(err_msg)
-                sys.exit(1)
-                
-            print("\n--------------Enter Input Geospatial File or Feature--------------")
-            
-            msg = "Enter the full path name of a GML, KML, Shapefile or " \
-                    "GeoJSON containing an AOI or a WKT feature to " \
-                    "restrict the search to a specific location\n"
-            err_msg = "No AOI or feature specified. Please enter a WKT " \
-                    "feature or a valid GML, KML, Shapefile or GeoJSON file"
-            input_fn = self.get_input(msg, err_msg)
-        
+
+            # if self.eod.silent:
+            #     err_msg = "No AOI file or feature specified. Exiting process."
+            #     self.eod.print_support(err_msg)
+            #     self.logger.error(err_msg)
+            #     sys.exit(1)
+
+            if not self.eod.silent:
+                print("\n--------------Enter Input Geospatial File or Feature----"
+                      "----------")
+
+                msg = "Enter the full path name of a GML, KML, Shapefile or " \
+                      "GeoJSON containing an AOI or a WKT feature to " \
+                      "restrict the search to a specific location\n"
+                err_msg = "No AOI or feature specified. Please enter a WKT " \
+                          "feature or a valid GML, KML, Shapefile or GeoJSON file"
+                input_fn = self.get_input(msg, err_msg, required=False)
+
+        if input_fn is None or input_fn == '': return None
+
         if os.path.exists(input_fn):
             if input_fn.find('.shp') > -1:
                 try:
@@ -132,73 +139,79 @@ class Prompter():
                         import osr
                         GDAL_INCLUDED = True
                     except ImportError:
-                        err_msg = "Cannot open a Shapefile without GDAL. Please install " \
-                            "the GDAL Python package if you'd like to use a Shapefile " \
-                            "for your AOI."
-                        self.eod.print_support(err_msg)
-                        self.logger.error(err_msg)
-                        sys.exit(1)
-                        
+                        err_msg = "Cannot open a Shapefile without GDAL. " \
+                                  "Please install " \
+                                  "the GDAL Python package if you'd like to use " \
+                                  "a Shapefile " \
+                                  "for your AOI."
+                        # self.eod.print_support(err_msg)
+                        self.logger.warning(err_msg)
+                        return None
+                        # sys.exit(1)
+
             input_fn = input_fn.strip()
             input_fn = input_fn.strip("'")
             input_fn = input_fn.strip('"')
-            
-            #---------------------------------
+
+            # ---------------------------------
             # Check validity of the input file
-            #---------------------------------
-            
+            # ---------------------------------
+
             input_fn = self.eod.validate_file(input_fn, True)
-            
+
             if not input_fn:
-                sys.exit(1)
-        
+                return None
+
         elif any(s in input_fn for s in self.eod.aoi_extensions):
-            err_msg = "Input file %s does not exist." % os.path.abspath(input_fn)
-            self.eod.print_support(err_msg)
-            self.logger.error(err_msg)
-            sys.exit(1)
-        
+            err_msg = "Input file %s does not exist." \
+                      % os.path.abspath(input_fn)
+            # self.eod.print_support(err_msg)
+            self.logger.warning(err_msg)
+            return None
+
         else:
             if not self.eod.eodms_geo.is_wkt(input_fn):
                 err_msg = "Input feature is not a valid WKT."
-                self.eod.print_support(err_msg)
-                self.logger.error(err_msg)
-                sys.exit(1)
-            
+                # self.eod.print_support(err_msg)
+                self.logger.warning(err_msg)
+                return None
+
         return input_fn
-        
+
     def ask_aws(self, aws):
         """
-        Asks the user if they'd like to download the image using AWS, if applicable.
+        Asks the user if they'd like to download the image using AWS,
+            if applicable.
         
-        :param aws: If already entered by the command-line, True if the user wishes to download from AWS.
+        :param aws: If already entered by the command-line, True if the user
+                    wishes to download from AWS.
         :type  aws: boolean
         
         :return: True if the user wishes to download from AWS.
         :rtype: boolean
         """
-        
+
         if not aws:
-                    
+
             if not self.eod.silent:
                 print("\n--------------Download from AWS?--------------")
-                
-                print("\nSome Radarsat-1 images contain direct download " \
-                    "links to GeoTIFF files in an Open Data AWS " \
-                    "Repository.")
-                
+
+                print("\nSome Radarsat-1 images contain direct download "
+                      "links to GeoTIFF files in an Open Data AWS "
+                      "Repository.")
+
                 msg = "For images that have an AWS link, would you like to " \
-                    "download the GeoTIFFs from the repository instead of " \
-                    "submitting an order to the EODMS? (Yes/No)\n"
+                      "download the GeoTIFFs from the repository instead of " \
+                      "submitting an order to the EODMS? (Yes/No)\n"
                 aws = self.get_input(msg, required=False)
-                
+
                 if aws.lower().find('y') > -1:
                     aws = True
                 else:
                     aws = False
-                
+
         return aws
-        
+
     def ask_collection(self, coll, coll_lst=None):
         """
         Asks the user for the collection(s).
@@ -211,22 +224,22 @@ class Prompter():
         :return: A list of collections entered by the user.
         :rtype: list
         """
-        
+
         if coll is None:
-            
-            if coll_lst is None: 
+
+            if coll_lst is None:
                 coll_lst = self.eod.eodms_rapi.get_collections(True, opt='both')
-                    
+
             if self.eod.silent:
                 err_msg = "No collection specified. Exiting process."
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
-                
+
             # print("coll_lst: %s" % coll_lst)            
-            
+
             print("\n--------------Enter Collection--------------")
-            
+
             # List available collections for this user
             print("\nAvailable Collections:\n")
             for idx, c in enumerate(coll_lst):
@@ -234,36 +247,37 @@ class Prompter():
                 if c['id'] == 'NAPL':
                     msg += ' (open data only)'
                 print(msg)
-            
+
             # Prompted user for number(s) from list
             msg = "Enter the number of a collection from the list " \
-                    "above (for multiple collections, enter each number " \
-                    "separated with a comma)"
+                  "above (for multiple collections, enter each number " \
+                  "separated with a comma)"
             err_msg = "At least one collection must be specified."
             in_coll = self.get_input(msg, err_msg)
-            
+
             # Convert number(s) to collection name(s)
             coll_vals = in_coll.split(',')
-            
-            #---------------------------------------
+
+            # ---------------------------------------
             # Check validity of the collection entry
-            #---------------------------------------
-            
+            # ---------------------------------------
+
             check = self.eod.validate_int(coll_vals, len(coll_lst))
             if not check:
                 err_msg = "A valid Collection must be specified. " \
-                            "Exiting process."
+                          "Exiting process."
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
-            
-            coll = [coll_lst[int(i) - 1]['id'] for i in coll_vals if i.isdigit()]
+
+            coll = [coll_lst[int(i) - 1]['id'] for i in coll_vals
+                    if i.isdigit()]
         else:
             coll = coll.split(',')
-            
-        #------------------------------
+
+        # ------------------------------
         # Check validity of Collections
-        #------------------------------
+        # ------------------------------
         for c in coll:
             check = self.eod.validate_collection(c)
             if not check:
@@ -271,9 +285,9 @@ class Prompter():
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
-                
+
         return coll
-        
+
     def ask_dates(self, dates):
         """
         Asks the user for dates.
@@ -284,32 +298,32 @@ class Prompter():
         :return: The dates entered by the user.
         :rtype: str
         """
-        
+
         # Get the date range
         if dates is None:
-            
+
             if not self.eod.silent:
                 print("\n--------------Enter Date Range--------------")
-                
+
                 msg = "Enter a date range (ex: 20200525-20200630T200950) " \
-                        "or a previous time-frame (24 hours) " \
-                        "(leave blank to search all years)\n"
+                      "or a previous time-frame (24 hours) " \
+                      "(leave blank to search all years)\n"
                 dates = self.get_input(msg, required=False)
-                
-        #-------------------------------
+
+        # -------------------------------
         # Check validity of filter input
-        #-------------------------------
+        # -------------------------------
         if dates is not None and not dates == '':
             dates = self.eod.validate_dates(dates)
-            
+
             if not dates:
                 err_msg = "The dates entered are invalid. "
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
-                
+
         return dates
-                
+
     def ask_filter(self, filters):
         """
         Asks the user for the search filters.
@@ -320,94 +334,102 @@ class Prompter():
         :return: A dictionary containing the filters entered by the user.
         :rtype: dict
         """
-        
+
         if filters is None:
             filt_dict = {}
-            
+
             if not self.eod.silent:
-                
+
                 print("\n--------------Enter Filters--------------")
-                
+
                 # Ask for the filters for the given collection(s)
                 for coll in self.params['collections']:
-                    coll_id = self.eod.get_fullCollId(coll)
-                    
-                    if coll_id in self.eod.get_fieldMap().keys():
-                        field_map = self.eod.get_fieldMap()[coll_id]
-                        
+                    coll_id = self.eod.get_full_collid(coll)
+
+                    field_mapper = field.EodFieldMapper()
+                    coll_fields = field_mapper.get_fields(coll_id)
+
+                    # print("Coll fields: %s" % coll_fields.get_eod_fields())
+
+                    if coll_id in field_mapper.get_colls():
+                        # field_map = self.eod.get_fieldMap()[coll_id]
+
                         print("\nAvailable fields for '%s':" % coll)
-                        for f in field_map.keys():
+                        for f in coll_fields.get_eod_fieldnames():
                             print("  %s" % f)
-                            
-                        print("NOTE: Filters must be entered in the format " \
-                            "of <field_id>=<value>|<value>|... (field " \
-                            "IDs are not case sensitive); separate each " \
-                            "filter with a comma. To see a list " \
-                            "of field choices, enter '? <field_id>'.")
-                            
+
+                        print("NOTE: Filters must be entered in the format "
+                              "of <field_id>=<value>|<value>|... (field "
+                              "IDs are not case sensitive); separate each "
+                              "filter with a comma. To see a list "
+                              "of field choices, enter '? <field_id>'.")
+
                         msg = "Enter the filters you would like to apply " \
-                                "to the search"
-                        
+                              "to the search"
+
                         filt_items = '?'
-                        
+
                         while filt_items.find('?') > -1:
                             filt_items = input("\n->> %s:\n" % msg)
-                            
+
                             if filt_items.find('?') > -1:
                                 field_val = filt_items.replace('?', '').strip()
-                                
-                                field_title = field_map.get(field_val.upper())
-                                
+
+                                field_obj = coll_fields.get_field(field_val)
+                                field_title = field_obj.get_rapi_fieldname()
+
                                 if field_title is None:
                                     print("Not a valid field.")
                                     continue
-                                
-                                field_choices = self.eod.eodms_rapi.\
+
+                                field_choices = self.eod.eodms_rapi. \
                                     get_fieldChoices(coll_id, field_title)
-                                    
+
                                 if isinstance(field_choices, dict):
                                     field_choices = 'any %s value' % \
-                                        field_choices['data_type']
+                                                    field_choices['data_type']
                                 else:
                                     field_choices = ', '.join(field_choices)
-                                    
+
                                 print("\nAvailable choices for '%s': %s" % \
-                                        (field_val, field_choices))
-                        
-                        #filt_items = self.get_input(msg, required=False)
-                        
+                                      (field_val, field_choices))
+
+                        # filt_items = self.get_input(msg, required=False)
+
                         if filt_items == '':
                             filt_dict[coll_id] = []
                         else:
-                            
-                            #-------------------------------
+
+                            # -------------------------------
                             # Check validity of filter input
-                            #-------------------------------
-                            filt_items = self.eod.validate_filters(filt_items, \
-                                            coll_id)
-                            
+                            # -------------------------------
+                            filt_items = self.eod.validate_filters(filt_items,
+                                                                   coll_id)
+
                             if not filt_items:
                                 sys.exit(1)
-                            
+
                             filt_items = filt_items.split(',')
                             # In case the user put collections in filters
                             filt_items = [f.split('.')[1] \
-                                if f.find('.') > -1 \
-                                else f for f in filt_items]
+                                              if f.find('.') > -1 \
+                                              else f for f in filt_items]
                             filt_dict[coll_id] = filt_items
-            
+
         else:
             # User specified in command-line
-            
+
             # Possible formats:
-            #   1. Only one collection: <field_id>=<value>|<value>,<field_id>=<value>&<value>,...
+            #   1. Only one collection: <field_id>=<value>|<value>,
+            #       <field_id>=<value>&<value>,...
             #   2. Multiple collections but only specifying one set of filters:
             #       <coll_id>.<field_id>=<value>|<value>,...
             #   3. Multiple collections with filters:
-            #       <coll_id>.<field_id>=<value>,...<coll_id>.<field_id>=<value>,...
-            
+            #       <coll_id>.<field_id>=<value>,...
+            #       <coll_id>.<field_id>=<value>,...
+
             filt_dict = {}
-            
+
             for coll in self.params['collections']:
                 # Split filters by comma
                 filt_lst = filters.split(',')
@@ -415,30 +437,30 @@ class Prompter():
                     if f == '': continue
                     if f.find('.') > -1:
                         coll, filt_items = f.split('.')
-                        filt_items = self.eod.validate_filters(filt_items, \
-                                        coll)
+                        filt_items = self.eod.validate_filters(filt_items,
+                                                               coll)
                         if not filt_items:
                             sys.exit(1)
-                        coll_id = self.eod.get_fullCollId(coll)
+                        coll_id = self.eod.get_full_collid(coll)
                         if coll_id in filt_dict.keys():
                             coll_filters = filt_dict[coll_id]
                         else:
                             coll_filters = []
-                        coll_filters.append(filt_items.replace('"', '').\
-                            replace("'", ''))
+                        coll_filters.append(filt_items.replace('"', ''). \
+                                            replace("'", ''))
                         filt_dict[coll_id] = coll_filters
                     else:
-                        coll_id = self.eod.get_collIdByName(coll)
+                        coll_id = self.eod.get_collid_by_name(coll)
                         if coll_id in filt_dict.keys():
                             coll_filters = filt_dict[coll_id]
                         else:
                             coll_filters = []
                         coll_filters.append(f)
                         filt_dict[coll_id] = coll_filters
-        
+
         return filt_dict
-        
-    def ask_inputFile(self, input_fn, msg):
+
+    def ask_input_file(self, input_fn, msg):
         """
         Asks the user for the input filename.
         
@@ -450,104 +472,107 @@ class Prompter():
         :return: The input filename.
         :rtype: str
         """
-        
+
         if input_fn is None or input_fn == '':
-            
+
             if self.eod.silent:
                 err_msg = "No CSV file specified. Exiting process."
                 self.eod.print_support(err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
-                
+
             print("\n--------------Enter Input CSV File--------------")
-            
+
             err_msg = "No CSV specified. Please enter a valid CSV file"
             input_fn = self.get_input(msg, err_msg)
-            
+
         if not os.path.exists(input_fn):
             err_msg = "Not a valid CSV file. Please enter a valid CSV file."
             self.eod.print_support(err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
-            
+
         return input_fn
-        
+
     def ask_maximum(self, maximum):
         """
-        Asks the user for maximum number of order items and the number of items per order.
+        Asks the user for maximum number of order items and the number of
+            items per order.
         
         :param maximum: The maximum if already set by the command-line.
         :type  maximum: str
         
-        :return: The maximum number of order items and/or number of items per order, separated by ':'.
+        :return: The maximum number of order items and/or number of items
+                per order, separated by ':'.
         :rtype: str
         """
-        
+
         if maximum is None or maximum == '':
-                        
+
             if not self.eod.silent:
                 if not self.process == 'order_csv':
-                    
+
                     print("\n--------------Enter Maximums--------------")
-                    
+
                     msg = "Enter the total number of images you'd " \
-                        "like to order (leave blank for no limit)"
-                    
+                          "like to order (leave blank for no limit)"
+
                     total_records = self.get_input(msg, required=False)
-                    
-                    #------------------------------------------
+
+                    # ------------------------------------------
                     # Check validity of the total_records entry
-                    #------------------------------------------
-                
+                    # ------------------------------------------
+
                     if total_records == '':
                         total_records = None
                     else:
                         total_records = self.eod.validate_int(total_records)
                         if not total_records:
-                            self.eod.print_msg("WARNING: Total number of images " \
-                                "value not valid. Excluding it.", indent=False)
+                            self.eod.print_msg("WARNING: Total number of "
+                                               "images value not valid. "
+                                               "Excluding it.", indent=False)
                             total_records = None
                         else:
                             total_records = str(total_records)
                 else:
                     total_records = None
-                
+
                 msg = "If you'd like a limit of images per order, " \
-                    "enter a value (EODMS sets a maximum limit of 100)"
-            
+                      "enter a value (EODMS sets a maximum limit of 100)"
+
                 order_limit = self.get_input(msg, required=False)
-                
+
                 if order_limit == '':
                     order_limit = None
                 else:
                     order_limit = self.eod.validate_int(order_limit, 100)
                     if not order_limit:
-                        self.eod.print_msg("WARNING: Order limit value not " \
-                            "valid. Excluding it.", indent=False)
+                        self.eod.print_msg("WARNING: Order limit value not "
+                                           "valid. Excluding it.", indent=False)
                         order_limit = None
                     else:
                         order_limit = str(order_limit)
-                
+
                 maximum = ':'.join(filter(None, [total_records, \
-                            order_limit]))
-                            
+                                                 order_limit]))
+
         else:
-            
+
             if self.process == 'order_csv':
-                
+
                 print("\n--------------Enter Images per Order--------------")
-                
+
                 if maximum.find(':') > -1:
                     total_records, order_limit = maximum.split(':')
                 else:
                     total_records = None
                     order_limit = maximum
-                    
-                maximum = ':'.join(filter(None, [total_records, \
-                                order_limit]))
-                            
+
+                maximum = ':'.join(filter(None, [total_records,
+                                                 order_limit]))
+
         return maximum
-        
+
     def ask_output(self, output):
         """
         Asks the user for the output geospatial file.
@@ -558,19 +583,20 @@ class Prompter():
         :return: The output geospatial filename.
         :rtype: str
         """
-        
+
         if output is None:
-                    
+
             if not self.eod.silent:
-                print("\n--------------Enter Output Geospatial File--------------")
-                
+                print("\n--------------Enter Output Geospatial File-------"
+                      "-------")
+
                 msg = "\nEnter the path of the output geospatial file " \
-                    "(can also be GeoJSON, KML, GML or Shapefile) " \
-                    "(default is no output file)\n"
+                      "(can also be GeoJSON, KML, GML or Shapefile) " \
+                      "(default is no output file)\n"
                 output = self.get_input(msg, required=False)
-                
+
         return output
-        
+
     def ask_priority(self, priority):
         """
         Asks the user for the order priority level
@@ -581,24 +607,23 @@ class Prompter():
         :return: The priority level.
         :rtype: str
         """
-        
+
         priorities = ['low', 'medium', 'high', 'urgent']
-        
+
         if priority is None:
             if not self.eod.silent:
-                
                 print("\n--------------Enter Priority--------------")
-                
+
                 msg = "Enter the priority level for the order ('Low', " \
-                        "'Medium', 'High', 'Urgent') [Medium]"
-                        
+                      "'Medium', 'High', 'Urgent') [Medium]"
+
                 priority = self.get_input(msg, required=False)
-            
+
         if priority is None or priority == '':
             priority = 'Medium'
         elif priority.lower() not in priorities:
-            self.eod.print_msg("WARNING: Not a valid 'priority' entry. " \
-                "Setting priority to 'Medium'.", indent=False)
+            self.eod.print_msg("WARNING: Not a valid 'priority' entry. "
+                               "Setting priority to 'Medium'.", indent=False)
             priority = 'Medium'
 
     def ask_process(self):
@@ -608,63 +633,65 @@ class Prompter():
         :return: The value the process the user has chosen.
         :rtype: str
         """
-        
+
         if self.eod.silent:
             process = 'full'
         else:
             print("\n--------------Choose Process Option--------------")
-        
-            choices = '\n'.join(["  %s: (%s) %s" % (idx + 1, v[0], \
-                        re.sub(r'\s+', ' ', v[1].replace('\n', ''))) \
-                        for idx, v in enumerate(self.choices.items())])
-            
+
+            choices = '\n'.join(["  %s: (%s) %s" % (idx + 1, v[0],
+                                                    re.sub(r'\s+', ' ',
+                                                           v[1].replace('\n',
+                                                                        ''))) \
+                                 for idx, v in enumerate(self.choices.items())])
+
             print("\nWhat would you like to do?\n\n%s\n" % choices)
             process = input("->> Please choose the type of process [1]: ")
-                    
+
             if process == '':
                 process = 'full'
             else:
                 # Set process value and check its validity
-                
+
                 process = self.eod.validate_int(process)
-                
+
                 if not process:
                     err_msg = "Invalid value entered for the 'process' " \
-                                "parameter."
+                              "parameter."
                     self.eod.print_support(err_msg)
                     self.logger.error(err_msg)
                     sys.exit(1)
-                
+
                 if process > len(self.choices.keys()):
                     err_msg = "Invalid value entered for the 'process' " \
-                                "parameter."
+                              "parameter."
                     self.eod.print_support(err_msg)
                     self.logger.error(err_msg)
                     sys.exit(1)
                 else:
                     process = list(self.choices.keys())[int(process) - 1]
-                    
+
         return process
-        
-    def ask_recordIds(self, ids):
+
+    def ask_record_ids(self, ids):
         """
         Asks the user for a single or set of Record IDs.
         
         :param ids: A single or set of Record IDs with their collections.
         :type  ids: str
         """
-        
+
         if ids is None or ids == '':
-            
+
             if not self.eod.silent:
                 print("\n--------------Enter Record ID(s)--------------")
-                
+
                 msg = "\nEnter a single or set of Record IDs. Include the " \
-                        "Collection ID next to each ID separated by a " \
-                        "colon. Separate each ID with a comma. " \
-                        "(Ex: RCMImageProducts:7625368,NAPL:3736869)\n"
+                      "Collection ID next to each ID separated by a " \
+                      "colon. Separate each ID with a comma. " \
+                      "(Ex: RCMImageProducts:7625368,NAPL:3736869)\n"
                 ids = self.get_input(msg, required=False)
-                
+
         return ids
 
     def build_syntax(self):
@@ -674,10 +701,10 @@ class Prompter():
         :return: A string containing the command-line syntax for the script.
         :rtype: str
         """
-        
+
         # Get the actions of the argparse
         actions = self.parser._option_string_actions
-        
+
         syntax_params = []
         for p, pv in self.params.items():
             if pv is None or pv == '': continue
@@ -685,17 +712,17 @@ class Prompter():
             if p == 'eodms_rapi': continue
             action = actions['--%s' % p]
             flag = action.option_strings[0]
-            
+
             if isinstance(pv, list):
                 if flag == '-d':
                     pv = '-'.join(['"%s"' % i if i.find(' ') > -1 else i \
-                            for i in pv ])
+                                   for i in pv])
                 else:
                     pv = ','.join(['"%s"' % i if i.find(' ') > -1 else i \
-                            for i in pv ])
-                            
+                                   for i in pv])
+
             elif isinstance(pv, dict):
-                
+
                 if flag == '-f':
                     filt_lst = []
                     for k, v_lst in pv.items():
@@ -705,7 +732,7 @@ class Prompter():
                             filt_lst.append("%s.%s" % (k, v))
                     if len(filt_lst) == 0: continue
                     pv = '"%s"' % ','.join(filt_lst)
-                    
+
             elif isinstance(pv, bool):
                 if not pv:
                     continue
@@ -714,21 +741,22 @@ class Prompter():
             else:
                 if isinstance(pv, str) and pv.find(' ') > -1:
                     pv = '"%s"' % pv
-            
+
             syntax_params.append('%s %s' % (flag, pv))
-            
-        out_syntax = "python %s %s -s" % (os.path.realpath(__file__), \
-                        ' '.join(syntax_params))
-        
+
+        out_syntax = "python %s %s -s" % (os.path.realpath(__file__),
+                                          ' '.join(syntax_params))
+
         return out_syntax
-        
+
     def get_input(self, msg, err_msg=None, required=True, password=False):
         """
         Gets an input from the user for an argument.
         
         :param msg: The message used to prompt the user.
         :type  msg: str
-        :param err_msg: The message to print when the user enters an invalid input.
+        :param err_msg: The message to print when the user enters an invalid
+                input.
         :type  err_msg: str
         :param required: Determines if the argument is required.
         :type  required: boolean
@@ -738,7 +766,7 @@ class Prompter():
         :return: The value entered by the user.
         :rtype: str
         """
-        
+
         if password:
             # If the argument is for password entry, hide entry
             in_val = getpass.getpass(prompt='->> %s: ' % msg)
@@ -747,37 +775,41 @@ class Prompter():
             if msg.endswith('\n'):
                 output = "\n->> %s:\n" % msg.strip('\n')
             in_val = input(output)
-            
+
         if required and in_val == '':
             eod_util.Eodms_OrderDownload().print_support(err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
-            
+
         return in_val
-        
+
     def print_syntax(self):
         """
         Prints the command-line syntax for the script.
         """
-        
+
         print("\nUse this command-line syntax to run the same parameters:")
         cli_syntax = self.build_syntax()
         print(cli_syntax)
         self.logger.info("Command-line Syntax: %s" % cli_syntax)
-        
+
     def prompt(self):
         """
         Prompts the user for the input options.
         """
-        
-        self.parser = argparse.ArgumentParser(description='Search & Order EODMS ' \
-                            'products.', \
-                            formatter_class=argparse.RawTextHelpFormatter)
-        
-        self.parser.add_argument('-u', '--username', help='The username of ' \
-                        'the EODMS account used for authentication.')
-        self.parser.add_argument('-p', '--password', help='The password of ' \
-                            'the EODMS account used for authentication.')
+
+        self.parser = argparse.ArgumentParser(description='Search & Order '
+                                                          'EODMS products.',
+                                              formatter_class=argparse.RawTextHelpFormatter)
+
+        self.parser.add_argument('-u', '--username', help='The username of ' 
+                                                          'the EODMS account '
+                                                          'used for '
+                                                          'authentication.')
+        self.parser.add_argument('-p', '--password', help='The password of ' 
+                                                          'the EODMS account '
+                                                          'used for '
+                                                          'authentication.')
         input_help = '''An input file (can either be an AOI, a CSV file 
     exported from the EODMS UI), a WKT feature or a set of Record IDs. 
     Valid AOI formats are GeoJSON, KML or Shapefile (Shapefile requires 
@@ -786,21 +818,30 @@ class Prompter():
         coll_help = '''The collection of the images being ordered 
     (separate multiple collections with a comma).'''
         self.parser.add_argument('-c', '--collections', help=coll_help)
-        self.parser.add_argument('-f', '--filters', help='A list of ' \
-                        'filters for a specific collection.')
-        self.parser.add_argument('-l', '--priority', help='The priority ' \
-                        'level of the order.\nOne of "Low", "Medium", ' \
-                        '"High" or "Urgent" (default "Medium").')
+        self.parser.add_argument('-f', '--filters', help='A list of ' 
+                                                         'filters for a '
+                                                         'specific collection.')
+        self.parser.add_argument('-l', '--priority', help='The priority ' 
+                                                          'level of the '
+                                                          'order.\nOne of '
+                                                          '"Low", "Medium", ' 
+                                                          '"High" or "Urgent" '
+                                                          '(default "Medium").')
         self.parser.add_argument('-d', '--dates', help='The date ranges ' \
-                        'for the search.')
+                                                       'for the search.')
         max_help = '''The maximum number of images to order and download 
     and the maximum number of images per order, separated by a colon.'''
         self.parser.add_argument('-m', '--maximum', help=max_help)
-        self.parser.add_argument('-r', '--process', help='The type of ' \
-                        'process to run from this list of options:\n- %s' % \
-                        '\n- '.join(["%s: %s" % (k, v) for k, v in \
-                        self.choices.items()]))
-        output_help = '''The output file path containing the results in a geospatial format.
+        self.parser.add_argument('-r', '--process', help='The type of ' 
+                                                         'process to run from '
+                                                         'this list of '
+                                                         'options:\n- %s' %
+                                                         '\n- '.join(
+                                                             ["%s: %s" % (k, v)
+                                                              for k, v in
+                                                              self.choices.items()]))
+        output_help = '''The output file path containing the results in a 
+                        geospatial format.
 The output parameter can be:
 - None (empty): No output will be created (a results CSV file will still be 
     created in the 'results' folder)
@@ -811,17 +852,17 @@ The output parameter can be:
 - Shapefile: The output will be ESRI Shapefile (requires GDAL Python package) 
     (use extension .shp)'''
         self.parser.add_argument('-o', '--output', help=output_help)
-        self.parser.add_argument('-a', '--aws', action='store_true', \
-                        help='Determines whether to download from AWS ' \
-                        '(only applies to Radarsat-1 imagery).')
-        self.parser.add_argument('-s', '--silent', action='store_true', \
-                        help='Sets process to silent which supresses all ' \
-                        'questions.')
-        self.parser.add_argument('-v', '--version', action='store_true', \
-                        help='Prints the version of the script.')
-        
+        self.parser.add_argument('-a', '--aws', action='store_true',
+                                 help='Determines whether to download from AWS '
+                                      '(only applies to Radarsat-1 imagery).')
+        self.parser.add_argument('-s', '--silent', action='store_true',
+                                 help='Sets process to silent which '
+                                      'supresses all questions.')
+        self.parser.add_argument('-v', '--version', action='store_true',
+                                 help='Prints the version of the script.')
+
         args = self.parser.parse_args()
-        
+
         user = args.username
         password = args.password
         coll = args.collections
@@ -835,21 +876,21 @@ The output parameter can be:
         aws = args.aws
         silent = args.silent
         version = args.version
-        
+
         if version:
             print("%s: Version %s" % (__title__, __version__))
             sys.exit(0)
-        
+
         self.eod.set_silence(silent)
-                
+
         new_user = False
         new_pass = False
-        
+
         if user is None or password is None:
             print("\n--------------Enter EODMS Credentials--------------")
-        
+
         if user is None:
-            
+
             user = self.config_info.get('RAPI', 'username')
             if user == '':
                 msg = "Enter the username for authentication"
@@ -858,11 +899,11 @@ The output parameter can be:
                 new_user = True
             else:
                 print("\nUsing the username set in the 'config.ini' file...")
-                
+
         if password is None:
-            
+
             password = self.config_info.get('RAPI', 'password')
-            
+
             if password == '':
                 msg = 'Enter the password for authentication'
                 err_msg = "A password is required to order images."
@@ -871,226 +912,229 @@ The output parameter can be:
             else:
                 password = base64.b64decode(password).decode("utf-8")
                 print("Using the password set in the 'config.ini' file...")
-                
+
         if new_user or new_pass:
             suggestion = ''
             if self.eod.silent:
                 suggestion = " (it is best to store the credentials if " \
-                            "you'd like to run the script in silent mode)"
-            
-            answer = input("\n->> Would you like to store the credentials " \
-                    "for a future session%s? (y/n):" % suggestion)
+                             "you'd like to run the script in silent mode)"
+
+            answer = input("\n->> Would you like to store the credentials " 
+                           "for a future session%s? (y/n):" % suggestion)
             if answer.lower().find('y') > -1:
                 self.config_info.set('RAPI', 'username', user)
-                pass_enc = base64.b64encode(password.encode("utf-8")).decode("utf-8")
-                self.config_info.set('RAPI', 'password', \
-                    str(pass_enc))
-                
-                config_fn = os.path.join(os.path.dirname(\
-                            os.path.abspath(__file__)), \
-                            'config.ini')
+                pass_enc = base64.b64encode(password.encode("utf-8")).decode(
+                    "utf-8")
+                self.config_info.set('RAPI', 'password',
+                                     str(pass_enc))
+
+                config_fn = os.path.join(os.path.dirname(
+                    os.path.abspath(__file__)),
+                    'config.ini')
                 cfgfile = open(config_fn, 'w')
                 self.config_info.write(cfgfile, space_around_delimiters=False)
                 cfgfile.close()
-        
+
         # Get number of attempts when querying the RAPI
         self.eod.set_attempts(self.config_info.get('RAPI', 'access_attempts'))
-        
+
         self.eod.create_session(user, password)
-        
-        self.params = {'collections': coll, 
-                        'dates': dates, 
-                        'input': inputs, 
-                        'maximum': maximum, 
-                        'process': process}
-        
+
+        self.params = {'collections': coll,
+                       'dates': dates,
+                       'input': inputs,
+                       'maximum': maximum,
+                       'process': process}
+
         print()
         coll_lst = self.eod.eodms_rapi.get_collections(True)
-        
+
         if coll_lst is None:
             msg = "Failed to retrieve a list of available collections."
             self.logger.error(msg)
             self.eod.print_support(msg)
             sys.exit(1)
-        
-        print("\n(For more information on the following prompts, please refer" \
-                " to the README file.)")
-        
+
+        print("\n(For more information on the following prompts, please refer"
+              " to the README file.)")
+
         #########################################
         # Get the type of process
         #########################################
-        
+
         if process is None or process == '':
             self.process = self.ask_process()
         else:
             self.process = process
-                    
+
         self.params['process'] = self.process
-        
+
         if self.process == 'full':
-            
-            self.logger.info("Searching, ordering and downloading images " \
-                        "using an AOI.")
-                        
-            # Get the AOI file
-            inputs = self.ask_aoi(inputs)
-            self.params['input'] = inputs
-            
+
+            self.logger.info("Searching, ordering and downloading images "
+                             "using an AOI.")
+
             # Get the collection(s)
             coll = self.ask_collection(coll)
             self.params['collections'] = coll
-            
+
             # If Radarsat-1, ask user if they want to download from AWS
             if 'Radarsat1' in coll:
                 aws = self.ask_aws(aws)
                 self.params['aws'] = aws
-            
+
+            # Get the AOI file
+            inputs = self.ask_aoi(inputs)
+            self.params['input'] = inputs
+
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
             self.params['filters'] = filt_dict
-            
+
             # Get the date(s)
             dates = self.ask_dates(dates)
             self.params['dates'] = dates
-            
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
-            
+
             # Get the maximum(s)
             maximum = self.ask_maximum(maximum)
             self.params['maximum'] = maximum
-            
-            # Get the priority
-            priority = self.ask_priority(priority)       
-            self.params['priority'] = priority
-            
-            # Print command-line syntax for future processes
-            self.print_syntax()
-            
-            self.eod.search_orderDownload(self.params)
-            
-        elif self.process == 'order_csv':
-            
-            self.logger.info("Ordering and downloading images using results " \
-                        "from a CSV file.")
-            
-            #########################################
-            # Get the CSV file
-            #########################################
-            
-            msg = "Enter the full path of the CSV file exported "\
-                        "from the EODMS UI website"
-            inputs = self.ask_inputFile(inputs, msg)
-            self.params['input'] = inputs
-            
-            # Get the output geospatial filename
-            output = self.ask_output(output)
-            self.params['output'] = output
-            
-            # Get the maximum(s)
-            maximum = self.ask_maximum(maximum)
-            self.params['maximum'] = maximum
-            
+
             # Get the priority
             priority = self.ask_priority(priority)
             self.params['priority'] = priority
-            
+
             # Print command-line syntax for future processes
             self.print_syntax()
-            
+
+            self.eod.search_order_download(self.params)
+
+        elif self.process == 'order_csv':
+
+            self.logger.info("Ordering and downloading images using results "
+                             "from a CSV file.")
+
+            #########################################
+            # Get the CSV file
+            #########################################
+
+            msg = "Enter the full path of the CSV file exported " \
+                  "from the EODMS UI website"
+            inputs = self.ask_input_file(inputs, msg)
+            self.params['input'] = inputs
+
+            # Get the output geospatial filename
+            output = self.ask_output(output)
+            self.params['output'] = output
+
+            # Get the maximum(s)
+            maximum = self.ask_maximum(maximum)
+            self.params['maximum'] = maximum
+
+            # Get the priority
+            priority = self.ask_priority(priority)
+            self.params['priority'] = priority
+
+            # Print command-line syntax for future processes
+            self.print_syntax()
+
             # Run the order_csv process
             self.eod.order_csv(self.params)
-            
+
         elif self.process == 'download_aoi' or self.process == 'search_only':
-            
+
             if self.process == 'download_aoi':
                 self.logger.info("Downloading existing orders using an AOI.")
             else:
                 self.logger.info("Searching for images using an AOI.")
-            
-            # Get the AOI file
-            inputs = self.ask_aoi(inputs)
-            self.params['input'] = inputs
-            
+
             # Get the collection(s)
             coll = self.ask_collection(coll)
             self.params['collections'] = coll
-            
+
+            # Get the AOI file
+            inputs = self.ask_aoi(inputs)
+            self.params['input'] = inputs
+
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
             self.params['filters'] = filt_dict
-            
+
             # Get the date(s)
             dates = self.ask_dates(dates)
             self.params['dates'] = dates
-            
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
-            
+
             # Print command-line syntax for future processes
             self.print_syntax()
-            
+
             if self.process == 'download_aoi':
                 self.eod.download_aoi(self.params)
             else:
                 self.eod.search_only(self.params)
-            
+
         elif self.process == 'download_only':
             # Download existing orders using CSV file from previous session
-            
-            self.logger.info("Downloading images using results from a CSV " \
-                        "file from a previous session.")
-            
+
+            self.logger.info("Downloading images using results from a CSV "
+                             "file from a previous session.")
+
             # Get the CSV file
             msg = "Enter the full path of the CSV Results file from a " \
-                "previous session"
-            inputs = self.ask_inputFile(inputs, msg)
+                  "previous session"
+            inputs = self.ask_input_file(inputs, msg)
             self.params['input'] = inputs
-            
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
-            
+
             # Print command-line syntax for future processes
             self.print_syntax()
-            
+
             # Run the download_only process
             self.eod.download_only(self.params)
-            
+
         elif self.process == 'record_id':
             # Order and download a single or set of images using Record IDs
-            
-            self.logger.info("Ordering and downloading images using " \
-                "Record IDs")
-            
-            inputs = self.ask_recordIds(inputs)
+
+            self.logger.info("Ordering and downloading images using "
+                             "Record IDs")
+
+            inputs = self.ask_record_ids(inputs)
             self.params['input'] = inputs
-            
+
             # If Radarsat-1, ask user if they want to download from AWS
             if 'Radarsat1' in inputs:
                 aws = self.ask_aws(aws)
                 self.params['aws'] = aws
-            
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
-            
+
             # Get the priority
             priority = self.ask_priority(priority)
             self.params['priority'] = priority
-            
+
             # Print command-line syntax for future processes
             self.print_syntax()
-            
+
             # Run the order_csv process
             self.eod.order_ids(self.params)
-        
+
         else:
             self.eod.print_support("That is not a valid process type.")
-            self.logger.error("An invalid parameter was entered during the prompt.")
+            self.logger.error(
+                "An invalid parameter was entered during the prompt.")
             sys.exit(1)
+
 
 def get_config():
     """
@@ -1099,16 +1143,17 @@ def get_config():
     :return: The information extracted from the config file.
     :rtype: configparser.ConfigParser
     """
-    
+
     config = configparser.ConfigParser()
-    
-    config_fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-                'config.ini')
-    
+
+    config_fn = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             'config.ini')
+
     config.read(config_fn)
-    
+
     return config
-    
+
+
 def print_support(err_str=None):
     """
     Prints the 2 different support message depending if an error occurred.
@@ -1116,136 +1161,136 @@ def print_support(err_str=None):
     :param err_str: The error string to print along with support.
     :type  err_str: str
     """
-    
+
     eod_util.Eodms_OrderDownload().print_support(err_str)
-        
+
+
 def main():
-    
     cmd_title = "EODMS Orderer-Downloader"
     os.system("title " + cmd_title)
     sys.stdout.write("\x1b]2;%s\x07" % cmd_title)
-    
+
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
         print("\n  %s, version %s\n" % (__title__, __version__))
         sys.exit(0)
-    
-    print("\n##########################################################" \
-            "#######################")
+
+    print("\n##########################################################"
+          "#######################")
     print("# %s                           " \
-            "                    #" % __title__)
-    print("############################################################" \
-            "#####################")
+          "                    #" % __title__)
+    print("############################################################"
+          "#####################")
 
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
     start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     try:
-        
+
         params = {}
-        
+
         # Set all the parameters from the config.ini file
         config_info = get_config()
-        
+
         abs_path = os.path.abspath(__file__)
         download_path = config_info.get('Script', 'downloads')
         if download_path == '':
-            download_path = os.path.join(os.path.dirname(abs_path), \
-                                    'downloads')
+            download_path = os.path.join(os.path.dirname(abs_path), 'downloads')
         elif not os.path.isabs(download_path):
-            download_path = os.path.join(os.path.dirname(abs_path), \
-                                    download_path)
-            
+            download_path = os.path.join(os.path.dirname(abs_path),
+                                         download_path)
+
         print("\nImages will be downloaded to '%s'." % download_path)
-        
+
         res_path = config_info.get('Script', 'results')
         if res_path == '':
-            res_path = os.path.join(os.path.dirname(abs_path), \
-                                    'results')
+            res_path = os.path.join(os.path.dirname(abs_path), 'results')
         elif not os.path.isabs(res_path):
-            res_path = os.path.join(os.path.dirname(abs_path), \
+            res_path = os.path.join(os.path.dirname(abs_path),
                                     res_path)
-            
+
         log_loc = config_info.get('Script', 'log')
         if log_loc == '':
-            log_loc = os.path.join(os.path.dirname(abs_path), \
-                                    'log', 'logger.log')
+            log_loc = os.path.join(os.path.dirname(abs_path), 'log',
+                                   'logger.log')
         elif not os.path.isabs(log_loc):
-            log_loc = os.path.join(os.path.dirname(abs_path), \
-                                    log_loc)
-            
+            log_loc = os.path.join(os.path.dirname(abs_path),
+                                   log_loc)
+
         # Setup logging
         logger = logging.getLogger('EODMSRAPI')
         # logger.setLevel(logging.INFO)
-        
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - ' \
-                    '%(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
-        
+
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
+                                      '%(message)s',
+                                      datefmt='%Y-%m-%d %I:%M:%S %p')
+
         if not os.path.exists(os.path.dirname(log_loc)):
-            pathlib.Path(os.path.dirname(log_loc)).mkdir(\
+            pathlib.Path(os.path.dirname(log_loc)).mkdir(
                 parents=True, exist_ok=True)
-        
-        logHandler = handlers.RotatingFileHandler(log_loc, \
-                        maxBytes=500000, backupCount=2)
+
+        logHandler = handlers.RotatingFileHandler(log_loc,
+                                                  maxBytes=500000,
+                                                  backupCount=2)
         logHandler.setLevel(logging.DEBUG)
         logHandler.setFormatter(formatter)
         logger.addHandler(logHandler)
-        
+
         logger.info("Script start time: %s" % start_str)
-        
+
         # for k,v in logging.Logger.manager.loggerDict.items()  :
-            # print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) ) 
-            # if not isinstance(v, logging.PlaceHolder):
-                # for h in v.handlers:
-                    # print('     +++',str(h.__class__)[8:-2] )
-            
+        # print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) )
+        # if not isinstance(v, logging.PlaceHolder):
+        # for h in v.handlers:
+        # print('     +++',str(h.__class__)[8:-2] )
+
         timeout_query = config_info.get('Script', 'timeout_query')
         timeout_order = config_info.get('Script', 'timeout_order')
-        
+
         try:
             timeout_query = float(timeout_query)
         except ValueError:
             timeout_query = 60.0
-            
+
         try:
             timeout_order = float(timeout_order)
         except ValueError:
             timeout_order = 180.0
-            
+
         keep_results = config_info.get('Script', 'keep_results')
         keep_downloads = config_info.get('Script', 'keep_downloads')
-            
+
         # Get the total number of results per query
         max_results = config_info.get('RAPI', 'max_results')
-        
-        eod = eod_util.Eodms_OrderDownload(download=download_path, 
-                                results=res_path, log=log_loc, 
-                                timeout_query=timeout_query, 
-                                timeout_order=timeout_order, 
-                                max_res=max_results, 
-                                keep_results=keep_results, 
-                                keep_downloads=keep_downloads)
-            
+
+        eod = eod_util.Eodms_OrderDownload(download=download_path,
+                                           results=res_path, log=log_loc,
+                                           timeout_query=timeout_query,
+                                           timeout_order=timeout_order,
+                                           max_res=max_results,
+                                           keep_results=keep_results,
+                                           keep_downloads=keep_downloads)
+
         print("\nCSV Results will be placed in '%s'." % eod.results_path)
-        
+
         eod.cleanup_folders()
-        
+
         #########################################
         # Get authentication if not specified
         #########################################
-        
+
         prmpt = Prompter(eod, config_info, params)
-        
+
         prmpt.prompt()
-            
+
         print("\nProcess complete.")
-        
+
         eod.print_support()
-    
+
     except KeyboardInterrupt as err:
         msg = "Process ended by user."
         print("\n%s" % msg)
-        
+
         if 'eod' in vars() or 'eod' in globals():
             eod.print_support()
             eod.export_results()
@@ -1262,5 +1307,6 @@ def main():
             eod_util.Eodms_OrderDownload().print_support(trc_back)
         logger.error(traceback.format_exc())
 
+
 if __name__ == '__main__':
-	sys.exit(main())
+    sys.exit(main())

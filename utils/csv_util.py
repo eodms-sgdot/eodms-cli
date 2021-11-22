@@ -48,6 +48,7 @@ class EODMS_CSV:
         self.csv_fn = csv_fn
         self.open_csv = None
         self.header = None
+        self.rapi = self.eod.eodms_rapi
         
         self.logger = logging.getLogger('eodms')
         
@@ -86,11 +87,11 @@ class EODMS_CSV:
                 satellite = rec[k]
                 
                 # Set the collection ID name
-                self.coll_id = self.eod.get_collIdByName(satellite)
+                self.coll_id = self.eod.get_collid_by_name(satellite)
                 
                 if self.coll_id is None:
                     # Check if the collection is supported in this script
-                    self.coll_id = self.eod.get_collIdByName(satellite, True)
+                    self.coll_id = self.eod.get_collid_by_name(satellite, True)
                     msg = "The satellite/collection '%s' is not supported " \
                             "with this script at this time." % self.coll_id
                     print("\n%s" % msg)
@@ -156,7 +157,7 @@ class EODMS_CSV:
             for img in results.get_images():
                 self.export_record(img)
         elif isinstance(results, image.OrderList):
-            for oi in results.get_orderItems():
+            for oi in results.get_order_items():
                 self.export_record(oi)
             
         # Close the CSV
@@ -177,12 +178,12 @@ class EODMS_CSV:
             return in_lines
         except Exception:
             err_msg = "The input file cannot be read."
-            print_support(err_msg)
+            self.eod.print_support(err_msg)
             logger = logging.getLogger('eodms')
             logger.error(err_msg)
             sys.exit(1)
         
-    def import_eodmsCSV(self):
+    def import_eodms_csv(self):
         
         """
         Imports the rows from the EODMS CSV file into a dictionary of records.
@@ -215,7 +216,7 @@ class EODMS_CSV:
     Order Key
     Image Info
     A combination of Downlink Segment ID and Order Key'''
-            eod.print_support(err_msg)
+            self.eod.print_support(err_msg)
             sys.exit(1)
         
         # Populate the list of records from the input file
@@ -246,7 +247,7 @@ class EODMS_CSV:
         
         return records
         
-    def import_resCSV(self, in_fn):
+    def import_res_csv(self, in_fn):
         """
         Imports images from a previous results CSV file.
         
@@ -258,16 +259,16 @@ class EODMS_CSV:
         
         records = self.import_csv()
         
-        self.orders = eodms.OrderList()
+        self.orders = image.OrderList(self.eod)
         
         for o_item in records:
-            res = self.eodms_rapi.get_order(o_item['itemId'])
+            res = self.rapi.get_order(o_item['itemId'])
             
             # Check for any errors
-            if isinstance(res, QueryError):
+            if isinstance(res, self.rapi.QueryError):
                 err_msg = "Query to RAPI failed due to '%s'" % \
                             res.get_msg()
-                common.print_support(err_msg)
+                self.eod.print_support(err_msg)
                 self.logger.warning(err_msg)
                 continue
             
@@ -275,19 +276,19 @@ class EODMS_CSV:
             
             if len(res_json['items']) == 0:
                 err_msg = "No Order exists with Item ID %s." % o_item['itemId']
-                common.print_support(err_msg)
+                self.eod.print_support(err_msg)
                 self.logger.warning(err_msg)
                 continue
             
-            order_item = eodms.OrderItem()
+            order_item = image.OrderItem(self.eod)
             order_item.parse_record(res_json['items'][0])
             
             order_item.set_metadata('downloaded', o_item['downloaded'])
             
-            self.orders.update_order(order_item.get_orderId(), \
+            self.orders.update_order(order_item.get_order_id(),
                 order_item)
         
-    def import_csv(self, required=[]):
+    def import_csv(self):
         """
         Imports the rows from the CSV file into a dictionary of records.
         
@@ -320,7 +321,8 @@ class EODMS_CSV:
         """
         Opens a CSV file.
         
-        :param mode: The mode of the file object ('r' for read, 'a' to append and 'w' to write).
+        :param mode: The mode of the file object ('r' for read, 'a' to append
+                and 'w' to write).
         :type  mode: str
         """
         

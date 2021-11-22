@@ -25,12 +25,13 @@
 ##############################################################################
 
 import json
-import traceback
+# import traceback
 import os
-import re
+# import re
 
-from . import csv_util
+# from . import csv_util
 from . import spatial
+
 
 def to_camelCase(in_str):
     """
@@ -42,34 +43,35 @@ def to_camelCase(in_str):
     :return: The input string converted to camelCase.
     :rtype: str
     """
-    
+
     if in_str.find(' ') > -1:
         words = in_str.split(' ')
     elif in_str.find('_') > -1:
         words = in_str.split('_')
     else:
         return in_str.lower()
-        
+
     first_word = words[0].lower()
     other_words = ''.join(w.title() for w in words[1:])
-    
+
     return '%s%s' % (first_word, other_words)
+
 
 class Image:
     """
     The class to store information for an EODMS image.
     """
-    
+
     def __init__(self):
         """
         Initializer of the Image class.
         """
         self.metadata = {}
-        self.geometry = {'array': None,  
-                        'geom': None, 
-                        'wkt': None}
-        
-    def get_recordId(self):
+        self.geometry = {'array': None,
+                         'geom': None,
+                         'wkt': None}
+
+    def get_record_id(self):
         """
         Gets the Record Id of the image.
         
@@ -77,8 +79,8 @@ class Image:
             str or int: The Record Id of the image.
         """
         return self.metadata['recordId']
-        
-    def get_collId(self):
+
+    def get_coll_Id(self):
         """
         Gets the Collection Id of the image.
         
@@ -87,7 +89,7 @@ class Image:
         """
         # print("self.metadata: %s" % self.metadata)
         return self.metadata['collectionId']
-        
+
     def get_title(self):
         """
         Gets the Title of the image.
@@ -96,8 +98,8 @@ class Image:
         :rtype: str
         """
         return self.metadata['title']
-        
-    def get_collTitle(self):
+
+    def get_coll_title(self):
         """
         Gets the Collection Title of the image.
         
@@ -105,7 +107,7 @@ class Image:
         :rtype: str
         """
         return self.metadata['collectionTitle']
-        
+
     def get_date(self):
         """
         Gets the Date of the image.
@@ -113,15 +115,15 @@ class Image:
         :return: The Date of the image.
         :rtype: str
         """
-        
-        date_fields = ['Acquisition Start Date', 'acquisition_start_date', \
-                        'acquisitionStartDate', 'Date', 'date']
-                        
+
+        date_fields = ['Acquisition Start Date', 'acquisition_start_date',
+                       'acquisitionStartDate', 'Date', 'date']
+
         for f in date_fields:
             found = self.metadata.get(f)
             if found is not None:
                 return found
-    
+
     def get_url(self):
         """
         Gets the URL of the image.
@@ -130,7 +132,7 @@ class Image:
         :rtype: str
         """
         return self.metadata['thisRecordUrl']
-        
+
     def get_metadata(self, entry=None):
         """
         Gets either the metadata or an entry of the metadata.
@@ -138,32 +140,34 @@ class Image:
         :param entry: The field (key) of the metadata entry to return.
         :type  entry: str
         
-        :return: If an entry is specified, the entry value will be returned. Otherwise all entries in the metadata will be returned.
+        :return: If an entry is specified, the entry value will be returned.
+            Otherwise all entries in the metadata will be returned.
         :rtype: str
         """
         if entry is None:
             return self.metadata
-        
+
         if entry not in self.metadata.keys(): return None
-        
+
         return self.metadata[entry]
-        
+
     def set_metadata(self, val, entry=None):
         """
         Sets either a value for a specific metadata entry or replaces the 
             entire metadata with the val.
             
-        :param val: A value for a specific metadata entry or a dictionary containing a set of metadata entries.
+        :param val: A value for a specific metadata entry or a dictionary
+                containing a set of metadata entries.
         :type  val: str or dict
         :param entry: The field (key) of a specific metadata entry.
         :type  entry: str
         """
-        
+
         if entry is None:
             self.metadata = val
         else:
             self.metadata[entry] = val
-            
+
     def get_fields(self):
         """
         Gets a list of all metadata keys.
@@ -171,33 +175,34 @@ class Image:
         :return: A list of the metadata keys.
         :rtype: list
         """
-        
+
         return self.metadata.keys()
-        
+
     def get_geometry(self, output='array'):
         """
         Gets (and sets) the geometry of the image.
         
-        :param output: Specifies the type of geometry to return, can be 'array', 'wkt' or 'geom'.
+        :param output: Specifies the type of geometry to return, can be
+                    'array', 'wkt' or 'geom'.
         :type  output: str
         
         :return: The geometry of the image in the specified format.
         :rtype: str or ogr.Geometry
         """
-        
+
         geo_util = spatial.Geo()
-        
+
         if self.geometry[output] is None:
             geometry = self.metadata['geometry']
-            
+
             if isinstance(geometry, str):
                 geometry = json.loads(geometry.replace("'", '"'))
-            
+
             coords = geometry['coordinates']
-            self.geometry[output] = geo_util.convert_imageGeom(coords, output)
-            
+            self.geometry[output] = geo_util.convert_image_geom(coords, output)
+
         return self.geometry[output]
-        
+
     def parse_record(self, in_rec):
         """
         Parses a JSON image record from the RAPI and sets the image.
@@ -205,19 +210,20 @@ class Image:
         :param in_rec: A dictionary from a JSON record from the RAPI.
         :type  in_rec: dict
         """
-        
+
         geo_util = spatial.Geo()
-        
+
         # print("in_rec: %s" % in_rec)
-        
+
         self.metadata = {}
         for k, v in in_rec.items():
-            if k == 'metadata2': continue
+            if k == 'metadata2':
+                continue
             elif k == 'geometry':
                 self.metadata['geometry'] = v
                 coords = v['coordinates']
-                self.metadata['wkt'] = geo_util.convert_imageGeom(\
-                                            coords, 'wkt')
+                self.metadata['wkt'] = geo_util.convert_image_geom(
+                    coords, 'wkt')
             elif k == 'metadata':
                 if isinstance(v, list):
                     for m in v:
@@ -225,7 +231,7 @@ class Image:
                         self.metadata[key] = m[1]
             else:
                 self.metadata[k] = v
-                
+
     def parse_row(self, row):
         """
         Parses a row entry from a CSV file.
@@ -233,14 +239,16 @@ class Image:
         :param row: A dictionary from an entry in a CSV file.
         :type  row: dict
         """
-        
+
         self.metadata = row
-        
+
+
 class ImageList:
     """
-    Class used to hold multiple Image objects and contain methods for accessing the list of objects.
+    Class used to hold multiple Image objects and contain methods for
+        accessing the list of objects.
     """
-    
+
     def __init__(self, eod):
         """
         The initializer of the ImageList class.
@@ -250,13 +258,14 @@ class ImageList:
         """
         self.eod = eod
         self.img_lst = []
-        
+
     def add_image(self, in_image):
         """
         Adds an Image object to the ImageList.
         
         :param in_image: The image to add to the ImageList. If the image is 
-            a JSON dictionary from the RAPI, it'll be converted to an Image object.
+            a JSON dictionary from the RAPI, it'll be converted to an Image
+            object.
         :type  in_image: dict or Image
         """
         image = in_image
@@ -264,7 +273,7 @@ class ImageList:
             image = Image()
             image.parse_record(in_image)
         self.img_lst.append(image)
-        
+
     def add_images(self, in_imgs):
         """
         Adds a set of Image objects to the ImageList.
@@ -272,9 +281,9 @@ class ImageList:
         :param in_imgs: A list of Image objects to add.
         :type  in_imgs: list
         """
-        
+
         self.img_lst += in_imgs
-        
+
     def combine(self, img_list):
         """
         Combines the Images of an ImageList object to the list of Images.
@@ -282,10 +291,10 @@ class ImageList:
         :param img_list: The ImageList object.
         :type  img_list: image.ImageList
         """
-        
+
         imgs = img_list.get_images()
         self.add_images(imgs)
-        
+
     def count(self):
         """
         Returns the number of images in the ImageList.
@@ -293,9 +302,9 @@ class ImageList:
         :return: The number of images in the ImageList (img_lst).
         :rtype: int
         """
-        
+
         return len(self.img_lst)
-    
+
     def get_fields(self):
         """
         Gets the list of metadata fields from the first Image.
@@ -303,15 +312,15 @@ class ImageList:
         :return: A list of metadata fields of the first Image.
         :rtype: list
         """
-        
+
         fields = []
         for img in self.img_lst:
             fields += img.get_fields()
-            
+
         fields = list(set(fields))
-        
+
         return fields
-        
+
     def get_image(self, record_id):
         """
         Gets a specific Image based on the Record Id.
@@ -322,11 +331,11 @@ class ImageList:
         :return: The Image corresponding with the given Record Id.
         :rtype: Image
         """
-        
+
         for img in self.img_lst:
-            if img.get_recordId() == str(record_id):
+            if img.get_record_id() == str(record_id):
                 return img
-                
+
     def get_images(self):
         """
         Gets all Images in the ImageList.
@@ -334,9 +343,9 @@ class ImageList:
         :return: Returns the list of Images.
         :rtype: list
         """
-        
+
         return self.img_lst
-        
+
     def get_raw(self):
         """
         Gets the raw metadata of all the Images.
@@ -344,9 +353,9 @@ class ImageList:
         :return: A list of dictionaries of each Image's metadata.
         :rtype: list
         """
-        
+
         return [i.get_metadata() for i in self.img_lst]
-                
+
     def get_subset(self, start=None, end=None):
         """
         Gets a subset of Images from the ImageList.
@@ -356,10 +365,11 @@ class ImageList:
         :param end: The ending position of the subset of the img_lst.
         :type  end: int
         
-        :return: Returns a subset of the img_lst based on the start and end values.
+        :return: Returns a subset of the img_lst based on the start and end
+                values.
         :rtype: list
         """
-        
+
         if start is None and end is None:
             return self.img_lst
         elif start is None:
@@ -368,15 +378,16 @@ class ImageList:
             return self.img_lst[start:]
         else:
             return self.img_lst[start:end]
-    
+
     def ingest_results(self, results, isCsv=False):
         """
-        Ingests a list of results from the RAPI, converts them to Images and adds them to the img_lst.
+        Ingests a list of results from the RAPI, converts them to Images and
+            adds them to the img_lst.
             
         :param results: A list of image records from the RAPI.
         :type  results: list
         """
-        
+
         for r in results:
             if 'errors' in r.keys(): continue
             image = Image()
@@ -387,7 +398,7 @@ class ImageList:
             # print("metadata: %s" % image.metadata)
             # answer = input("Press enter...")
             self.img_lst.append(image)
-            
+
     def trim(self, val, collections=None):
         """
         Permanently trims the list of Images in the img_lst.
@@ -395,33 +406,33 @@ class ImageList:
         :param val: The upper limit of the trim.
         :type  val: str or int
         """
-        
+
         if isinstance(val, str):
             val = int(val)
-        
+
         if collections is None:
             self.img_lst = self.img_lst[:val]
         else:
             new_imgs = []
             for c in collections:
-                imgs = [img for img in self.img_lst if img.get_metadata()\
-                        ['collectionId'] == c]
+                imgs = [img for img in self.img_lst if img.get_metadata()
+                ['collectionId'] == c]
                 if len(imgs) < val:
                     new_imgs += imgs
                 else:
                     new_imgs += imgs[:val]
-            
+
             self.img_lst = new_imgs
-                
-        
+
     def update_downloads(self, download_items):
         """
         Updates the download information of a list of specific Images.
         
-        :param download_items: A list of images after the download from the RAPI (each image must contain a recordId).
+        :param download_items: A list of images after the download from the
+            RAPI (each image must contain a recordId).
         :type  download_items: list
         """
-        
+
         for item in download_items:
             rec_id = item.get('recordId')
             img = self.get_image(rec_id)
@@ -441,9 +452,10 @@ class ImageList:
             if params is not None:
                 for k, v in params.items():
                     img.set_metadata(v, k)
-                    
+
             # print("params: %s" % params)
-    
+
+
 class OrderItem:
     """
     Class used to hold information for an EODMS order item.
@@ -465,7 +477,7 @@ class OrderItem:
         self.eod = eod
         self.image = image
         self.metadata = {}
-        
+
     def get_fields(self):
         """
         Gets the metadata fields of the OrderItem.
@@ -474,7 +486,7 @@ class OrderItem:
         :rtype: list
         """
         return list(self.metadata.keys())
-                         
+
     def get_image(self):
         """
         Gets the Image related to the Order Item.
@@ -483,7 +495,7 @@ class OrderItem:
         :rtype: Image
         """
         return self.image
-        
+
     def set_image(self, image):
         """
         Sets the Image object for the Order Item.
@@ -492,8 +504,8 @@ class OrderItem:
         :type  image: Image
         """
         self.image = image
-        
-    def get_recordId(self):
+
+    def get_record_id(self):
         """
         Gets the Record Id of the Image contained in the OrderItem.
         
@@ -501,8 +513,8 @@ class OrderItem:
         :rtyp: int
         """
         return self.metadata['recordId']
-        
-    def get_itemId(self):
+
+    def get_item_id(self):
         """
         Gets the Order Item Id of the OrderItem.
         
@@ -510,8 +522,8 @@ class OrderItem:
         :rtype: int
         """
         return self.metadata['itemId']
-        
-    def get_orderId(self):
+
+    def get_order_id(self):
         """
         Gets the Order Id of the OrderItem.
         
@@ -519,7 +531,7 @@ class OrderItem:
         :rtype: int
         """
         return self.metadata['orderId']
-        
+
     def get_metadata(self, entry=None):
         """
         Gets either the metadata or an entry of the metadata of the Order Item.
@@ -527,44 +539,48 @@ class OrderItem:
         :param entry: The field (key) of the metadata entry to return.
         :type  entry: str
         
-        :return: If an entry is specified, the entry value will be returned. Otherwise all entries in the metadata will be returned.
+        :return: If an entry is specified, the entry value will be returned.
+                Otherwise all entries in the metadata will be returned.
         :rtype: str
         """
         if entry is None:
             return self.metadata
-        
+
         if entry in self.metadata.keys():
             return self.metadata[entry]
-            
-    def get_downloadPath(self, relpath=False):
+
+    def get_download_path(self, relpath=False):
         """
         Gets the download paths of the Order Item.
         
-        :param relpath: Determines whether to return the relative path of the download path.
+        :param relpath: Determines whether to return the relative path of the
+                download path.
         :type  relpath: boolean
         
-        :return: Either the absolute path or the relative path of the download location.
+        :return: Either the absolute path or the relative path of the
+                download location.
         :rtype: str
         """
-        
+
         if 'downloadPaths' not in self.metadata.keys(): return None
-        
+
         paths = self.metadata['downloadPaths']
         path_str = json.dumps(paths)
         path_json = json.loads(path_str)
-        
+
         download_path = path_json[0]['local_destination']
-        
+
         if relpath:
             return os.path.relpath(download_path)
         else:
             return download_path
-        
+
     def add_image(self, in_image):
         """
         Adds an image to the OrderItem.
          
-        :param in_image: The image to add to the OrderItem. It can either be an Image object or a JSON dictionary from the RAPI.
+        :param in_image: The image to add to the OrderItem. It can either be
+                an Image object or a JSON dictionary from the RAPI.
         :type  in_image: dict or Image
         """
         image = in_image
@@ -572,17 +588,17 @@ class OrderItem:
             image = Image()
             image.parse_record(in_image)
         self.image = image
-        
+
         # print("self.image.get_collId(): %s" % self.image.get_collId())
-        
-        fields = self.eod.eodms_rapi.get_collections()[self.image.get_collId()]\
-                ['fields']
-        
+
+        fields = self.eod.eodms_rapi.get_collections()[
+            self.image.get_coll_Id()]['fields']
+
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
-        self.metadata['imageMetadata'] = self.image.get_metadata(\
-                                        'metadataUrl')
+        self.metadata['imageMetadata'] = self.image.get_metadata(
+            'metadataUrl')
         self.metadata['imageStartDate'] = self.image.get_date()
-        
+
     def parse_record(self, in_rec):
         """
         Parses the metadata of a specific image.
@@ -590,7 +606,7 @@ class OrderItem:
         :param in_rec: The image record dictionary from the RAPI.
         :type  in_rec: dict
         """
-        
+
         self.metadata = {}
         for k, v in in_rec.items():
             if k == 'parameters':
@@ -598,20 +614,20 @@ class OrderItem:
                     self.metadata[m] = mv
             else:
                 self.metadata[k] = v
-                
+
         if self.image is not None:
-            self.metadata['imageUrl'] = self.image.get_metadata(\
-                                        'thisRecordUrl')
-            self.metadata['imageMetadata'] = self.image.get_metadata(\
-                                        'metadataUrl')
+            self.metadata['imageUrl'] = self.image.get_metadata(
+                'thisRecordUrl')
+            self.metadata['imageMetadata'] = self.image.get_metadata(
+                'metadataUrl')
             self.metadata['imageStartDate'] = self.image.get_date()
-            
+
             if 'dateRapiOrdered' not in self.metadata.keys():
-                self.metadata['dateRapiOrdered'] = self.image.get_metadata(\
-                                                'dateRapiOrdered')
-            self.metadata['orderSubmitted'] = self.image.get_metadata(\
-                                                'orderSubmitted')
-    
+                self.metadata['dateRapiOrdered'] = self.image.get_metadata(
+                    'dateRapiOrdered')
+            self.metadata['orderSubmitted'] = self.image.get_metadata(
+                'orderSubmitted')
+
     def print_item(self, tabs=1):
         """
         Prints the metadata information of the OrderItem.
@@ -619,14 +635,14 @@ class OrderItem:
         :param tabs: The amount of tabs used in the print.
         :type  tabs: int
         """
-        
+
         print("\n\tOrder Item Id: %s" % self.metadata['itemId'])
         print("\tOrder Id: %s" % self.metadata['orderId'])
         print("\tRecord Id: %s" % self.metadata['recordId'])
         for m, v in self.metadata.items():
             if m == 'itemId' or m == 'orderId' or m == 'recordId': continue
             print("%s%s: %s" % (str('\t' * tabs), m, v))
-    
+
     def set_metadata(self, key, val):
         """
         Sets a specific metadata item.
@@ -636,12 +652,14 @@ class OrderItem:
         :param val: The value of the metadata entry.
         :type  val: str
         """
-        
+
         self.metadata[key] = val
+
 
 class Order:
     """
-    Class used to hold information for an EODMS order. The class also contains a list of order items for the order.
+    Class used to hold information for an EODMS order. The class also
+        contains a list of order items for the order.
     """
 
     def __init__(self, order_id):
@@ -653,7 +671,7 @@ class Order:
         """
         self.order_items = []
         self.order_id = order_id
-        
+
     def count(self):
         """
         Gets the number of Order Items for the order.
@@ -662,7 +680,7 @@ class Order:
         :rtyp: int
         """
         return len(self.order_items)
-        
+
     def get_fields(self):
         """
         Gets the unique list of OrderItem metadata fields.
@@ -673,20 +691,20 @@ class Order:
         fields = []
         for items in self.order_items:
             fields += items.get_fields()
-            
+
         fields = list(set(fields))
-        
+
         field_order = ['recordId', 'orderId', 'itemId', 'collectionId']
-        
+
         out_fields = field_order
-        
+
         for f in fields:
             if f not in field_order:
                 out_fields.append(f)
-        
+
         return out_fields
-        
-    def get_orderId(self):
+
+    def get_order_id(self):
         """
         Gets the Order Id of the order.
         
@@ -694,7 +712,7 @@ class Order:
         :rtype: str
         """
         return self.order_id
-        
+
     def add_item(self, order_item):
         """
         Adds an OrderItem to the order_item list.
@@ -703,7 +721,7 @@ class Order:
         :type  order_item: OrderItem
         """
         self.order_items.append(order_item)
-        
+
     def get_items(self):
         """
         Gets the list of OrderItems.
@@ -712,7 +730,7 @@ class Order:
         :rtype: list
         """
         return self.order_items
-        
+
     def get_item(self, item_id):
         """
         Gets a specific OrderItem object from the list of order items.
@@ -724,10 +742,10 @@ class Order:
         :rtype: OrderItem
         """
         for item in self.order_items:
-            if item.get_itemId() == item_id:
+            if item.get_item_id() == item_id:
                 return item
-                
-    def get_itemByImageId(self, record_id):
+
+    def get_item_by_image_id(self, record_id):
         """
         Gets the Order Item based on the Order Item's Record Id.
         
@@ -739,9 +757,9 @@ class Order:
         """
         for item in self.order_items:
             img = item.get_image()
-            if img.get_itemId() == record_id:
+            if img.get_item_id() == record_id:
                 return item
-                
+
     def get_image(self, record_id):
         """
         Gets the Image based from the Order Item based on the Record Id.
@@ -755,10 +773,10 @@ class Order:
         for item in self.order_items:
             img = item.get_image()
             if img is None: return None
-            if img.get_recordId() == record_id:
+            if img.get_record_id() == record_id:
                 return img
-                
-    def get_imageByItemId(self, item_id):
+
+    def get_image_by_item_id(self, item_id):
         """
         Gets an Image from an OrderItem based on the Order Item Id.
         
@@ -769,10 +787,10 @@ class Order:
         :rtype: Image
         """
         for item in self.order_items:
-            if item.get_itemId() == item_id:
+            if item.get_item_id() == item_id:
                 return item.get_image()
-        
-    def get_recordIds(self):
+
+    def get_record_ids(self):
         """
         Gets a list of all Record Ids for the Order.
         
@@ -781,10 +799,10 @@ class Order:
         """
         record_ids = []
         for item in self.order_items:
-            record_ids.append(item.get_recordId())
-            
+            record_ids.append(item.get_record_id())
+
         return record_ids
-        
+
     def print_items(self, tabs=1):
         """
         Prints the metadata information of all the OrderItems.
@@ -794,7 +812,7 @@ class Order:
         """
         for item in self.order_items:
             item.print_item(tabs)
-        
+
     def replace_item(self, in_item):
         """
         Replaces an existing Order Item with a given Order Item.
@@ -804,14 +822,14 @@ class Order:
         """
         lst_idx = -1
         for idx, item in enumerate(self.order_items):
-            rec_id = item.get_recordId()
-            if int(rec_id) == int(in_item.get_recordId()):
+            rec_id = item.get_record_id()
+            if int(rec_id) == int(in_item.get_record_id()):
                 lst_idx = idx
                 break
-        
+
         if lst_idx > -1:
             self.order_items[lst_idx] = in_item
-            
+
     def trim_items(self, val):
         """
         Permanently trims the list of Order Items in the order_items.
@@ -821,12 +839,13 @@ class Order:
         """
         self.order_items = self.order_items[:val]
 
+
 class OrderList:
-    
     """
-    Class used to hold a list of Order objects and methods to access the order list.
+    Class used to hold a list of Order objects and methods to access the
+        order list.
     """
-    
+
     def __init__(self, eod, img_lst=None):
         """
         Initializer for the OrderList object.
@@ -834,7 +853,7 @@ class OrderList:
         self.eod = eod
         self.order_lst = []
         self.img_lst = img_lst
-        
+
     def check_downloaded(self):
         """
         Checks if one of the Order Items has been downloaded.
@@ -848,9 +867,9 @@ class OrderList:
                 if 'downloaded' in mdata.keys():
                     if str(mdata['downloaded']) == 'True':
                         return True
-                            
+
         return False
-        
+
     def count(self):
         """
         Gets the number of Orders in the order_lst.
@@ -859,7 +878,7 @@ class OrderList:
         :rtype: int
         """
         return len(self.order_lst)
-        
+
     def count_items(self):
         """
         Gets the number of Order Items in the order_lst.
@@ -870,9 +889,9 @@ class OrderList:
         count = 0
         for o in self.order_lst:
             count += o.count()
-            
+
         return count
-        
+
     def get_fields(self):
         """
         Gets the fields of the Orders.
@@ -880,17 +899,17 @@ class OrderList:
         :return: A list of fields.
         :rtype: list
         """
-        
+
         fields = []
         for order in self.order_lst:
             fields += order.get_fields()
-            
+
         fields = list(set(fields))
-        
+
         out_fields = self.eod.sort_fields(fields)
-        
+
         return out_fields
-        
+
     def get_images(self):
         """
         Gets a list of images from the Order Items in self.order_lst
@@ -898,40 +917,40 @@ class OrderList:
         :return: A list of images.
         :rtype: list
         """
-        
+
         images = []
         for order in self.order_lst:
             o_items = order.get_items()
             images.append(o_items.get_image())
-            
+
         return images
-        
+
     def get_latest(self):
         """
         Returns the orders sorted by date.
         """
-        
+
         duplicates = {}
-        
+
         for order in self.order_lst:
-            order_id = order.get_orderId()
-            key = '-'.join(order.get_recordIds())
-            
+            order_id = order.get_order_id()
+            key = '-'.join(order.get_record_ids())
+
             orders = []
             if key in duplicates.keys():
                 orders = duplicates[key]
-                
+
             orders.append(order_id)
             duplicates[key] = orders
-        
+
         if duplicates:
-        
-            dups_sort = {x:sorted(duplicates[x]) for x in duplicates.keys()}
-            
+
+            dups_sort = {x: sorted(duplicates[x]) for x in duplicates.keys()}
+
             for k, v in dups_sort.items():
                 for d in v[1:]:
                     self.remove_order(d)
-        
+
     def get_order(self, order_id):
         """
         Gets a particular Order with a given Order Id.
@@ -943,9 +962,9 @@ class OrderList:
         :rtype: Order
         """
         for o in self.order_lst:
-            if o.get_orderId() == order_id:
+            if o.get_order_id() == order_id:
                 return o
-                
+
     def get_orders(self):
         """
         Gets all the Orders in the order_lst.
@@ -954,8 +973,8 @@ class OrderList:
         :rtype: list
         """
         return self.order_lst
-        
-    def get_orderItem(self, itemId):
+
+    def get_order_item(self, itemId):
         """
         Gets a particular Order Item with a given Order Item Id.
         
@@ -967,21 +986,21 @@ class OrderList:
         """
         for o in self.order_lst:
             return o.get_item(itemId)
-            
-    def get_orderItems(self):
+
+    def get_order_items(self):
         """
         Gets a list of Order Items in the OrderList.
         
         :return: A list of OrderItem objects.
         :rtype: list
         """
-        
+
         out_list = []
         for o in self.order_lst:
             out_list += o.get_items()
-        
+
         return out_list
-            
+
     def get_raw(self):
         """
         Gets the raw metadata of all Order Items.
@@ -989,13 +1008,13 @@ class OrderList:
         :return: A list of the raw metadata for each Order Items.
         :rtype: list
         """
-        
+
         out_items = []
         for order in self.order_lst:
             out_items += [i.get_metadata() for i in order.get_items()]
-            
+
         return out_items
-    
+
     def ingest_results(self, results):
         """
         Ingests the order results from the RAPI.
@@ -1003,28 +1022,28 @@ class OrderList:
         :param results: A list of order results from the RAPI.
         :type  results: list
         """
-        
+
         if isinstance(results, dict):
             if 'items' in results.keys():
                 results = results['items']
-        
+
         for idx, r in enumerate(results):
-            
+
             # First get the image from the ImageList
             record_id = r['recordId']
             image = None
             if self.img_lst is not None:
                 image = self.img_lst.get_image(record_id)
                 image.set_metadata('Yes', 'orderSubmitted')
-            
+
             # Create the OrderItem
             order_item = OrderItem(self.eod)
             if image is not None:
                 order_item.add_image(image)
             order_item.parse_record(r)
-            
+
             # Update or create Order
-            order_id = order_item.get_orderId()
+            order_id = order_item.get_order_id()
             order = self.get_order(order_id)
             if order is None:
                 order = Order(order_id)
@@ -1032,35 +1051,36 @@ class OrderList:
                 self.order_lst.append(order)
             else:
                 order.add_item(order_item)
-                
+
             if image is not None:
                 img_mdata = image.get_metadata()
                 image.set_metadata(order_id, 'orderId')
                 image.set_metadata(r.get('status'), 'orderStatus')
                 image.set_metadata(r.get('statusMessage'), 'statusMessage')
-                image.set_metadata(r.get('dateRapiOrdered'), \
-                                    'dateRapiOrdered')
-    
-    def print_orderItems(self, tabs=1):
+                image.set_metadata(r.get('dateRapiOrdered'),
+                                   'dateRapiOrdered')
+
+    def print_order_items(self, tabs=1):
         """
         Prints all the Order Items to the terminal.
         
         :param tabs: The number of tabs to include in the printed statement.
         :type  tabs: int
         """
-        
+
         print("Number of orders: %s" % len(self.order_lst))
-        
+
         for o in self.order_lst:
-            ord_id = o.get_orderId()
+            ord_id = o.get_order_id()
             item_count = o.count()
             o.print_items()
-    
+
     def print_orders(self, as_var=False, tabs=1):
         """
         Gets or prints all the Order Ids to the terminal.
         
-        :param as_var: If True, return the message as a variable, False to print to screen.
+        :param as_var: If True, return the message as a variable, False to
+                print to screen.
         :type  as_var: boolean
         :param tabs: The number of tabs to include in the printed statement.
         :type  tabs: int
@@ -1068,17 +1088,17 @@ class OrderList:
         :return: If as_var is True, returns the printed statement as a variable.
         :rtype: str
         """
-        
+
         out_str = ''
         for o in self.order_lst:
-            ord_id = o.get_orderId()
+            ord_id = o.get_order_id()
             item_count = o.count()
             out_str += "\n%sOrder Id: %s\n" % (str('\t' * tabs), ord_id)
-            
+
         if as_var: return out_str
-        
+
         print(out_str)
-    
+
     def remove_order(self, order_id):
         """
         Removes a specific order from the order_lst.
@@ -1087,11 +1107,11 @@ class OrderList:
         :type  order_id: str or int
         """
         for idx, o in enumerate(self.order_lst):
-            if o.get_orderId() == order_id:
+            if o.get_order_id() == order_id:
                 rem_idx = idx
-                
+
         self.order_lst.pop(rem_idx)
-        
+
     def replace_item(self, order_id, item_obj):
         """
         Replaces a specific order from the order_lst.
@@ -1102,9 +1122,9 @@ class OrderList:
         :type  item_obj: Order
         """
         for order in self.order_lst:
-            if int(order.get_orderId()) == int(order_id):
+            if int(order.get_order_id()) == int(order_id):
                 order.replace_item(item_obj)
-                
+
     def trim_items(self, max_images):
         """
         Trims the number of images in each order.
@@ -1112,7 +1132,7 @@ class OrderList:
         :param max_images: The image limit.
         :type  max_images: int
         """
-        
+
         if max_images is not None:
             counter = int(max_images)
             for order in self.order_lst:
@@ -1124,7 +1144,7 @@ class OrderList:
                 else:
                     order.trim_items(counter)
                     counter = 0
-                    
+
     def update_order(self, orderId, order_item):
         """
         Updates a specific Order Item.
@@ -1134,12 +1154,12 @@ class OrderList:
         :param order_item: The Order Item to add.
         :type  order_item: OrderItem
         """
-        
+
         for order in self.order_lst:
-            if int(order.get_orderId()) == int(orderId):
+            if int(order.get_order_id()) == int(orderId):
                 order.add_item(order_item)
                 return None
-                
+
         new_order = Order(orderId)
         new_order.add_item(order_item)
         self.order_lst.append(new_order)
