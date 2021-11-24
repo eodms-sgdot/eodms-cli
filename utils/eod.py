@@ -251,7 +251,7 @@ class Eodms_OrderDownload:
 
         return out_filters
         
-    def _get_eodms_res(self, csv_fn):
+    def _get_eodms_res(self, csv_fn, max_images=None):
         """
         Gets the results based on a CSV file from the EODMS UI.
         
@@ -273,6 +273,10 @@ class Eodms_OrderDownload:
         
         # Group all records into different collections
         coll_recs = {}
+
+        if max_images is not None and not max_images == '':
+            csv_res = csv_res[:max_images]
+
         for rec in csv_res:
             # Get the collection ID for the image
             collection = rec.get('collectionId')
@@ -284,6 +288,9 @@ class Eodms_OrderDownload:
             rec_lst.append(rec)
             
             coll_recs[collection] = rec_lst
+
+        # for k, v in coll_recs.items():
+        #     print("%s: %s number of images" % (k, len(v)))
         
         all_res = []
         
@@ -309,17 +316,27 @@ class Eodms_OrderDownload:
                     for k in rec.keys():
                         if k.lower() in ['sequence id', 'record id',
                                          'recordid']:
-                            # If the Sequence ID is in the image dictionary, 
+                            # If the Sequence ID is in the image dictionary,
                             #   return it as the Record ID
                             id_val = rec.get(k)
                     
                     if id_val is None:
                         # If the Order Key is in the image dictionary,
                         #   use it to query the RAPI
-                        
-                        order_key = rec.get('order key')
-                        
-                        if order_key is None or order_key == '':
+
+                        if 'order key' in [k.lower() for k in rec.keys()]:
+                            order_key = rec.get('order key')
+                            f = {'Order Key': ('=', [order_key])}
+
+                        elif 'image id' in [k.lower() for k in rec.keys()]:
+                            img_id = rec.get('image id')
+                            f = {'Image Id': ('=', [img_id])}
+
+                        elif 'dataset id' in [k.lower() for k in rec.keys()]:
+                            dat_id = rec.get('dataset id')
+                            f = {'Dataset Id': ('=', [dat_id])}
+
+                        else:
                             msg = "Cannot determine record " \
                                   "ID for Result Number '%s' in the CSV " \
                                   "file. Skipping image." \
@@ -327,13 +344,34 @@ class Eodms_OrderDownload:
                             self.print_msg("WARNING: %s" % msg)
                             self.logger.warning(msg)
                             continue
-                            
-                        f = {'Order Key': ('=', [order_key])}
-                        
+
                         # Send a query to the EODMSRAPI object
                         self.eodms_rapi.search(coll_id, f)
                         
                         res = self.eodms_rapi.get_results()
+
+                        if len(res) == 0:
+                            # For RCM, RADARSAT-1 and RADARSAT-2 satellites,
+                            #   check RCMScienceData, Radarsat1RawProducts,
+                            #   and Radarsat2RawProducts
+
+                            if coll_id == 'RCMImageProducts':
+                                coll_id = 'RCMScienceData'
+                            elif coll_id == 'RCMScienceData':
+                                coll_id = 'RCMImageProducts'
+                            elif coll_id == 'Radarsat1':
+                                coll_id = 'Radarsat1RawProducts'
+                            elif coll_id == 'Radarsat1RawProducts':
+                                coll_id = 'Radarsat1'
+                            elif coll_id == 'Radarsat2':
+                                coll_id = 'Radarsat2RawProducts'
+                            elif coll_id == 'Radarsat2RawProducts':
+                                coll_id = 'Radarsat2'
+                            else:
+                                continue
+
+                            self.eodms_rapi.search(coll_id, f)
+                            res = self.eodms_rapi.get_results()
                         
                         if len(res) > 1:
                             msg = "Cannot determine record " \
@@ -343,7 +381,7 @@ class Eodms_OrderDownload:
                             self.print_msg("WARNING: %s" % msg)
                             self.logger.warning(msg)
                             continue
-                        
+
                         all_res += res
                         
                         continue
@@ -2312,7 +2350,14 @@ class Eodms_OrderDownload:
         max_images, max_items = self.parse_max(maximum)
         
         # Import and query entries from the CSV
-        query_imgs = self._get_eodms_res(csv_fn)
+        query_imgs = self._get_eodms_res(csv_fn, max_images)
+
+        # if max_images is not None and max_images == '':
+        #     # If the user specified a maximum number of orders,
+        #     #   trim the results
+        #     self.print_msg("Proceeding to order and download the first "
+        #                    "%s images." % max_images)
+        #     query_imgs.trim(max_images)
         
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -2389,6 +2434,14 @@ class Eodms_OrderDownload:
             coll, rec_id = i.split(':')
             
             res = self.eodms_rapi.get_record(coll, rec_id)
+
+            if isinstance(res, dict) and 'errors' in res.keys():
+                if res.get('errors').find('404 Client Error') > -1:
+                    err_msg = "Image with Record ID %s could not be found in " \
+                              "Collection %s." % (rec_id, coll)
+                    self.logger.error(err_msg)
+                    self.print_support(err_msg)
+                    sys.exit(1)
             
             all_res.append(res)
         
@@ -2489,15 +2542,15 @@ class Eodms_OrderDownload:
                 if not aoi_check:
                     err_msg = "The provided input file is not a valid AOI " \
                                 "file. Exiting process."
-                    self.print_support()
                     self.logger.error(err_msg)
+                    self.print_support()
                     sys.exit(1)
             else:
                 if not self.eodms_geo.is_wkt(aoi):
                     err_msg = "The provided WKT feature is not valid. " \
                             "Exiting process."
-                    self.print_support()
                     self.logger.error(err_msg)
+                    self.print_support()
                     sys.exit(1)
             
         # Create info folder, if it doesn't exist, to store CSV files
@@ -2531,8 +2584,8 @@ class Eodms_OrderDownload:
             msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
             self.print_msg("Exiting process.")
-            self.print_support()
             self.logger.warning(msg)
+            self.print_support()
             sys.exit(1)
             
         # Update the self.cur_res for output results
@@ -2597,8 +2650,8 @@ class Eodms_OrderDownload:
         if csv_fn.find('.csv') == -1:
             msg = "The provided input file is not a CSV file. " \
                 "Exiting process."
-            self.print_support(msg)
             self.logger.error(msg)
+            self.print_support(msg)
             sys.exit(1)
         
         # Create info folder, if it doesn't exist, to store CSV files
@@ -2717,8 +2770,8 @@ class Eodms_OrderDownload:
             msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
             self.print_msg("Exiting process.")
-            self.print_support()
             self.logger.warning(msg)
+            self.print_support()
             sys.exit(1)
             
         # Update the self.cur_res for output results

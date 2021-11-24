@@ -800,7 +800,8 @@ class Prompter():
 
         self.parser = argparse.ArgumentParser(description='Search & Order '
                                                           'EODMS products.',
-                                              formatter_class=argparse.RawTextHelpFormatter)
+                                              formatter_class=argparse.
+                                              RawTextHelpFormatter)
 
         self.parser.add_argument('-u', '--username', help='The username of ' 
                                                           'the EODMS account '
@@ -1176,8 +1177,8 @@ def main():
 
     print("\n##########################################################"
           "#######################")
-    print("# %s                           " \
-          "                    #" % __title__)
+    print("# %s v%s                           " \
+          "             #" % (__title__, __version__))
     print("############################################################"
           "#####################")
 
