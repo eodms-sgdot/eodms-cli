@@ -388,6 +388,7 @@ class ImageList:
         :type  results: list
         """
 
+        # print("results: %s" % results)
         for r in results:
             if 'errors' in r.keys(): continue
             image = Image()

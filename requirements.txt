@@ -2,3 +2,4 @@ py-eodms-rapi>=0.2.0
 requests>=2.23.0
 dateparser>=1.0.0
 geomet>=0.3.0
+click>=8.0.1

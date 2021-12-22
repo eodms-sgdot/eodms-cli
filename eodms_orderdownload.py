@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '2.2.1'
+__version__ = '2.3.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -39,6 +39,7 @@ import os
 import re
 # import requests
 import argparse
+import click
 import traceback
 import getpass
 import datetime
@@ -60,12 +61,24 @@ from utils import field
 # from utils import image
 # from utils import geo
 
+proc_choices = {'full': 'Search, order & download images using '
+                                'an AOI and/or filters',
+                        'order_csv': 'Order & download images using EODMS UI '
+                                     'search results (CSV file)',
+                        'download_only': '''Download existing orders using a CSV file 
+        from a previous order/download process (files found under "results" 
+        folder)''',
+                        'search_only': 'Run only a search based on an AOI '
+                                       'and/or filters',
+                        'record_id': 'Order and download a single or set of '
+                                     'images using Record IDs'}
+
 class Prompter():
     """
     Class used to prompt the user for all inputs.
     """
 
-    def __init__(self, eod, config_info, params):
+    def __init__(self, eod, config_info, params, click):
         """
         Initializer for the Prompter class.
         
@@ -80,20 +93,9 @@ class Prompter():
         self.eod = eod
         self.config_info = config_info
         self.params = params
+        self.click = click
 
         self.logger = logging.getLogger('eodms')
-
-        self.choices = {'full': 'Search, order & download images using '
-                                'an AOI and/or filters',
-                        'order_csv': 'Order & download images using EODMS UI '
-                                     'search results (CSV file)',
-                        'download_only': '''Download existing orders using a CSV file 
-        from a previous order/download process (files found under "results" 
-        folder)''',
-                        'search_only': 'Run only a search based on an AOI '
-                                       'and/or filters',
-                        'record_id': 'Order and download a single or set of '
-                                     'images using Record IDs'}
 
     def ask_aoi(self, input_fn):
         """
@@ -144,10 +146,8 @@ class Prompter():
                                   "the GDAL Python package if you'd like to use " \
                                   "a Shapefile " \
                                   "for your AOI."
-                        # self.eod.print_support(err_msg)
                         self.logger.warning(err_msg)
                         return None
-                        # sys.exit(1)
 
             input_fn = input_fn.strip()
             input_fn = input_fn.strip("'")
@@ -324,6 +324,35 @@ class Prompter():
 
         return dates
 
+    def ask_fields(self, csv_fields, fields):
+
+        if csv_fields is not None:
+            return csv_fields.split(',')
+
+        srch_fields = []
+        for f in fields:
+            if f.lower() in self.eod.csv_unique:
+                srch_fields.append(f.lower())
+
+        if len(srch_fields) > 0: return srch_fields
+
+        if not self.eod.silent:
+            print("\n--------------Enter CSV Unique Fields--------------")
+
+            print("\nAvailable fields in the CSV file:")
+            for f in fields:
+                print("  %s" % f)
+
+            msg = "Enter the fields from the CSV file which can be used to " \
+                  "determine the images (separate each with a comma)"
+            err_msg = "At least one collection must be specified."
+            input_fields = self.get_input(msg) #, err_msg)
+
+            srch_fields = [f.strip() for f in input_fields.split(',')]
+
+            return srch_fields
+
+
     def ask_filter(self, filters):
         """
         Asks the user for the search filters.
@@ -348,8 +377,6 @@ class Prompter():
 
                     field_mapper = field.EodFieldMapper()
                     coll_fields = field_mapper.get_fields(coll_id)
-
-                    # print("Coll fields: %s" % coll_fields.get_eod_fields())
 
                     if coll_id in field_mapper.get_colls():
                         # field_map = self.eod.get_fieldMap()[coll_id]
@@ -376,7 +403,7 @@ class Prompter():
                                 field_val = filt_items.replace('?', '').strip()
 
                                 field_obj = coll_fields.get_field(field_val)
-                                field_title = field_obj.get_rapi_fieldname()
+                                field_title = field_obj.get_rapi_field_title()
 
                                 if field_title is None:
                                     print("Not a valid field.")
@@ -393,8 +420,6 @@ class Prompter():
 
                                 print("\nAvailable choices for '%s': %s" % \
                                       (field_val, field_choices))
-
-                        # filt_items = self.get_input(msg, required=False)
 
                         if filt_items == '':
                             filt_dict[coll_id] = []
@@ -643,7 +668,7 @@ class Prompter():
                                                     re.sub(r'\s+', ' ',
                                                            v[1].replace('\n',
                                                                         ''))) \
-                                 for idx, v in enumerate(self.choices.items())])
+                                 for idx, v in enumerate(proc_choices.items())])
 
             print("\nWhat would you like to do?\n\n%s\n" % choices)
             process = input("->> Please choose the type of process [1]: ")
@@ -662,14 +687,14 @@ class Prompter():
                     self.logger.error(err_msg)
                     sys.exit(1)
 
-                if process > len(self.choices.keys()):
+                if process > len(proc_choices.keys()):
                     err_msg = "Invalid value entered for the 'process' " \
                               "parameter."
                     self.eod.print_support(err_msg)
                     self.logger.error(err_msg)
                     sys.exit(1)
                 else:
-                    process = list(self.choices.keys())[int(process) - 1]
+                    process = list(proc_choices.keys())[int(process) - 1]
 
         return process
 
@@ -702,16 +727,20 @@ class Prompter():
         :rtype: str
         """
 
-        # Get the actions of the argparse
-        actions = self.parser._option_string_actions
+        click_ctx = click.get_current_context(silent=True)
+
+        cmd_params = click_ctx.to_info_dict()['command']['params']
+        flags = {}
+        for p in cmd_params:
+            flags[p['name']] = p['opts']
 
         syntax_params = []
         for p, pv in self.params.items():
             if pv is None or pv == '': continue
             if p == 'session': continue
             if p == 'eodms_rapi': continue
-            action = actions['--%s' % p]
-            flag = action.option_strings[0]
+
+            flag = flags[p][1]
 
             if isinstance(pv, list):
                 if flag == '-d':
@@ -798,85 +827,20 @@ class Prompter():
         Prompts the user for the input options.
         """
 
-        self.parser = argparse.ArgumentParser(description='Search & Order '
-                                                          'EODMS products.',
-                                              formatter_class=argparse.
-                                              RawTextHelpFormatter)
-
-        self.parser.add_argument('-u', '--username', help='The username of ' 
-                                                          'the EODMS account '
-                                                          'used for '
-                                                          'authentication.')
-        self.parser.add_argument('-p', '--password', help='The password of ' 
-                                                          'the EODMS account '
-                                                          'used for '
-                                                          'authentication.')
-        input_help = '''An input file (can either be an AOI, a CSV file 
-    exported from the EODMS UI), a WKT feature or a set of Record IDs. 
-    Valid AOI formats are GeoJSON, KML or Shapefile (Shapefile requires 
-    the GDAL Python package).'''
-        self.parser.add_argument('-i', '--input', help=input_help)
-        coll_help = '''The collection of the images being ordered 
-    (separate multiple collections with a comma).'''
-        self.parser.add_argument('-c', '--collections', help=coll_help)
-        self.parser.add_argument('-f', '--filters', help='A list of ' 
-                                                         'filters for a '
-                                                         'specific collection.')
-        self.parser.add_argument('-l', '--priority', help='The priority ' 
-                                                          'level of the '
-                                                          'order.\nOne of '
-                                                          '"Low", "Medium", ' 
-                                                          '"High" or "Urgent" '
-                                                          '(default "Medium").')
-        self.parser.add_argument('-d', '--dates', help='The date ranges ' \
-                                                       'for the search.')
-        max_help = '''The maximum number of images to order and download 
-    and the maximum number of images per order, separated by a colon.'''
-        self.parser.add_argument('-m', '--maximum', help=max_help)
-        self.parser.add_argument('-r', '--process', help='The type of ' 
-                                                         'process to run from '
-                                                         'this list of '
-                                                         'options:\n- %s' %
-                                                         '\n- '.join(
-                                                             ["%s: %s" % (k, v)
-                                                              for k, v in
-                                                              self.choices.items()]))
-        output_help = '''The output file path containing the results in a 
-                        geospatial format.
-The output parameter can be:
-- None (empty): No output will be created (a results CSV file will still be 
-    created in the 'results' folder)
-- GeoJSON: The output will be in the GeoJSON format 
-    (use extension .geojson or .json)
-- KML: The output will be in KML format (use extension .kml) (requires GDAL Python package) 
-- GML: The output will be in GML format (use extension .gml) (requires GDAL Python package) 
-- Shapefile: The output will be ESRI Shapefile (requires GDAL Python package) 
-    (use extension .shp)'''
-        self.parser.add_argument('-o', '--output', help=output_help)
-        self.parser.add_argument('-a', '--aws', action='store_true',
-                                 help='Determines whether to download from AWS '
-                                      '(only applies to Radarsat-1 imagery).')
-        self.parser.add_argument('-s', '--silent', action='store_true',
-                                 help='Sets process to silent which '
-                                      'supresses all questions.')
-        self.parser.add_argument('-v', '--version', action='store_true',
-                                 help='Prints the version of the script.')
-
-        args = self.parser.parse_args()
-
-        user = args.username
-        password = args.password
-        coll = args.collections
-        dates = args.dates
-        inputs = args.input
-        filters = args.filters
-        priority = args.priority
-        maximum = args.maximum
-        process = args.process
-        output = args.output
-        aws = args.aws
-        silent = args.silent
-        version = args.version
+        username = self.params.get('username')
+        password = self.params.get('password')
+        input = self.params.get('input')
+        collections = self.params.get('collections')
+        process = self.params.get('process')
+        filters = self.params.get('filters')
+        dates = self.params.get('dates')
+        maximum = self.params.get('maximum')
+        priority = self.params.get('priority')
+        output = self.params.get('output')
+        csv_fields = self.params.get('csv_fields')
+        aws = self.params.get('aws')
+        silent = self.params.get('silent')
+        version = self.params.get('version')
 
         if version:
             print("%s: Version %s" % (__title__, __version__))
@@ -887,16 +851,16 @@ The output parameter can be:
         new_user = False
         new_pass = False
 
-        if user is None or password is None:
+        if username is None or password is None:
             print("\n--------------Enter EODMS Credentials--------------")
 
-        if user is None:
+        if username is None:
 
-            user = self.config_info.get('RAPI', 'username')
-            if user == '':
+            username = self.config_info.get('RAPI', 'username')
+            if username == '':
                 msg = "Enter the username for authentication"
                 err_msg = "A username is required to order images."
-                user = self.get_input(msg, err_msg)
+                username = self.get_input(msg, err_msg)
                 new_user = True
             else:
                 print("\nUsing the username set in the 'config.ini' file...")
@@ -923,7 +887,7 @@ The output parameter can be:
             answer = input("\n->> Would you like to store the credentials " 
                            "for a future session%s? (y/n):" % suggestion)
             if answer.lower().find('y') > -1:
-                self.config_info.set('RAPI', 'username', user)
+                self.config_info.set('RAPI', 'username', username)
                 pass_enc = base64.b64encode(password.encode("utf-8")).decode(
                     "utf-8")
                 self.config_info.set('RAPI', 'password',
@@ -939,11 +903,11 @@ The output parameter can be:
         # Get number of attempts when querying the RAPI
         self.eod.set_attempts(self.config_info.get('RAPI', 'access_attempts'))
 
-        self.eod.create_session(user, password)
+        self.eod.create_session(username, password)
 
-        self.params = {'collections': coll,
+        self.params = {'collections': collections,
                        'dates': dates,
-                       'input': inputs,
+                       'input': input,
                        'maximum': maximum,
                        'process': process}
 
@@ -976,7 +940,7 @@ The output parameter can be:
                              "using an AOI.")
 
             # Get the collection(s)
-            coll = self.ask_collection(coll)
+            coll = self.ask_collection(collections)
             self.params['collections'] = coll
 
             # If Radarsat-1, ask user if they want to download from AWS
@@ -985,7 +949,7 @@ The output parameter can be:
                 self.params['aws'] = aws
 
             # Get the AOI file
-            inputs = self.ask_aoi(inputs)
+            inputs = self.ask_aoi(input)
             self.params['input'] = inputs
 
             # Get the filter(s)
@@ -1024,8 +988,12 @@ The output parameter can be:
 
             msg = "Enter the full path of the CSV file exported " \
                   "from the EODMS UI website"
-            inputs = self.ask_input_file(inputs, msg)
+            inputs = self.ask_input_file(input, msg)
             self.params['input'] = inputs
+
+            fields = self.eod.get_input_fields(inputs)
+            csv_fields = self.ask_fields(csv_fields, fields)
+            self.params['csv_fields'] = csv_fields
 
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -1053,11 +1021,11 @@ The output parameter can be:
                 self.logger.info("Searching for images using an AOI.")
 
             # Get the collection(s)
-            coll = self.ask_collection(coll)
+            coll = self.ask_collection(collections)
             self.params['collections'] = coll
 
             # Get the AOI file
-            inputs = self.ask_aoi(inputs)
+            inputs = self.ask_aoi(input)
             self.params['input'] = inputs
 
             # Get the filter(s)
@@ -1089,7 +1057,7 @@ The output parameter can be:
             # Get the CSV file
             msg = "Enter the full path of the CSV Results file from a " \
                   "previous session"
-            inputs = self.ask_input_file(inputs, msg)
+            inputs = self.ask_input_file(input, msg)
             self.params['input'] = inputs
 
             # Get the output geospatial filename
@@ -1108,7 +1076,7 @@ The output parameter can be:
             self.logger.info("Ordering and downloading images using "
                              "Record IDs")
 
-            inputs = self.ask_record_ids(inputs)
+            inputs = self.ask_record_ids(input)
             self.params['input'] = inputs
 
             # If Radarsat-1, ask user if they want to download from AWS
@@ -1166,7 +1134,68 @@ def print_support(err_str=None):
     eod_util.Eodms_OrderDownload().print_support(err_str)
 
 
-def main():
+output_help = '''The output file path containing the results in a
+                             geospatial format.
+ The output parameter can be:
+ - None (empty): No output will be created (a results CSV file will still be
+     created in the 'results' folder)
+ - GeoJSON: The output will be in the GeoJSON format
+     (use extension .geojson or .json)
+ - KML: The output will be in KML format (use extension .kml) (requires GDAL Python package)
+ - GML: The output will be in GML format (use extension .gml) (requires GDAL Python package)
+ - Shapefile: The output will be ESRI Shapefile (requires GDAL Python package)
+     (use extension .shp)'''
+
+@click.command(context_settings={'help_option_names': ['-h', '--help']})
+@click.option('--username', '-u', default=None,
+              help='The username of the EODMS account used for '
+                   'authentication.')
+@click.option('--password', '-p', default=None,
+              help='The password of the EODMS account used for '
+                   'authentication.')
+@click.option('--process', '-prc', '-r', default=None,
+              help='The type of process to run from this list of '
+                   'options:\n- %s'
+                   % '\n- '.join(["%s: %s" % (k, v)
+                                  for k, v in proc_choices.items()]))
+@click.option('--input', '-i', default=None,
+              help='An input file (can either be an AOI, a CSV file '
+                   'exported from the EODMS UI), a WKT feature or a set '
+                   'of Record IDs. Valid AOI formats are GeoJSON, KML or '
+                   'Shapefile (Shapefile requires the GDAL Python '
+                   'package).')
+@click.option('--collections', '-c', default=None,
+              help='The collection of the images being ordered (separate '
+                   'multiple collections with a comma).')
+@click.option('--filters', '-f', default=None,
+              help='A list of filters for a specific collection.')
+@click.option('--dates', '-d', default=None,
+              help='The date ranges for the search.')
+@click.option('--maximum', '-max', '-m', default=None,
+              help='The maximum number of images to order and download '
+                   'and the maximum number of images per order, separated '
+                   'by a colon.')
+@click.option('--priority', '-pri', '-l', default=None,
+              help='The priority level of the order.\nOne of "Low", '
+                   '"Medium", "High" or "Urgent" (default "Medium").')
+@click.option('--output', '-o', default=None,
+              help=output_help)
+@click.option('--csv_fields', '-cf', default=None,
+              help='The fields in the input CSV file used to get images.')
+@click.option('--aws', '-a', is_flag=True, default=None,
+              help='Determines whether to download from AWS (only applies '
+                   'to Radarsat-1 imagery).')
+@click.option('--silent', '-s', is_flag=True, default=None,
+              help='Sets process to silent which supresses all questions.')
+@click.option('--version', '-v', is_flag=True, default=None,
+              help='Prints the version of the script.')
+def cli(username, password, input, collections, process, filters,
+               dates, maximum, priority, output, csv_fields, aws, silent,
+               version):
+    """
+    Search & Order EODMS products.
+    """
+
     cmd_title = "EODMS Orderer-Downloader"
     os.system("title " + cmd_title)
     sys.stdout.write("\x1b]2;%s\x07" % cmd_title)
@@ -1188,7 +1217,20 @@ def main():
 
     try:
 
-        params = {}
+        params = {'username': username,
+                  'password': password,
+                  'input': input,
+                  'collections': collections,
+                  'process': process,
+                  'filters': filters,
+                  'dates': dates,
+                  'maximum': maximum,
+                  'priority': priority,
+                  'output': output,
+                  'csv_fields': csv_fields,
+                  'aws': aws,
+                  'silent': silent,
+                  'version': version}
 
         # Set all the parameters from the config.ini file
         config_info = get_config()
@@ -1220,7 +1262,6 @@ def main():
 
         # Setup logging
         logger = logging.getLogger('EODMSRAPI')
-        # logger.setLevel(logging.INFO)
 
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
                                       '%(message)s',
@@ -1238,12 +1279,6 @@ def main():
         logger.addHandler(logHandler)
 
         logger.info("Script start time: %s" % start_str)
-
-        # for k,v in logging.Logger.manager.loggerDict.items()  :
-        # print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) )
-        # if not isinstance(v, logging.PlaceHolder):
-        # for h in v.handlers:
-        # print('     +++',str(h.__class__)[8:-2] )
 
         timeout_query = config_info.get('Script', 'timeout_query')
         timeout_order = config_info.get('Script', 'timeout_order')
@@ -1280,7 +1315,7 @@ def main():
         # Get authentication if not specified
         #########################################
 
-        prmpt = Prompter(eod, config_info, params)
+        prmpt = Prompter(eod, config_info, params, click)
 
         prmpt.prompt()
 
@@ -1310,4 +1345,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(cli())

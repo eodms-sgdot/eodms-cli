@@ -57,7 +57,7 @@ For more in-depth information on the configuration file, visit [Config File](htt
 
 ## User Guide
 
-For the full instructions on using the eodms_orderdownload script, please visit the [eodms-rapi-orderdownload Wiki](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki).
+For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki).
 
 ## Contact
 

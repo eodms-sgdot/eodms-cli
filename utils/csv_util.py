@@ -91,7 +91,7 @@ class EODMS_CSV:
                 
                 if self.coll_id is None:
                     # Check if the collection is supported in this script
-                    self.coll_id = self.eod.get_collid_by_name(satellite, True)
+                    self.coll_id = self.eod.get_collid_by_name(satellite)
                     msg = "The satellite/collection '%s' is not supported " \
                             "with this script at this time." % self.coll_id
                     print("\n%s" % msg)
@@ -120,8 +120,6 @@ class EODMS_CSV:
         """
         
         out_vals = []
-        #fields = self.eod.sort_fields(img.get_fields())
-        #print("fields: %s" % fields)
         for h in self.header:
             if h in img.get_fields():
                 val = str(img.get_metadata(h))
@@ -201,12 +199,14 @@ class EODMS_CSV:
         
         # Check for columns in input file
         if 'sequence id' not in in_header and \
-            'order key' not in in_header and \
-            'downlink segment id' not in in_header and \
-            'image id' not in in_header and \
-            'record id' not in in_header and \
-            'recordid' not in in_header and \
-            'image info' not in in_header:
+                'order key' not in in_header and \
+                'downlink segment id' not in in_header and \
+                'image id' not in in_header and \
+                'record id' not in in_header and \
+                'recordid' not in in_header and \
+                'image info' not in in_header and \
+                'photo number' not in in_header and \
+                'roll number' not in in_header:
             err_msg = '''The input file does not contain the proper columns.
   The input file must contain one of the following columns:
     Record ID
@@ -215,7 +215,8 @@ class EODMS_CSV:
     Image ID
     Order Key
     Image Info
-    A combination of Downlink Segment ID and Order Key'''
+    A combination of Downlink Segment ID and Order Key
+    A combination of Photo Number and Roll Number'''
             self.eod.print_support(err_msg)
             sys.exit(1)
         
@@ -232,13 +233,7 @@ class EODMS_CSV:
                 prev_val = rec.get(h.lower())
                 if prev_val is None or prev_val == '':
                     rec[h.lower()] = l_split[idx]
-                
-            coll_id = self.determine_collection(rec)
-            
-            if coll_id is None: continue
-            
-            rec['collectionId'] = coll_id
-            
+
             # Add the record to the list of records
             records.append(rec)
         
@@ -288,7 +283,7 @@ class EODMS_CSV:
             self.orders.update_order(order_item.get_order_id(),
                 order_item)
         
-    def import_csv(self):
+    def import_csv(self, header_only=False):
         """
         Imports the rows from the CSV file into a dictionary of records.
         
@@ -301,6 +296,8 @@ class EODMS_CSV:
         for idx, row in enumerate(reader):
             if idx == 0:
                 header = row
+                if header_only:
+                    return header
             else:
                 rec = {}
                 for i, c in enumerate(row):
