@@ -26,7 +26,7 @@ The eodms_orderdownload.py was designed using **Python 3.7** however it has been
 1. Clone the repository:
 	
 	```dos
-	> git clone https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload.git
+	> git clone https://github.com/eodms-sgdot/eodms-rapi-orderdownload.git
 	```
 	
 2. Install required packages (GDAL not included):
@@ -53,11 +53,11 @@ In the config file, you can:
 - Set the timeout interval for querying and ordering
 - Set the minimum dates for keeping downloaded images and results files
 
-For more in-depth information on the configuration file, visit [Config File](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki/Config-File).
+For more in-depth information on the configuration file, visit [Config File](https://github.com/eodms-sgdot/eodms-rapi-orderdownload/wiki/Config-File).
 
 ## User Guide
 
-For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/nrcan-eodms-sgdot-rncan/eodms-rapi-orderdownload/wiki).
+For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/eodms-sgdot/eodms-rapi-orderdownload/wiki).
 
 ## Contact
 
