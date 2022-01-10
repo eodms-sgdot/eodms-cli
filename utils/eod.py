@@ -383,7 +383,7 @@ class Eodms_OrderDownload:
 
                             filters[f.title()] = ('=', filt_val)
 
-                        print("filters: %s" % filters)
+                        # print("filters: %s" % filters)
 
                         for coll_id in colls:
                             self.eodms_rapi.search(coll_id, filters)
@@ -1319,6 +1319,7 @@ class Eodms_OrderDownload:
         self.output = params.get('output')
         priority = params.get('priority')
         aws_download = params.get('aws')
+        no_order = params.get('no_order')
         
         # Validate AOI
         if aoi is not None:
@@ -1371,6 +1372,13 @@ class Eodms_OrderDownload:
             
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
+
+        if no_order:
+            self.eodms_geo.export_results(query_imgs, self.output)
+            self.export_results()
+            print("Exiting process.")
+            self.print_support()
+            sys.exit(0)
         
         # Print results info
         msg = "%s images returned from search results.\n" % query_imgs.count()
@@ -1468,6 +1476,7 @@ class Eodms_OrderDownload:
         maximum = params.get('maximum')
         priority = params.get('priority')
         self.output = params.get('output')
+        no_order = params.get('no_order')
         
         # Log the parameters
         self.log_parameters(params)
@@ -1514,7 +1523,14 @@ class Eodms_OrderDownload:
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
 
-        self.export_results()
+        # self.export_results()
+
+        if no_order:
+            self.eodms_geo.export_results(query_imgs, self.output)
+            self.export_results()
+            print("Exiting process.")
+            self.print_support()
+            sys.exit(0)
         
         #############################################
         # Order Images

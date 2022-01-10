@@ -26,11 +26,11 @@
 
 __title__ = 'EODMS RAPI Orderer & Downloader'
 __author__ = 'Kevin Ballantyne'
-__copyright__ = 'Copyright 2020-2021 Her Majesty the Queen in Right of Canada'
+__copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '2.3.0'
+__version__ = '2.3.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -124,7 +124,8 @@ class Prompter():
                       "GeoJSON containing an AOI or a WKT feature to " \
                       "restrict the search to a specific location\n"
                 err_msg = "No AOI or feature specified. Please enter a WKT " \
-                          "feature or a valid GML, KML, Shapefile or GeoJSON file"
+                          "feature or a valid GML, KML, Shapefile or GeoJSON " \
+                          "file"
                 input_fn = self.get_input(msg, err_msg, required=False)
 
         if input_fn is None or input_fn == '': return None
@@ -202,8 +203,8 @@ class Prompter():
 
                 msg = "For images that have an AWS link, would you like to " \
                       "download the GeoTIFFs from the repository instead of " \
-                      "submitting an order to the EODMS? (Yes/No)\n"
-                aws = self.get_input(msg, required=False)
+                      "submitting an order to the EODMS?\n"
+                aws = self.get_input(msg, required=False, options=['Yes', 'No'])
 
                 if aws.lower().find('y') > -1:
                     aws = True
@@ -578,7 +579,7 @@ class Prompter():
                     else:
                         order_limit = str(order_limit)
 
-                maximum = ':'.join(filter(None, [total_records, \
+                maximum = ':'.join(filter(None, [total_records,
                                                  order_limit]))
 
         else:
@@ -597,6 +598,29 @@ class Prompter():
                                                  order_limit]))
 
         return maximum
+
+    def ask_order(self, no_order):
+        """
+        Asks the user if they would like to suppress ordering and downloading.
+
+        :param no_order:
+        :return:
+        """
+
+        if no_order is None:
+            if not self.eod.silent:
+                print("\n--------------Suppress Ordering--------------")
+
+                msg = "\nWould you like to only search and not order?\n"
+                no_order = self.get_input(msg, required=False,
+                                        options=['yes', 'no'], default='n')
+
+                if no_order.lower().find('y') > -1:
+                    no_order = True
+                else:
+                    no_order = False
+
+        return no_order
 
     def ask_output(self, output):
         """
@@ -639,10 +663,10 @@ class Prompter():
             if not self.eod.silent:
                 print("\n--------------Enter Priority--------------")
 
-                msg = "Enter the priority level for the order ('Low', " \
-                      "'Medium', 'High', 'Urgent') [Medium]"
+                msg = "Enter the priority level for the order"
 
-                priority = self.get_input(msg, required=False)
+                priority = self.get_input(msg, required=False,
+                                          options=priorities, default='medium')
 
         if priority is None or priority == '':
             priority = 'Medium'
@@ -650,6 +674,8 @@ class Prompter():
             self.eod.print_msg("WARNING: Not a valid 'priority' entry. "
                                "Setting priority to 'Medium'.", indent=False)
             priority = 'Medium'
+
+        return priority
 
     def ask_process(self):
         """
@@ -778,7 +804,8 @@ class Prompter():
 
         return out_syntax
 
-    def get_input(self, msg, err_msg=None, required=True, password=False):
+    def get_input(self, msg, err_msg=None, required=True, options=None,
+                  default=None, password=False):
         """
         Gets an input from the user for an argument.
         
@@ -789,6 +816,10 @@ class Prompter():
         :type  err_msg: str
         :param required: Determines if the argument is required.
         :type  required: boolean
+        :param options: A list of available options for the user to choose from.
+        :type  options: list
+        :param default: The default value if the user just hits enter.
+        :type  default: str
         :param password: Determines if the argument is for password entry.
         :type  password: boolean
         
@@ -800,15 +831,26 @@ class Prompter():
             # If the argument is for password entry, hide entry
             in_val = getpass.getpass(prompt='->> %s: ' % msg)
         else:
-            output = "\n->> %s: " % msg
+            opt_str = ''
+            if options is not None:
+                opt_str = ' (%s)' % '/'.join(options)
+
+            def_str = ''
+            if default is not None:
+                def_str = ' [%s]' % default
+
+            output = "\n->> %s%s%s: " % (msg, opt_str, def_str)
             if msg.endswith('\n'):
-                output = "\n->> %s:\n" % msg.strip('\n')
+                output = "\n->> %s%s%s:\n" % (msg.strip('\n'), opt_str, def_str)
             in_val = input(output)
 
         if required and in_val == '':
             eod_util.Eodms_OrderDownload().print_support(err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
+
+        if in_val == '' and default is not None and not default == '':
+            in_val = default
 
         return in_val
 
@@ -829,7 +871,7 @@ class Prompter():
 
         username = self.params.get('username')
         password = self.params.get('password')
-        input = self.params.get('input')
+        input_val = self.params.get('input')
         collections = self.params.get('collections')
         process = self.params.get('process')
         filters = self.params.get('filters')
@@ -840,6 +882,7 @@ class Prompter():
         csv_fields = self.params.get('csv_fields')
         aws = self.params.get('aws')
         silent = self.params.get('silent')
+        no_order = self.params.get('no_order')
         version = self.params.get('version')
 
         if version:
@@ -907,7 +950,7 @@ class Prompter():
 
         self.params = {'collections': collections,
                        'dates': dates,
-                       'input': input,
+                       'input': input_val,
                        'maximum': maximum,
                        'process': process}
 
@@ -949,7 +992,7 @@ class Prompter():
                 self.params['aws'] = aws
 
             # Get the AOI file
-            inputs = self.ask_aoi(input)
+            inputs = self.ask_aoi(input_val)
             self.params['input'] = inputs
 
             # Get the filter(s)
@@ -964,13 +1007,18 @@ class Prompter():
             output = self.ask_output(output)
             self.params['output'] = output
 
-            # Get the maximum(s)
-            maximum = self.ask_maximum(maximum)
-            self.params['maximum'] = maximum
+            # Ask user if they'd like to order and download
+            no_order = self.ask_order(no_order)
+            self.params['no_order'] = no_order
 
-            # Get the priority
-            priority = self.ask_priority(priority)
-            self.params['priority'] = priority
+            if not no_order:
+                # Get the maximum(s)
+                maximum = self.ask_maximum(maximum)
+                self.params['maximum'] = maximum
+
+                # Get the priority
+                priority = self.ask_priority(priority)
+                self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -988,7 +1036,7 @@ class Prompter():
 
             msg = "Enter the full path of the CSV file exported " \
                   "from the EODMS UI website"
-            inputs = self.ask_input_file(input, msg)
+            inputs = self.ask_input_file(input_val, msg)
             self.params['input'] = inputs
 
             fields = self.eod.get_input_fields(inputs)
@@ -999,13 +1047,18 @@ class Prompter():
             output = self.ask_output(output)
             self.params['output'] = output
 
-            # Get the maximum(s)
-            maximum = self.ask_maximum(maximum)
-            self.params['maximum'] = maximum
+            # Ask user if they'd like to order and download
+            no_order = self.ask_order(no_order)
+            self.params['no_order'] = no_order
 
-            # Get the priority
-            priority = self.ask_priority(priority)
-            self.params['priority'] = priority
+            if not no_order:
+                # Get the maximum(s)
+                maximum = self.ask_maximum(maximum)
+                self.params['maximum'] = maximum
+
+                # Get the priority
+                priority = self.ask_priority(priority)
+                self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1025,7 +1078,7 @@ class Prompter():
             self.params['collections'] = coll
 
             # Get the AOI file
-            inputs = self.ask_aoi(input)
+            inputs = self.ask_aoi(input_val)
             self.params['input'] = inputs
 
             # Get the filter(s)
@@ -1057,7 +1110,7 @@ class Prompter():
             # Get the CSV file
             msg = "Enter the full path of the CSV Results file from a " \
                   "previous session"
-            inputs = self.ask_input_file(input, msg)
+            inputs = self.ask_input_file(input_val, msg)
             self.params['input'] = inputs
 
             # Get the output geospatial filename
@@ -1076,7 +1129,7 @@ class Prompter():
             self.logger.info("Ordering and downloading images using "
                              "Record IDs")
 
-            inputs = self.ask_record_ids(input)
+            inputs = self.ask_record_ids(input_val)
             self.params['input'] = inputs
 
             # If Radarsat-1, ask user if they want to download from AWS
@@ -1088,9 +1141,14 @@ class Prompter():
             output = self.ask_output(output)
             self.params['output'] = output
 
-            # Get the priority
-            priority = self.ask_priority(priority)
-            self.params['priority'] = priority
+            # Ask user if they'd like to order and download
+            no_order = self.ask_order(no_order)
+            self.params['no_order'] = no_order
+
+            if not no_order:
+                # Get the priority
+                priority = self.ask_priority(priority)
+                self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1187,11 +1245,13 @@ output_help = '''The output file path containing the results in a
                    'to Radarsat-1 imagery).')
 @click.option('--silent', '-s', is_flag=True, default=None,
               help='Sets process to silent which supresses all questions.')
+@click.option('--no_order', '-nord', is_flag=True, default=None,
+              help='If set, no ordering and downloading will occur.')
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
-def cli(username, password, input, collections, process, filters,
-               dates, maximum, priority, output, csv_fields, aws, silent,
-               version):
+def cli(username, password, input, collections, process, filters, dates,
+        maximum, priority, output, csv_fields, aws, silent, no_order,
+        version):
     """
     Search & Order EODMS products.
     """
@@ -1230,6 +1290,7 @@ def cli(username, password, input, collections, process, filters,
                   'csv_fields': csv_fields,
                   'aws': aws,
                   'silent': silent,
+                  'no_order': no_order,
                   'version': version}
 
         # Set all the parameters from the config.ini file
