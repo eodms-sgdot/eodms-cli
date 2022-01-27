@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '2.3.1'
+__version__ = '2.3.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -50,6 +50,7 @@ import base64
 import logging
 import logging.handlers as handlers
 import pathlib
+import unicodedata
 
 # from eodms_rapi import EODMSRAPI
 
@@ -85,7 +86,7 @@ class Prompter():
         :param eod: The Eodms_OrderDownload object.
         :type  eod: self.Eodms_OrderDownload
         :param config_info: Configuration information taken from the config file.
-        :type  config_info: dict
+        :type  config_info: configparser.ConfigParser
         :param params: An empty dictionary of parameters.
         :type  params: dict
         """
@@ -96,6 +97,10 @@ class Prompter():
         self.click = click
 
         self.logger = logging.getLogger('eodms')
+
+    def remove_accents(self, s):
+        nkfd_form = unicodedata.normalize('NFKD', s)
+        return u''.join([c for c in nkfd_form if not unicodedata.combining(c)])
 
     def ask_aoi(self, input_fn):
         """
@@ -1190,7 +1195,6 @@ def print_support(err_str=None):
     """
 
     eod_util.Eodms_OrderDownload().print_support(err_str)
-
 
 output_help = '''The output file path containing the results in a
                              geospatial format.

@@ -389,8 +389,11 @@ class ImageList:
         """
 
         # print("results: %s" % results)
+        img_ids = []
         for r in results:
             if 'errors' in r.keys(): continue
+            rec_id = r.get('recordId')
+            if rec_id in img_ids: continue
             image = Image()
             if isCsv:
                 image.parse_row(r)
@@ -399,6 +402,7 @@ class ImageList:
             # print("metadata: %s" % image.metadata)
             # answer = input("Press enter...")
             self.img_lst.append(image)
+            img_ids.append(rec_id)
 
     def trim(self, val, collections=None):
         """

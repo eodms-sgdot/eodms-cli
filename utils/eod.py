@@ -379,7 +379,7 @@ class Eodms_OrderDownload:
                                 continue
 
                             if 'Radarsat2' in colls and f == 'Date':
-                                f = 'End Date'
+                                f = 'Start Date'
 
                             filters[f.title()] = ('=', filt_val)
 
@@ -481,14 +481,14 @@ class Eodms_OrderDownload:
         :type  query_imgs: image.ImageList
 
         :return: Two ImageLists with the separated images.
-        :rtype: tuple (image.ImageList)
+        :rtype:  tuple (image.ImageList)
         """
         
         aws_lst = []
         eodms_lst = []
         for res in query_imgs.get_raw():
-            downloadLink = res.get('downloadLink')
-            if downloadLink is not None and downloadLink.find('aws') > -1:
+            download_link = res.get('downloadLink')
+            if download_link is not None and download_link.find('aws') > -1:
                 aws_lst.append(res)
             else:
                 eodms_lst.append(res)
