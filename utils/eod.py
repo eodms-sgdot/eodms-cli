@@ -127,7 +127,7 @@ class Eodms_OrderDownload:
         if self.username is not None and self.password is not None:
             self.eodms_rapi = EODMSRAPI(self.username, self.password)
 
-        self.order_check_date = ""
+        self.order_check_date = "3 days"
         if kwargs.get('order_check_date') is not None:
             self.order_check_date = kwargs.get('order_check_date')
 
