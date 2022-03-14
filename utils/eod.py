@@ -30,9 +30,11 @@ import requests
 from tqdm.auto import tqdm
 import datetime
 import dateutil.parser as util_parser
+import dateparser
 import json
 import glob
 import logging
+from copy import copy
 
 from eodms_rapi import EODMSRAPI
 
@@ -73,7 +75,7 @@ class Eodms_OrderDownload:
         :type  kwargs: dict
         """
         
-        self.rapi_domain = 'https://www.eodms-sgdot.nrcan-rncan.gc.ca'
+        self.rapi_domain = None
         self.indent = 3
 
         self.operators = ['=', '<', '>', '<>', '<=', '>=', ' LIKE ',
@@ -121,9 +123,17 @@ class Eodms_OrderDownload:
         self.silent = False
         if kwargs.get('silent') is not None:
             self.silent = bool(kwargs.get('silent'))
-        
+
         if self.username is not None and self.password is not None:
             self.eodms_rapi = EODMSRAPI(self.username, self.password)
+
+        self.order_check_date = ""
+        if kwargs.get('order_check_date') is not None:
+            self.order_check_date = kwargs.get('order_check_date')
+
+        if kwargs.get('rapi_url') is not None:
+            self.rapi_domain = str(kwargs.get('rapi_url'))
+            # self.eodms_rapi.set_root_url(self.rapi_domain)
         
         self.aoi_extensions = ['.gml', '.kml', '.json', '.geojson', '.shp']
         
@@ -265,6 +275,61 @@ class Eodms_OrderDownload:
             out_filters[field] = (op, val.split('|'))
 
         return out_filters
+
+    def _check_duplicate_orders(self, imgs):
+
+        sub_statuses = ['SUBMITTED', 'AVAILABLE_FOR_DOWNLOAD', 'DELIVERING']
+
+        # Translate order_check_date into date range for the RAPI
+        dtend = datetime.datetime.now()
+        dtstart = dateparser.parse(self.order_check_date)
+
+        # print("dtstart: %s" % dtstart)
+        # print("dtend: %s" % dtend)
+        # answer = input("Press enter...")
+
+        # Get all orders for date range
+        orders = self.eodms_rapi.get_orders(dtstart, dtend)
+
+        orders = self.eodms_rapi.remove_duplicate_orders(orders)
+
+        # Remove duplicate images from the list
+
+        # print("orders: %s" % orders)
+        # print("imgs: %s" % imgs)
+        # print("imgs list: %s" % imgs.get_images())
+
+        # Copy input ImageList to a new ImageList so existing orders can be
+        #   removed
+        new_orders = image.ImageList(self)
+        new_orders.combine(imgs)
+
+        exist_orders = image.OrderList(self)
+
+        img_ids = imgs.get_ids()
+
+        # print("img_ids: %s" % img_ids)
+        for ord_item in orders:
+            # Get the record ID of the order item
+            ord_rec_id = ord_item.get('recordId')
+            # print("\nord_rec_id: %s" % ord_rec_id)
+
+            for i in img_ids:
+                # If the record ID of the image matches the one of the
+                #   order item
+                if i == ord_rec_id:
+                    # exist_orders.add_image(img)
+                    if ord_item['status'].upper() in sub_statuses:
+                        # print("ord_item: %s" % ord_item)
+                        exist_orders.add_order(ord_item)
+                        new_orders.remove_image(i)
+
+        # print("Number of new images to order: %s" % new_orders.count())
+        # print("Number of existing orders: %s" % exist_orders.count_items())
+
+        # answer = input("Press enter...")
+
+        return new_orders, exist_orders
         
     def _get_eodms_res(self, csv_fn, csv_fields, max_images=None):
         """
@@ -309,6 +374,8 @@ class Eodms_OrderDownload:
         
         for sat, recs in sat_recs.items():
 
+            cur_idx = 0
+
             for idx in range(0, len(recs), 25):
                 
                 # Get the next 100 images
@@ -319,7 +386,8 @@ class Eodms_OrderDownload:
                 
                 for s_idx, rec in enumerate(sub_recs):
 
-                    print('\nGetting image entry %s...' % str(idx + 1))
+                    cur_idx += 1
+                    print('\nGetting image entry %s...' % str(cur_idx))
 
                     coll = rec.get('collection')
 
@@ -522,44 +590,62 @@ class Eodms_OrderDownload:
         #############################################
         # Order Images
         #############################################
-        
-        # Convert results to JSON
-        json_res = imgs.get_raw()
-        
-        # Separated AWS images from order list
-        # Convert results to an OrderList
-        
-        orders = image.OrderList(self, imgs)
-        
-        # Send orders to the RAPI
-        if max_items is None or max_items == 0:
-            # Order all images in a single order
-            order_res = self.eodms_rapi.order(json_res, priority)
-            orders.ingest_results(order_res)
-        else:
-            # Divide the images into the specified number of images per order
-            for idx in range(0, len(json_res), max_items):
-                # Get the next 100 images
-                if len(json_res) < idx + max_items:
-                    sub_recs = json_res[idx:]
-                else:
-                    sub_recs = json_res[idx:max_items + idx]
-                    
-                order_res = self.eodms_rapi.order(sub_recs, priority)
+
+        # Separate orders that already exist
+        new_orders, exist_orders = self._check_duplicate_orders(imgs)
+
+        self.print_msg("%s existing orders found.\nSubmitting %s orders."
+                       % (exist_orders.count_items(), new_orders.count()))
+
+        orders = image.OrderList(self)
+        # exist_orders = None
+        if new_orders.count() > 0:
+            # Convert results to JSON
+            json_res = imgs.get_raw()
+
+            # Separated AWS images from order list
+            # Convert results to an OrderList
+
+            orders = image.OrderList(self, imgs)
+
+            # Send orders to the RAPI
+            if max_items is None or max_items == 0:
+                # Order all images in a single order
+                order_res = self.eodms_rapi.order(json_res, priority)
                 orders.ingest_results(order_res)
-                
-        # Update the self.cur_res for output results
-        self.cur_res = imgs
-        
-        if orders.count_items() == 0:
-            # If no orders could be found
-            self.export_results()
-            err_msg = "No orders were submitted successfully."
-            self.print_support(err_msg)
-            self.logger.error(err_msg)
-            sys.exit(1)
+            else:
+                # Divide the images into the specified number of images per order
+                for idx in range(0, len(json_res), max_items):
+                    # Get the next 100 images
+                    if len(json_res) < idx + max_items:
+                        sub_recs = json_res[idx:]
+                    else:
+                        sub_recs = json_res[idx:max_items + idx]
+
+                    order_res = self.eodms_rapi.order(sub_recs, priority)
+                    orders.ingest_results(order_res)
+
+            # Update the self.cur_res for output results
+            self.cur_res = imgs
+
+            if orders.count_items() == 0:
+                # If no orders could be found
+                self.export_results()
+                err_msg = "No orders were submitted successfully."
+                self.print_support(err_msg)
+                self.logger.error(err_msg)
+                sys.exit(1)
+
+        else:
+            self.print_msg("No new images to order. Using existing order "
+                           "items.")
+
+        # Merge all order items
+        final_orders = image.OrderList(self)
+        if orders: final_orders.merge_ordlist(orders)
+        if exist_orders: final_orders.merge_ordlist(exist_orders)
             
-        return orders
+        return final_orders
             
     def cleanup_folders(self):
         """
@@ -645,6 +731,9 @@ class Eodms_OrderDownload:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
+
+        if self.rapi_domain is not None:
+            self.eodms_rapi.set_root_url(self.rapi_domain)
         
     def download_aws(self, aws_imgs):
         """
@@ -1312,7 +1401,7 @@ class Eodms_OrderDownload:
         # Get all the values from the parameters
         collections = params.get('collections')
         dates = params.get('dates')
-        aoi = params.get('input')
+        aoi = params.get('input_val')
         filters = params.get('filters')
         process = params.get('process')
         maximum = params.get('maximum')
@@ -1419,7 +1508,7 @@ class Eodms_OrderDownload:
         #############################################
         # Order Images
         #############################################
-        orders = None
+        orders = image.OrderList(self)
         if eodms_imgs.count() > 0:
             orders = self._submit_orders(eodms_imgs, priority)
         
@@ -1437,12 +1526,14 @@ class Eodms_OrderDownload:
             aws_downloads = self.download_aws(aws_imgs)
         
         # Get a list of order items in JSON format for the EODMSRAPI
-        if orders:
+        if orders.count() > 0:
             items = orders.get_raw()
                 
             # Download images using the EODMSRAPI
             download_items = self.eodms_rapi.download(items, self.download_path)
-                
+
+            # print("download_items: %s" % download_items)
+
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
         
@@ -1471,7 +1562,7 @@ class Eodms_OrderDownload:
         :type  params: dict
         """
         
-        csv_fn = params.get('input')
+        csv_fn = params.get('input_val')
         csv_fields = params.get('csv_fields')
         maximum = params.get('maximum')
         priority = params.get('priority')
@@ -1535,25 +1626,29 @@ class Eodms_OrderDownload:
         #############################################
         # Order Images
         #############################################
-        
-        orders = self._submit_orders(query_imgs, priority)
-        
-        # Get a list of order items in JSON format for the EODMSRAPI
-        items = orders.get_raw()
+
+        orders = image.OrderList(self)
+        if query_imgs.count() > 0:
+            orders = self._submit_orders(query_imgs, priority)
         
         #############################################
         # Download Images
         #############################################
-        
+
         # Make the download folder if it doesn't exist
         if not os.path.exists(self.download_path):
             os.mkdir(self.download_path)
-        
-        # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
-        
-        # Update images
-        query_imgs.update_downloads(download_items)
+
+        # Get a list of order items in JSON format for the EODMSRAPI
+        if orders.count() > 0:
+            # Get a list of order items in JSON format for the EODMSRAPI
+            items = orders.get_raw()
+
+            # Download images using the EODMSRAPI
+            download_items = self.eodms_rapi.download(items, self.download_path)
+
+            # Update images
+            query_imgs.update_downloads(download_items)
         
         # Export polygons of images
         self.eodms_geo.export_results(query_imgs, self.output)
@@ -1575,7 +1670,7 @@ class Eodms_OrderDownload:
         :type  params: dict
         """
         
-        in_ids = params.get('input')
+        in_ids = params.get('input_val')
         priority = params.get('priority')
         self.output = params.get('output')
         aws_download = params.get('aws')
@@ -1640,7 +1735,7 @@ class Eodms_OrderDownload:
         # Order Images
         #############################################
         
-        orders = None
+        orders = image.OrderList(self)
         if eodms_imgs.count() > 0:
             orders = self._submit_orders(eodms_imgs, priority)
             
@@ -1658,7 +1753,7 @@ class Eodms_OrderDownload:
             aws_downloads = self.download_aws(aws_imgs)
         
         # Get a list of order items in JSON format for the EODMSRAPI
-        if orders:
+        if orders.count() > 0:
             items = orders.get_raw()
                 
             # Download images using the EODMSRAPI
@@ -1698,7 +1793,7 @@ class Eodms_OrderDownload:
         # Get all the values from the parameters
         collections = params.get('collections')
         dates = params.get('dates')
-        aoi = params.get('input')
+        aoi = params.get('input_val')
         filters = params.get('filters')
         # process = params.get('process')
         maximum = params.get('maximum')
@@ -1814,7 +1909,7 @@ class Eodms_OrderDownload:
         # Log the parameters
         self.log_parameters(params)
         
-        csv_fn = params.get('input')
+        csv_fn = params.get('input_val')
         self.output = params.get('output')
         
         if csv_fn.find('.csv') == -1:
@@ -1887,7 +1982,7 @@ class Eodms_OrderDownload:
         # Get all the values from the parameters
         collections = params.get('collections')
         dates = params.get('dates')
-        aoi = params.get('input')
+        aoi = params.get('input_val')
         filters = params.get('filters')
         # process = params.get('process')
         maximum = params.get('maximum')

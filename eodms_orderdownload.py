@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020-2021 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '2.3.2'
+__version__ = '2.4.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -876,7 +876,7 @@ class Prompter():
 
         username = self.params.get('username')
         password = self.params.get('password')
-        input_val = self.params.get('input')
+        input_val = self.params.get('input_val')
         collections = self.params.get('collections')
         process = self.params.get('process')
         filters = self.params.get('filters')
@@ -955,7 +955,7 @@ class Prompter():
 
         self.params = {'collections': collections,
                        'dates': dates,
-                       'input': input_val,
+                       'input_val': input_val,
                        'maximum': maximum,
                        'process': process}
 
@@ -998,7 +998,7 @@ class Prompter():
 
             # Get the AOI file
             inputs = self.ask_aoi(input_val)
-            self.params['input'] = inputs
+            self.params['input_val'] = inputs
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
@@ -1042,7 +1042,7 @@ class Prompter():
             msg = "Enter the full path of the CSV file exported " \
                   "from the EODMS UI website"
             inputs = self.ask_input_file(input_val, msg)
-            self.params['input'] = inputs
+            self.params['input_val'] = inputs
 
             fields = self.eod.get_input_fields(inputs)
             csv_fields = self.ask_fields(csv_fields, fields)
@@ -1084,7 +1084,7 @@ class Prompter():
 
             # Get the AOI file
             inputs = self.ask_aoi(input_val)
-            self.params['input'] = inputs
+            self.params['input_val'] = inputs
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
@@ -1116,7 +1116,7 @@ class Prompter():
             msg = "Enter the full path of the CSV Results file from a " \
                   "previous session"
             inputs = self.ask_input_file(input_val, msg)
-            self.params['input'] = inputs
+            self.params['input_val'] = inputs
 
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -1135,7 +1135,7 @@ class Prompter():
                              "Record IDs")
 
             inputs = self.ask_record_ids(input_val)
-            self.params['input'] = inputs
+            self.params['input_val'] = inputs
 
             # If Radarsat-1, ask user if they want to download from AWS
             if 'Radarsat1' in inputs:
@@ -1186,6 +1186,14 @@ def get_config():
     return config
 
 
+def get_option(config_info, section, option):
+    if isinstance(section, str):
+        section = [section]
+
+    for sec in section:
+        if config_info.has_option(sec, option):
+            return config_info.get(sec, option)
+
 def print_support(err_str=None):
     """
     Prints the 2 different support message depending if an error occurred.
@@ -1220,7 +1228,7 @@ output_help = '''The output file path containing the results in a
                    'options:\n- %s'
                    % '\n- '.join(["%s: %s" % (k, v)
                                   for k, v in proc_choices.items()]))
-@click.option('--input', '-i', default=None,
+@click.option('--input_val', '-i', default=None,
               help='An input file (can either be an AOI, a CSV file '
                    'exported from the EODMS UI), a WKT feature or a set '
                    'of Record IDs. Valid AOI formats are GeoJSON, KML or '
@@ -1253,7 +1261,7 @@ output_help = '''The output file path containing the results in a
               help='If set, no ordering and downloading will occur.')
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
-def cli(username, password, input, collections, process, filters, dates,
+def cli(username, password, input_val, collections, process, filters, dates,
         maximum, priority, output, csv_fields, aws, silent, no_order,
         version):
     """
@@ -1283,7 +1291,7 @@ def cli(username, password, input, collections, process, filters, dates,
 
         params = {'username': username,
                   'password': password,
-                  'input': input,
+                  'input_val': input_val,
                   'collections': collections,
                   'process': process,
                   'filters': filters,
@@ -1301,7 +1309,11 @@ def cli(username, password, input, collections, process, filters, dates,
         config_info = get_config()
 
         abs_path = os.path.abspath(__file__)
-        download_path = config_info.get('Script', 'downloads')
+        # download_path = config_info.get('Script', 'downloads')
+        download_path = get_option(config_info, ['Script', 'Paths'],
+                                   'downloads')
+        # print("download_path: %s" % download_path)
+
         if download_path == '':
             download_path = os.path.join(os.path.dirname(abs_path), 'downloads')
         elif not os.path.isabs(download_path):
@@ -1310,14 +1322,14 @@ def cli(username, password, input, collections, process, filters, dates,
 
         print("\nImages will be downloaded to '%s'." % download_path)
 
-        res_path = config_info.get('Script', 'results')
+        res_path = get_option(config_info, ['Script', 'Paths'], 'results')
         if res_path == '':
             res_path = os.path.join(os.path.dirname(abs_path), 'results')
         elif not os.path.isabs(res_path):
             res_path = os.path.join(os.path.dirname(abs_path),
                                     res_path)
 
-        log_loc = config_info.get('Script', 'log')
+        log_loc = get_option(config_info, ['Script', 'Paths'], 'log')
         if log_loc == '':
             log_loc = os.path.join(os.path.dirname(abs_path), 'log',
                                    'logger.log')
@@ -1345,8 +1357,11 @@ def cli(username, password, input, collections, process, filters, dates,
 
         logger.info("Script start time: %s" % start_str)
 
-        timeout_query = config_info.get('Script', 'timeout_query')
-        timeout_order = config_info.get('Script', 'timeout_order')
+        timeout_query = get_option(config_info, ['Script', 'RAPI'],
+                                   'timeout_query')
+        # timeout_order = config_info.get('Script', 'timeout_order')
+        timeout_order = get_option(config_info, ['Script', 'RAPI'],
+                                   'timeout_order')
 
         try:
             timeout_query = float(timeout_query)
@@ -1358,11 +1373,27 @@ def cli(username, password, input, collections, process, filters, dates,
         except ValueError:
             timeout_order = 180.0
 
-        keep_results = config_info.get('Script', 'keep_results')
-        keep_downloads = config_info.get('Script', 'keep_downloads')
+        keep_results = get_option(config_info, 'Script', 'keep_results')
+        keep_downloads = get_option(config_info, 'Script', 'keep_downloads')
 
         # Get the total number of results per query
-        max_results = config_info.get('RAPI', 'max_results')
+        max_results = get_option(config_info, 'RAPI', 'max_results')
+
+        # Get the minimum date value to check orders
+        order_check_date = get_option(config_info, 'RAPI', 'order_check_date')
+
+        # Get URL for debug purposes
+        rapi_url = get_option(config_info, 'Debug', 'root_url')
+
+        # print("download_path: %s" % download_path)
+        # print("res_path: %s" % res_path)
+        # print("log_loc: %s" % log_loc)
+        # print("timeout_query: %s" % timeout_query)
+        # print("timeout_order: %s" % timeout_order)
+        # print("max_results: %s" % max_results)
+        # print("keep_results: %s" % keep_results)
+        # print("keep_downloads: %s" % keep_downloads)
+        # print("rapi_url: %s" % rapi_url)
 
         eod = eod_util.Eodms_OrderDownload(download=download_path,
                                            results=res_path, log=log_loc,
@@ -1370,7 +1401,9 @@ def cli(username, password, input, collections, process, filters, dates,
                                            timeout_order=timeout_order,
                                            max_res=max_results,
                                            keep_results=keep_results,
-                                           keep_downloads=keep_downloads)
+                                           keep_downloads=keep_downloads,
+                                           order_check_date=order_check_date,
+                                           rapi_url=rapi_url)
 
         print("\nCSV Results will be placed in '%s'." % eod.results_path)
 

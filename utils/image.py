@@ -321,6 +321,12 @@ class ImageList:
 
         return fields
 
+    def get_ids(self):
+
+        rec_ids = [i.get_record_id() for i in self.img_lst]
+
+        return rec_ids
+
     def get_image(self, record_id):
         """
         Gets a specific Image based on the Record Id.
@@ -404,6 +410,17 @@ class ImageList:
             self.img_lst.append(image)
             img_ids.append(rec_id)
 
+    def remove_image(self, rec_id):
+
+        found_idx = None
+        for idx, img in enumerate(self.img_lst):
+            if img.get_record_id() == rec_id:
+                found_idx = idx
+
+        # print("found_idx: %s" % found_idx)
+        if found_idx is not None:
+            del self.img_lst[found_idx]
+
     def trim(self, val, collections=None):
         """
         Permanently trims the list of Images in the img_lst.
@@ -437,6 +454,8 @@ class ImageList:
             RAPI (each image must contain a recordId).
         :type  download_items: list
         """
+
+        # print("img_lst: %s" % self.img_lst)
 
         for item in download_items:
             rec_id = item.get('recordId')
@@ -859,6 +878,13 @@ class OrderList:
         self.order_lst = []
         self.img_lst = img_lst
 
+    def add_order(self, json_res):
+
+        # print(json.dumps(json_res, indent=4, sort_keys=True))
+        # answer = input("Press enter...")
+
+        self.parse_order_item(json_res)
+
     def check_downloaded(self):
         """
         Checks if one of the Order Items has been downloaded.
@@ -1033,37 +1059,51 @@ class OrderList:
                 results = results['items']
 
         for idx, r in enumerate(results):
+            self.parse_order_item(r)
 
-            # First get the image from the ImageList
-            record_id = r['recordId']
-            image = None
-            if self.img_lst is not None:
-                image = self.img_lst.get_image(record_id)
-                image.set_metadata('Yes', 'orderSubmitted')
+    def merge_ordlist(self, ord_list):
+        orders = ord_list.get_orders()
 
-            # Create the OrderItem
-            order_item = OrderItem(self.eod)
-            if image is not None:
-                order_item.add_image(image)
-            order_item.parse_record(r)
+        for ord in orders:
+            self.order_lst.append(ord)
 
-            # Update or create Order
-            order_id = order_item.get_order_id()
-            order = self.get_order(order_id)
-            if order is None:
-                order = Order(order_id)
-                order.add_item(order_item)
-                self.order_lst.append(order)
-            else:
-                order.add_item(order_item)
+    def parse_order_item(self, rec):
+        """
+        Parses a single order item into the order list.
 
-            if image is not None:
-                img_mdata = image.get_metadata()
-                image.set_metadata(order_id, 'orderId')
-                image.set_metadata(r.get('status'), 'orderStatus')
-                image.set_metadata(r.get('statusMessage'), 'statusMessage')
-                image.set_metadata(r.get('dateRapiOrdered'),
-                                   'dateRapiOrdered')
+        :param rec: The order item record in JSON.
+        :type  rec: JSON
+        """
+
+        # First get the image from the ImageList
+        record_id = rec['recordId']
+        image = None
+        if self.img_lst is not None:
+            image = self.img_lst.get_image(record_id)
+            image.set_metadata('Yes', 'orderSubmitted')
+
+        # Create the OrderItem
+        order_item = OrderItem(self.eod)
+        if image is not None:
+            order_item.add_image(image)
+        order_item.parse_record(rec)
+
+        # Update or create Order
+        order_id = order_item.get_order_id()
+        order = self.get_order(order_id)
+        if order is None:
+            order = Order(order_id)
+            order.add_item(order_item)
+            self.order_lst.append(order)
+        else:
+            order.add_item(order_item)
+
+        if image is not None:
+            image.set_metadata(order_id, 'orderId')
+            image.set_metadata(rec.get('status'), 'orderStatus')
+            image.set_metadata(rec.get('statusMessage'), 'statusMessage')
+            image.set_metadata(rec.get('dateRapiOrdered'),
+                               'dateRapiOrdered')
 
     def print_order_items(self, tabs=1):
         """
