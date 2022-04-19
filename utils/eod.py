@@ -289,7 +289,8 @@ class Eodms_OrderDownload:
         # answer = input("Press enter...")
 
         # Get all orders for date range
-        orders = self.eodms_rapi.get_orders(dtstart, dtend)
+        # orders = self.eodms_rapi.get_orders(dtstart, dtend)
+        orders = self.eodms_rapi.get_orders(maxOrders=imgs.count())
 
         orders = self.eodms_rapi.remove_duplicate_orders(orders)
 
@@ -1530,7 +1531,12 @@ class Eodms_OrderDownload:
             items = orders.get_raw()
                 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            max_downloads = 100
+            if orders.count() > 100:
+                max_downloads = orders.count()
+            download_items = self.eodms_rapi.download(items,
+                                                    self.download_path,
+                                                    max_downloads=max_downloads)
 
             # print("download_items: %s" % download_items)
 
@@ -1645,7 +1651,12 @@ class Eodms_OrderDownload:
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            max_downloads = 100
+            if orders.count() > 100:
+                max_downloads = orders.count()
+            download_items = self.eodms_rapi.download(items,
+                                                    self.download_path,
+                                                    max_downloads=max_downloads)
 
             # Update images
             query_imgs.update_downloads(download_items)
@@ -1757,7 +1768,12 @@ class Eodms_OrderDownload:
             items = orders.get_raw()
                 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            max_downloads = 100
+            if orders.count() > 100:
+                max_downloads = orders.count()
+            download_items = self.eodms_rapi.download(items,
+                                                    self.download_path,
+                                                    max_downloads=max_downloads)
                 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1878,7 +1894,12 @@ class Eodms_OrderDownload:
             os.mkdir(self.download_path)
         
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        max_downloads = 100
+        if orders.count() > 100:
+            max_downloads = orders.count()
+        download_items = self.eodms_rapi.download(items,
+                                                self.download_path,
+                                                max_downloads=max_downloads)
         
         # Update images with download info
         query_imgs.update_downloads(download_items)
@@ -1951,7 +1972,12 @@ class Eodms_OrderDownload:
             os.mkdir(self.download_path)
         
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        max_downloads = 100
+        if orders.count() > 100:
+            max_downloads = orders.count()
+        download_items = self.eodms_rapi.download(items,
+                                                self.download_path,
+                                                max_downloads=max_downloads)
         
         # Update images with download info
         query_imgs.update_downloads(download_items)
@@ -1987,6 +2013,7 @@ class Eodms_OrderDownload:
         # process = params.get('process')
         maximum = params.get('maximum')
         self.output = params.get('output')
+        overlap = params.get('overlap')
         # priority = params.get('priority')
 
         # Validate AOI
@@ -2029,6 +2056,10 @@ class Eodms_OrderDownload:
         query_imgs = self.query_entries(collections, filters=filters,
                                         aoi=aoi, dates=dates,
                                         max_images=max_images)
+
+        # Filter out minimum overlap
+        if overlap is not None and not overlap == '':
+            query_imgs.filter_overlap(overlap, aoi)
             
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:

@@ -51,6 +51,7 @@ import logging
 import logging.handlers as handlers
 import pathlib
 import unicodedata
+import eodms_rapi
 
 # from eodms_rapi import EODMSRAPI
 
@@ -651,6 +652,20 @@ class Prompter():
 
         return output
 
+    def ask_overlap(self, overlap):
+
+        if overlap is None:
+
+            if not self.eod.silent:
+                print("\n--------------Enter Minimum Overlap Percentage----"
+                      "----------")
+
+                msg = "\nEnter the minimum percentage of overlap between " \
+                      "images and the AOI\n"
+                overlap = self.get_input(msg, required=False)
+
+        return overlap
+
     def ask_priority(self, priority):
         """
         Asks the user for the order priority level
@@ -886,6 +901,7 @@ class Prompter():
         output = self.params.get('output')
         csv_fields = self.params.get('csv_fields')
         aws = self.params.get('aws')
+        overlap = self.params.get('overlap')
         silent = self.params.get('silent')
         no_order = self.params.get('no_order')
         version = self.params.get('version')
@@ -945,7 +961,7 @@ class Prompter():
                     os.path.abspath(__file__)),
                     'config.ini')
                 cfgfile = open(config_fn, 'w')
-                self.config_info.write(cfgfile, space_around_delimiters=False)
+                self.config_info.write(cfgfile, space_around_delimiters=True)
                 cfgfile.close()
 
         # Get number of attempts when querying the RAPI
@@ -962,7 +978,13 @@ class Prompter():
         print()
         coll_lst = self.eod.eodms_rapi.get_collections(True)
 
-        if coll_lst is None:
+        # print(f"coll_lst: {coll_lst}")
+
+        # print(f"dir(eodms_rapi.eodms): {dir(eodms_rapi.eodms)}")
+        # print(f"{isinstance(coll_lst, eodms_rapi.eodms.QueryError)}")
+
+        if coll_lst is None or isinstance(coll_lst,
+                                          eodms_rapi.eodms.QueryError):
             msg = "Failed to retrieve a list of available collections."
             self.logger.error(msg)
             self.eod.print_support(msg)
@@ -999,6 +1021,11 @@ class Prompter():
             # Get the AOI file
             inputs = self.ask_aoi(input_val)
             self.params['input_val'] = inputs
+
+            # If an AOI is specified, ask for a minimum overlap percentage
+            if inputs is not None:
+                overlap = self.ask_overlap(overlap)
+                self.params['overlap'] = overlap
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
@@ -1085,6 +1112,11 @@ class Prompter():
             # Get the AOI file
             inputs = self.ask_aoi(input_val)
             self.params['input_val'] = inputs
+
+            # If an AOI is specified, ask for a minimum overlap percentage
+            if inputs is not None:
+                overlap = self.ask_overlap(overlap)
+                self.params['overlap'] = overlap
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
@@ -1176,7 +1208,8 @@ def get_config():
     :rtype: configparser.ConfigParser
     """
 
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(comment_prefixes='/',
+                                       allow_no_value=True)
 
     config_fn = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              'config.ini')
@@ -1255,6 +1288,9 @@ output_help = '''The output file path containing the results in a
 @click.option('--aws', '-a', is_flag=True, default=None,
               help='Determines whether to download from AWS (only applies '
                    'to Radarsat-1 imagery).')
+@click.option('--overlap', '-ov', default=None,
+              help='The minimum percentage of overlap between AOI and images '
+                   '(if no AOI specified, this parameter is ignored).')
 @click.option('--silent', '-s', is_flag=True, default=None,
               help='Sets process to silent which supresses all questions.')
 @click.option('--no_order', '-nord', is_flag=True, default=None,
@@ -1262,7 +1298,7 @@ output_help = '''The output file path containing the results in a
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
-        maximum, priority, output, csv_fields, aws, silent, no_order,
+        maximum, priority, output, csv_fields, aws, overlap, silent, no_order,
         version):
     """
     Search & Order EODMS products.
@@ -1301,6 +1337,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'output': output,
                   'csv_fields': csv_fields,
                   'aws': aws,
+                  'overlap': overlap,
                   'silent': silent,
                   'no_order': no_order,
                   'version': version}

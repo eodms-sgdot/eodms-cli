@@ -30,6 +30,12 @@ from geomet import wkt
 from xml.etree import ElementTree
 import json
 import logging
+import shapely.wkt
+import numpy as np
+from shapely.geometry import MultiPolygon
+
+from eodms_rapi import EODMSGeo
+
 try:
     import osgeo.ogr as ogr
     import osgeo.osr as osr
@@ -75,6 +81,17 @@ class Geo:
             
         return True
         
+    def _close_wkt_polygon(self, in_wkt):
+
+        gjson = wkt.loads(in_wkt)
+        nc = np.array(gjson['coordinates'])
+        coords = np.append(nc, [[nc[0][0]]], axis=1)
+        gjson['coordinates'] = coords.tolist()
+
+        out_wkt = wkt.dumps(gjson)
+
+        return out_wkt
+
     def convert_image_geom(self, coords, output='array'):
         """
         Converts a list of coordinates from the RAPI to a polygon geometry, 
@@ -129,22 +146,22 @@ class Geo:
             else:
                 return pnt_array
             
-    def convert_from_wkt(self, in_feat):
-        """
-        Converts a WKT to a polygon geometry.
-        
-        :param in_feat: The WKT of the polygon.
-        :type  in_feat: str
-        
-        :return: The polygon geometry of the input WKT.
-        :rtype: ogr.Geometry
-        """
-
-        out_poly = None
-        if GDAL_INCLUDED and self._check_ogr():
-            out_poly = ogr.CreateGeometryFromWkt(in_feat)
-        
-        return out_poly
+    # def convert_from_wkt(self, in_feat):
+    #     """
+    #     Converts a WKT to a polygon geometry.
+    #
+    #     :param in_feat: The WKT of the polygon.
+    #     :type  in_feat: str
+    #
+    #     :return: The polygon geometry of the input WKT.
+    #     :rtype: ogr.Geometry
+    #     """
+    #
+    #     out_poly = None
+    #     if GDAL_INCLUDED and self._check_ogr():
+    #         out_poly = ogr.CreateGeometryFromWkt(in_feat)
+    #
+    #     return out_poly
             
     def export_results(self, img_lst, out_fn='results.geojson'):
         """
@@ -263,133 +280,155 @@ class Geo:
             with open(out_fn, 'w') as f:
                 json.dump(json_out, f)
         
-    def get_polygon(self):
-        """
-        Extracts the polygon from an AOI file.
+    def get_overlap(self, img, aoi):
         
-        :return: The AOI in WKT format.
-        :rtype: str
-        """
+        rapi_geo = EODMSGeo()
 
-        aoi_feat = None
-        if GDAL_INCLUDED and self._check_ogr():
-            # Determine the OGR driver of the input AOI
-            if self.aoi_fn.find('.gml') > -1:
-                ogr_driver = 'GML'
-            elif self.aoi_fn.find('.kml') > -1:
-                ogr_driver = 'KML'
-            elif self.aoi_fn.find('.json') > -1 \
-                    or self.aoi_fn.find('.geojson') > -1:
-                ogr_driver = 'GeoJSON'
-            elif self.aoi_fn.find('.shp') > -1:
-                ogr_driver = 'ESRI Shapefile'
-            else:
-                err_msg = "The AOI file type could not be determined."
-                self.eod.print_support(err_msg)
-                self.logger.error(err_msg)
-                sys.exit(1)
+        img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
+        aoi_wkts = rapi_geo.convert_toWKT(aoi, 'file')
                 
             # Open AOI file and extract AOI
             driver = ogr.GetDriverByName(ogr_driver)
             ds = driver.Open(self.aoi_fn, 0)
             
-            # Get the layer from the file
-            lyr = ds.GetLayer()
+        img_geom = shapely.wkt.loads(img_wkt)
+        aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
             
-            # Set the target spatial reference to WGS84
-            t_crs = osr.SpatialReference()
-            t_crs.ImportFromEPSG(4326)
-            
-            for feat in lyr:
-                # Create the geometry
-                geom = feat.GetGeometryRef()
-                
-                # Convert the geometry to WGS84
-                s_crs = geom.GetSpatialReference()
-                
-                # Get the EPSG codes from the spatial references
-                epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
-                epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
-                
-                if not str(epsg_sCrs) == '4326':
-                    if epsg_tCrs is None:
-                        print("\nCannot reproject AOI.")
-                        sys.exit(1)
-                        
-                    if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
-                        # Create the CoordinateTransformation
-                        print("\nReprojecting input AOI...")
-                        coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
-                        geom.Transform(coordTrans)
-                        
-                        self.reverse_coords(geom)
-                
-                # Convert multipolygon to polygon (if applicable)
-                if geom.GetGeometryType() == 6:
-                    geom = geom.UnionCascaded()
+        img_area = img_geom.area
+        aoi_area = aoi_polys.area
+        overlap_area = img_geom.intersection(aoi_polys).area
+        overlap_aoi = (overlap_area / aoi_area) * 100
+        overlap_img = (overlap_area / img_area) * 100
                     
-                # Convert to WKT
-                aoi_feat = geom.ExportToWkt()
+        return overlap_aoi, overlap_img
                 
-        else:
-            # Determine the OGR driver of the input AOI
-            if self.aoi_fn.find('.gml') > -1 or self.aoi_fn.find('.kml') > -1:
-                
-                with open(self.aoi_fn, 'rt') as f:
-                    tree = ElementTree.parse(f)
-                    root = tree.getroot()
-                
-                if self.aoi_fn.find('.gml') > -1:
-                    coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/'
-                                               'gml}coordinates'):
-                        coord_lst.append(coords.text)
-                else:
-                    coord_lst = []
-                    for coords in root.findall('.//{http://www.opengis.net/'
-                                               'kml/2.2}coordinates'):
-                        coord_lst.append(coords.text)
-                        
-                pnts_array = []
-                for c in coord_lst:
-                    pnts = [p.strip('\n').strip('\t').split(',') for p in \
-                            c.split(' ') if not p.strip('\n').strip('\t') == '']
-                    pnts_array += pnts
-                
-                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
-                    for pnt in pnts_array])
-                
-            elif self.aoi_fn.find('.json') > -1 \
-                    or self.aoi_fn.find('.geojson') > -1:
-                with open(self.aoi_fn) as f:
-                    data = json.load(f)
-                
-                feats = data['features']
-                for f in feats:
-                    geo_type = f['geometry']['type']
-                    if geo_type == 'MultiPolygon':
-                        coords = f['geometry']['coordinates'][0][0]
-                    else:
-                        coords = f['geometry']['coordinates'][0]
-                
-                # Convert values in point array to strings
-                coords = [[str(p[0]), str(p[1])] for p in coords]
-                aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
-                            for pnt in coords])
-                            
-            elif self.aoi_fn.find('.shp') > -1:
-                msg = "Could not open shapefile. The GDAL Python Package " \
-                        "must be installed to use shapefiles."
-                self.eod.print_support(msg)
-                self.logger.error(msg)
-                sys.exit(1)
-            else:
-                msg = "The AOI file type could not be determined."
-                self.eod.print_support(msg)
-                self.logger.error(msg)
-                sys.exit(1)
-            
-        return aoi_feat
+    # def get_polygon(self):
+    #     """
+    #     Extracts the polygon from an AOI file.
+    #
+    #     :return: The AOI in WKT format.
+    #     :rtype: str
+    #     """
+    #
+    #     aoi_feat = None
+    #     if GDAL_INCLUDED and self._check_ogr():
+    #         # Determine the OGR driver of the input AOI
+    #         if self.aoi_fn.find('.gml') > -1:
+    #             ogr_driver = 'GML'
+    #         elif self.aoi_fn.find('.kml') > -1:
+    #             ogr_driver = 'KML'
+    #         elif self.aoi_fn.find('.json') > -1 \
+    #                 or self.aoi_fn.find('.geojson') > -1:
+    #             ogr_driver = 'GeoJSON'
+    #         elif self.aoi_fn.find('.shp') > -1:
+    #             ogr_driver = 'ESRI Shapefile'
+    #         else:
+    #             err_msg = "The AOI file type could not be determined."
+    #             self.eod.print_support(err_msg)
+    #             self.logger.error(err_msg)
+    #             sys.exit(1)
+    #
+    #         # Open AOI file and extract AOI
+    #         driver = ogr.GetDriverByName(ogr_driver)
+    #         ds = driver.Open(self.aoi_fn, 0)
+    #
+    #         # Get the layer from the file
+    #         lyr = ds.GetLayer()
+    #
+    #         # Set the target spatial reference to WGS84
+    #         t_crs = osr.SpatialReference()
+    #         t_crs.ImportFromEPSG(4326)
+    #
+    #         for feat in lyr:
+    #             # Create the geometry
+    #             geom = feat.GetGeometryRef()
+    #
+    #             # Convert the geometry to WGS84
+    #             s_crs = geom.GetSpatialReference()
+    #
+    #             # Get the EPSG codes from the spatial references
+    #             epsg_sCrs = s_crs.GetAttrValue("AUTHORITY", 1)
+    #             epsg_tCrs = t_crs.GetAttrValue("AUTHORITY", 1)
+    #
+    #             if not str(epsg_sCrs) == '4326':
+    #                 if epsg_tCrs is None:
+    #                     print("\nCannot reproject AOI.")
+    #                     sys.exit(1)
+    #
+    #                 if not s_crs.IsSame(t_crs) and not epsg_sCrs == epsg_tCrs:
+    #                     # Create the CoordinateTransformation
+    #                     print("\nReprojecting input AOI...")
+    #                     coordTrans = osr.CoordinateTransformation(s_crs, t_crs)
+    #                     geom.Transform(coordTrans)
+    #
+    #                     self.reverse_coords(geom)
+    #
+    #             # Convert multipolygon to polygon (if applicable)
+    #             if geom.GetGeometryType() == 6:
+    #                 geom = geom.UnionCascaded()
+    #
+    #             # Convert to WKT
+    #             aoi_feat = geom.ExportToWkt()
+    #
+    #     else:
+    #         # Determine the OGR driver of the input AOI
+    #         if self.aoi_fn.find('.gml') > -1 or self.aoi_fn.find('.kml') > -1:
+    #
+    #             with open(self.aoi_fn, 'rt') as f:
+    #                 tree = ElementTree.parse(f)
+    #                 root = tree.getroot()
+    #
+    #             if self.aoi_fn.find('.gml') > -1:
+    #                 coord_lst = []
+    #                 for coords in root.findall('.//{http://www.opengis.net/'
+    #                                            'gml}coordinates'):
+    #                     coord_lst.append(coords.text)
+    #             else:
+    #                 coord_lst = []
+    #                 for coords in root.findall('.//{http://www.opengis.net/'
+    #                                            'kml/2.2}coordinates'):
+    #                     coord_lst.append(coords.text)
+    #
+    #             pnts_array = []
+    #             for c in coord_lst:
+    #                 pnts = [p.strip('\n').strip('\t').split(',') for p in \
+    #                         c.split(' ') if not p.strip('\n').strip('\t') == '']
+    #                 pnts_array += pnts
+    #
+    #             aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt[:2]) \
+    #                 for pnt in pnts_array])
+    #
+    #         elif self.aoi_fn.find('.json') > -1 \
+    #                 or self.aoi_fn.find('.geojson') > -1:
+    #             with open(self.aoi_fn) as f:
+    #                 data = json.load(f)
+    #
+    #             feats = data['features']
+    #             for f in feats:
+    #                 geo_type = f['geometry']['type']
+    #                 if geo_type == 'MultiPolygon':
+    #                     coords = f['geometry']['coordinates'][0][0]
+    #                 else:
+    #                     coords = f['geometry']['coordinates'][0]
+    #
+    #             # Convert values in point array to strings
+    #             coords = [[str(p[0]), str(p[1])] for p in coords]
+    #             aoi_feat = "POLYGON ((%s))" % ', '.join([' '.join(pnt) \
+    #                         for pnt in coords])
+    #
+    #         elif self.aoi_fn.find('.shp') > -1:
+    #             msg = "Could not open shapefile. The GDAL Python Package " \
+    #                     "must be installed to use shapefiles."
+    #             self.eod.print_support(msg)
+    #             self.logger.error(msg)
+    #             sys.exit(1)
+    #         else:
+    #             msg = "The AOI file type could not be determined."
+    #             self.eod.print_support(msg)
+    #             self.logger.error(msg)
+    #             sys.exit(1)
+    #
+    #     return aoi_feat
         
     def is_wkt(self, in_feat):
         """

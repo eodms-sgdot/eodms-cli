@@ -305,6 +305,30 @@ class ImageList:
 
         return len(self.img_lst)
 
+    def filter_overlap(self, overlap, aoi):
+
+        geo_util = spatial.Geo(self.eod, aoi)
+
+        # aoi_feats = geo_util.get_polygon()
+
+        filter_lst = []
+        for img in self.img_lst:
+            overlap_aoi, overlap_img = geo_util.get_overlap(img, aoi)
+            if overlap_aoi >= float(overlap) or overlap_img >= float(overlap):
+                # print("overlap_aoi: %s" % overlap_aoi)
+                # print("overlap_img: %s" % overlap_img)
+                filter_lst.append(img)
+
+        # print("img_lst: %s" % len(self.img_lst))
+        # print("filter_lst: %s" % len(filter_lst))
+
+        self.eod.print_msg('Number of images found after filtering for '
+                           'overlap: %s' % len(filter_lst))
+
+        self.img_lst = filter_lst
+
+        # answer = input("Press enter...")
+
     def get_fields(self):
         """
         Gets the list of metadata fields from the first Image.
@@ -322,6 +346,12 @@ class ImageList:
         return fields
 
     def get_ids(self):
+        """
+        Gets a list of all the Record IDs from the image list.
+
+        :return: List of Record IDs.
+        :rtype: list
+        """
 
         rec_ids = [i.get_record_id() for i in self.img_lst]
 
@@ -411,6 +441,12 @@ class ImageList:
             img_ids.append(rec_id)
 
     def remove_image(self, rec_id):
+        """
+        Removes an image from the image list with a given Record ID.
+
+        :param rec_id: The Record ID of the image to remove.
+        :type  rec_id: int
+        """
 
         found_idx = None
         for idx, img in enumerate(self.img_lst):
