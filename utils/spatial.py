@@ -286,10 +286,6 @@ class Geo:
 
         img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
         aoi_wkts = rapi_geo.convert_toWKT(aoi, 'file')
-                
-            # Open AOI file and extract AOI
-            driver = ogr.GetDriverByName(ogr_driver)
-            ds = driver.Open(self.aoi_fn, 0)
             
         img_geom = shapely.wkt.loads(img_wkt)
         aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
