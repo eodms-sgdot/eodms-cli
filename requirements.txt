@@ -1,6 +1,11 @@
-py-eodms-rapi>=0.2.0
+py-eodms-rapi>=1.4.0
 requests>=2.23.0
 dateparser>=1.0.0
 geomet>=0.3.0
 click>=8.0.1
 shapely>=1.8.1
+python-dateutil>=2.8.1
+tqdm>=4.59.0
+numpy>=1.20.3
+ogr>=0.28.0
+OSR>=0.0.1

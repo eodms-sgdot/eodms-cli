@@ -66,6 +66,7 @@ class Field:
         """
         return self.ui_label
 
+
 class CollFields:
     def __init__(self, coll_id):
         self.coll_id = coll_id
@@ -75,7 +76,7 @@ class CollFields:
 
     def add_field(self, **kwargs):
         """
-        :param \**kwargs:
+        :param kwargs:
         See below
 
         :Keyword Arguments:
@@ -90,10 +91,10 @@ class CollFields:
         """
 
         self.fields.append(Field(eod_name=kwargs.get('eod_name'),
-                                     rapi_id=kwargs.get('rapi_id'),
-                                     rapi_title=kwargs.get('rapi_'
-                                                               'field_title'),
-                                     ui_label=kwargs.get('ui_label')))
+                                 rapi_id=kwargs.get('rapi_id'),
+                                 rapi_title=kwargs.get('rapi_'
+                                                       'field_title'),
+                                 ui_label=kwargs.get('ui_label')))
 
     def add_general_fields(self):
         """
@@ -149,6 +150,7 @@ class CollFields:
             if f.get_eod_name() == eod_name.upper():
                 return f
 
+
 class EodFieldMapper:
     def __init__(self):
 
@@ -198,7 +200,7 @@ class EodFieldMapper:
                                 rapi_id='GE1.SENS_INC',
                                 rapi_title='Sensor Incidence Angle',
                                 ui_label='Incidence Angle (Decimal '
-                                             'Degrees)')
+                                         'Degrees)')
         self.mapping['GeoEye-1'] = geoeye_fields
 
         ikonos_fields = CollFields('IKONOS')
@@ -210,7 +212,7 @@ class EodFieldMapper:
                                 rapi_id='IKONOS.SENS_INC',
                                 rapi_title='Sensor Incidence Angle',
                                 ui_label='Incidence Angle (Decimal '
-                                             'Degrees)')
+                                         'Degrees)')
         ikonos_fields.add_field(eod_name='SENSOR_MODE',
                                 rapi_id='IKONOS.SBEAM',
                                 rapi_title='Sensor Mode',
@@ -326,7 +328,7 @@ class EodFieldMapper:
                                rapi_id='RSAT1.INCIDENCE_ANGLE',
                                rapi_title='Incidence Angle',
                                ui_label='Incidence Angle (Decimal '
-                                            'Degrees)'),
+                                        'Degrees)'),
         r1raw_fields.add_field(eod_name='DATASET_ID',
                                rapi_id='RSAT1.DATASET_ID',
                                rapi_title='Dataset Id',
@@ -406,7 +408,7 @@ class EodFieldMapper:
                                rapi_id='RSAT2.INCIDENCE_ANGLE',
                                rapi_title='Incidence Angle',
                                ui_label='Incidence Angle (Decimal '
-                                            'Degrees)'),
+                                        'Degrees)'),
         r2raw_fields.add_field(eod_name='LOOK_ORIENTATION',
                                rapi_id='RSAT2.ANTENNA_ORIENTATION',
                                rapi_title='Look Orientation',
@@ -442,7 +444,7 @@ class EodFieldMapper:
                                 rapi_id='RE.SENS_INC',
                                 rapi_title='Sensor Incidence Angle',
                                 ui_label='Incidence Angle (Decimal '
-                                             'Degrees)')
+                                         'Degrees)')
         rapeye_fields.add_field(eod_name='SENSOR_MODE',
                                 rapi_id='RE.SBEAM',
                                 rapi_title='Sensor Mode',
@@ -522,7 +524,7 @@ class EodFieldMapper:
                                 rapi_id='RCM.INCIDENCE_ANGLE',
                                 rapi_title='Incidence Angle',
                                 ui_label='Incidence Angle (Decimal '
-                                             'Degrees)'),
+                                         'Degrees)'),
         rcmsci_fields.add_field(eod_name='BEAM_MODE',
                                 rapi_id='RCM.SBEAM',
                                 rapi_title='Beam Mode Type',
@@ -591,22 +593,22 @@ class EodFieldMapper:
                               rapi_id='CATALOG_SERIES.CEOID',
                               rapi_title='Sequence Id',
                               ui_label='Value-added Satellite Product '
-                                           'Options')
+                                       'Options')
         self.mapping['VASP'] = vasp_fields
 
         wv1_fields = CollFields('WorldView-1')
         wv1_fields.add_field(eod_name='CLOUD_COVER',
-                              rapi_id='WV1.CLOUD_PERCENT',
-                              rapi_title='Cloud Cover',
-                              ui_label='Maximum Cloud Cover')
+                             rapi_id='WV1.CLOUD_PERCENT',
+                             rapi_title='Cloud Cover',
+                             ui_label='Maximum Cloud Cover')
         wv1_fields.add_field(eod_name='INCIDENCE_ANGLE',
-                              rapi_id='WV1.SENS_INC',
-                              rapi_title='Sensor Incidence Angle',
-                              ui_label='Incidence Angle (Decimal Degrees)')
+                             rapi_id='WV1.SENS_INC',
+                             rapi_title='Sensor Incidence Angle',
+                             ui_label='Incidence Angle (Decimal Degrees)')
         wv1_fields.add_field(eod_name='SENSOR_MODE',
-                              rapi_id='WV1.SBEAM',
-                              rapi_title='Sensor Mode',
-                              ui_label='Sensor Mode')
+                             rapi_id='WV1.SBEAM',
+                             rapi_title='Sensor Mode',
+                             ui_label='Sensor Mode')
         for key in ['WorldView-1', 'WV1']:
             self.mapping[key] = wv1_fields
 
@@ -641,7 +643,6 @@ class EodFieldMapper:
                              ui_label='Sensor Mode')
         for key in ['WorldView-3', 'WV3']:
             self.mapping[key] = wv3_fields
-
 
     def get_fields(self, coll_id):
         """

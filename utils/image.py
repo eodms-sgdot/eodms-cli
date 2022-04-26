@@ -33,7 +33,7 @@ import os
 from . import spatial
 
 
-def to_camelCase(in_str):
+def to_camel_case(in_str):
     """
     Converts a string to camelCase.
     
@@ -80,7 +80,7 @@ class Image:
         """
         return self.metadata['recordId']
 
-    def get_coll_Id(self):
+    def get_coll_id(self):
         """
         Gets the Collection Id of the image.
         
@@ -147,7 +147,8 @@ class Image:
         if entry is None:
             return self.metadata
 
-        if entry not in self.metadata.keys(): return None
+        if entry not in self.metadata.keys():
+            return None
 
         return self.metadata[entry]
 
@@ -227,7 +228,7 @@ class Image:
             elif k == 'metadata':
                 if isinstance(v, list):
                     for m in v:
-                        key = to_camelCase(m[0])
+                        key = to_camel_case(m[0])
                         self.metadata[key] = m[1]
             else:
                 self.metadata[k] = v
@@ -415,28 +416,29 @@ class ImageList:
         else:
             return self.img_lst[start:end]
 
-    def ingest_results(self, results, isCsv=False):
+    def ingest_results(self, results, is_csv=False):
         """
         Ingests a list of results from the RAPI, converts them to Images and
             adds them to the img_lst.
             
         :param results: A list of image records from the RAPI.
         :type  results: list
+        :param is_csv: Determines if the input results are from a CSV file.
+        :type  is_csv: list
         """
 
-        # print("results: %s" % results)
         img_ids = []
         for r in results:
-            if 'errors' in r.keys(): continue
+            if 'errors' in r.keys():
+                continue
             rec_id = r.get('recordId')
-            if rec_id in img_ids: continue
+            if rec_id in img_ids:
+                continue
             image = Image()
-            if isCsv:
+            if is_csv:
                 image.parse_row(r)
             else:
                 image.parse_record(r)
-            # print("metadata: %s" % image.metadata)
-            # answer = input("Press enter...")
             self.img_lst.append(image)
             img_ids.append(rec_id)
 
@@ -453,7 +455,6 @@ class ImageList:
             if img.get_record_id() == rec_id:
                 found_idx = idx
 
-        # print("found_idx: %s" % found_idx)
         if found_idx is not None:
             del self.img_lst[found_idx]
 
@@ -463,6 +464,8 @@ class ImageList:
         
         :param val: The upper limit of the trim.
         :type  val: str or int
+        :param collections: A list Collection IDs.
+        :type  collections: list
         """
 
         if isinstance(val, str):
@@ -473,8 +476,8 @@ class ImageList:
         else:
             new_imgs = []
             for c in collections:
-                imgs = [img for img in self.img_lst if img.get_metadata()
-                ['collectionId'] == c]
+                imgs = [img for img in self.img_lst
+                        if img.get_metadata()['collectionId'] == c]
                 if len(imgs) < val:
                     new_imgs += imgs
                 else:
@@ -490,8 +493,6 @@ class ImageList:
             RAPI (each image must contain a recordId).
         :type  download_items: list
         """
-
-        # print("img_lst: %s" % self.img_lst)
 
         for item in download_items:
             rec_id = item.get('recordId')
@@ -513,15 +514,13 @@ class ImageList:
                 for k, v in params.items():
                     img.set_metadata(v, k)
 
-            # print("params: %s" % params)
-
 
 class OrderItem:
     """
     Class used to hold information for an EODMS order item.
     """
 
-    def __init__(self, eod, image=None, item_id=None, order_id=None):
+    def __init__(self, eod, image=None):
         """
         Initializer for the OrderItem class.
         
@@ -529,10 +528,6 @@ class OrderItem:
         :type  eod: Eodms_OrderDownload
         :param image: The Image item related to the Order Item.
         :type  image: Image
-        :param item_id: The Order Item Id.
-        :type  item_id: int or str
-        :param order_id: The Order Id.
-        :type  order_id: int or str
         """
         self.eod = eod
         self.image = image
@@ -622,7 +617,8 @@ class OrderItem:
         :rtype: str
         """
 
-        if 'downloadPaths' not in self.metadata.keys(): return None
+        if 'downloadPaths' not in self.metadata.keys():
+            return None
 
         paths = self.metadata['downloadPaths']
         path_str = json.dumps(paths)
@@ -649,10 +645,8 @@ class OrderItem:
             image.parse_record(in_image)
         self.image = image
 
-        # print("self.image.get_collId(): %s" % self.image.get_collId())
-
-        fields = self.eod.eodms_rapi.get_collections()[
-            self.image.get_coll_Id()]['fields']
+        # fields = self.eod.eodms_rapi.get_collections()[
+        #     self.image.get_coll_id()]['fields']
 
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
         self.metadata['imageMetadata'] = self.image.get_metadata(
@@ -700,7 +694,8 @@ class OrderItem:
         print("\tOrder Id: %s" % self.metadata['orderId'])
         print("\tRecord Id: %s" % self.metadata['recordId'])
         for m, v in self.metadata.items():
-            if m == 'itemId' or m == 'orderId' or m == 'recordId': continue
+            if m == 'itemId' or m == 'orderId' or m == 'recordId':
+                continue
             print("%s%s: %s" % (str('\t' * tabs), m, v))
 
     def set_metadata(self, key, val):
@@ -832,7 +827,8 @@ class Order:
         """
         for item in self.order_items:
             img = item.get_image()
-            if img is None: return None
+            if img is None:
+                return None
             if img.get_record_id() == record_id:
                 return img
 
@@ -1039,20 +1035,22 @@ class OrderList:
         :return: A list of Order objects.
         :rtype: list
         """
+
         return self.order_lst
 
-    def get_order_item(self, itemId):
+    def get_order_item(self, item_id):
         """
         Gets a particular Order Item with a given Order Item Id.
         
-        :param order_id: The Order Item Id.
-        :type  order_id: int
+        :param item_id: The Order Item Id.
+        :type  item_id: int
         
         :return: The OrderItem object with the given Order Item Id.
         :rtype: Order
         """
+
         for o in self.order_lst:
-            return o.get_item(itemId)
+            return o.get_item(item_id)
 
     def get_order_items(self):
         """
@@ -1100,8 +1098,8 @@ class OrderList:
     def merge_ordlist(self, ord_list):
         orders = ord_list.get_orders()
 
-        for ord in orders:
-            self.order_lst.append(ord)
+        for order in orders:
+            self.order_lst.append(order)
 
     def parse_order_item(self, rec):
         """
@@ -1141,19 +1139,16 @@ class OrderList:
             image.set_metadata(rec.get('dateRapiOrdered'),
                                'dateRapiOrdered')
 
-    def print_order_items(self, tabs=1):
+    def print_order_items(self):
         """
         Prints all the Order Items to the terminal.
-        
-        :param tabs: The number of tabs to include in the printed statement.
-        :type  tabs: int
         """
 
         print("Number of orders: %s" % len(self.order_lst))
 
         for o in self.order_lst:
-            ord_id = o.get_order_id()
-            item_count = o.count()
+            # ord_id = o.get_order_id()
+            # item_count = o.count()
             o.print_items()
 
     def print_orders(self, as_var=False, tabs=1):
@@ -1173,10 +1168,11 @@ class OrderList:
         out_str = ''
         for o in self.order_lst:
             ord_id = o.get_order_id()
-            item_count = o.count()
+            # item_count = o.count()
             out_str += "\n%sOrder Id: %s\n" % (str('\t' * tabs), ord_id)
 
-        if as_var: return out_str
+        if as_var:
+            return out_str
 
         print(out_str)
 
@@ -1187,11 +1183,14 @@ class OrderList:
         :param order_id: The Order Id of the order to remove.
         :type  order_id: str or int
         """
+
+        rem_idx = None
         for idx, o in enumerate(self.order_lst):
             if o.get_order_id() == order_id:
                 rem_idx = idx
 
-        self.order_lst.pop(rem_idx)
+        if rem_idx is not None:
+            self.order_lst.pop(rem_idx)
 
     def replace_item(self, order_id, item_obj):
         """
@@ -1226,21 +1225,21 @@ class OrderList:
                     order.trim_items(counter)
                     counter = 0
 
-    def update_order(self, orderId, order_item):
+    def update_order(self, order_id, order_item):
         """
         Updates a specific Order Item.
         
-        :param orderId: The Order Id for which the item will be added.
-        :type  orderId: int
+        :param order_id: The Order Id for which the item will be added.
+        :type  order_id: int
         :param order_item: The Order Item to add.
         :type  order_item: OrderItem
         """
 
         for order in self.order_lst:
-            if int(order.get_order_id()) == int(orderId):
+            if int(order.get_order_id()) == int(order_id):
                 order.add_item(order_item)
                 return None
 
-        new_order = Order(orderId)
+        new_order = Order(order_id)
         new_order.add_item(order_item)
         self.order_lst.append(new_order)
