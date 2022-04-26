@@ -9,3 +9,4 @@ tqdm>=4.59.0
 numpy>=1.20.3
 ogr>=0.28.0
 OSR>=0.0.1
+numpy
