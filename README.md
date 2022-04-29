@@ -7,7 +7,7 @@ The **eodms_orderdownload.py** script is used to search, order and download imag
 
 ## Getting the Latest Version
 
-It is recommended everytime this repository is cloned, that ```pip install -r requirements.txt``` should be run to get the latest py-eodms-rapi version.
+It is recommended everytime this repository is cloned, that ```pip install -r requirements.txt``` should be run to get the latest [py-eodms-rapi](https://pypi.org/project/py-eodms-rapi/) version.
 
 ## Requirements
 
