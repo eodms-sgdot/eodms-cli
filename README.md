@@ -41,10 +41,18 @@ The eodms_orderdownload.py was designed using **Python 3.7** however it has been
 	> pip install -r requirements.txt
 	```
 	
-3. Run the batch file and enter values when prompted:
+3. Either
+
+- run the batch file and enter values when prompted:
 	
 	```dos
 	> eodms_orderdownload.bat
+	```
+
+- run the script using Python
+
+	```dos
+	> python eodms_orderdownload.py
 	```
 	
 ## Configuration
