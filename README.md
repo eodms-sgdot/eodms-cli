@@ -5,6 +5,10 @@ EODMS RAPI Orderer & Downloader
 
 The **eodms_orderdownload.py** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
 
+## Getting the Latest Version
+
+It is recommended everytime this repository is cloned, that ```pip install -r requirements.txt``` should be run to get the latest py-eodms-rapi version.
+
 ## Requirements
 
 ### Python
