@@ -300,9 +300,9 @@ class EODMS_CSV:
         records = []
         for idx, row in enumerate(reader):
             if idx == 0:
-                header = row
+                self.header = row
                 if header_only:
-                    return header
+                    return self.header
             else:
                 rec = {}
                 for i, c in enumerate(row):

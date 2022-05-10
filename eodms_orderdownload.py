@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '2.5.1'
+__version__ = '2.5.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -873,7 +873,12 @@ class Prompter:
             output = "\n->> %s%s%s: " % (msg, opt_str, def_str)
             if msg.endswith('\n'):
                 output = "\n->> %s%s%s:\n" % (msg.strip('\n'), opt_str, def_str)
-            in_val = input(output)
+            try:
+                in_val = input(output)
+            except EOFError as error:
+                # Output expected EOFErrors.
+                self.logger.error(error)
+                sys.exit(1)
 
         if required and in_val == '':
             eod_util.EodmsOrderDownload().print_support(err_msg)
@@ -1274,18 +1279,22 @@ output_help = '''The output file path containing the results in a
                    'authentication.')
 @click.option('--process', '-prc', '-r', default=None,
               help='The type of process to run from this list of '
-                   'options:\n- %s'
-                   % '\n- '.join(["%s: %s" % (k, v)
-                                  for k, v in proc_choices.items()]))
+                   'options:\n- %s' % '\n- '.join(["%s: %s" %
+                                                   (k, v)
+                                                   for k, v in
+                                                   proc_choices.items()]))
+# % '\n- '.join(["%s (%s): %s" % (k, idx + 1, v)
+#                for idx, (k, v) in
+#                enumerate(proc_choices.items())]))
+@click.option('--collections', '-c', default=None,
+              help='The collection of the images being ordered (separate '
+                   'multiple collections with a comma).')
 @click.option('--input_val', '-i', default=None,
               help='An input file (can either be an AOI, a CSV file '
                    'exported from the EODMS UI), a WKT feature or a set '
                    'of Record IDs. Valid AOI formats are GeoJSON, KML or '
                    'Shapefile (Shapefile requires the GDAL Python '
                    'package).')
-@click.option('--collections', '-c', default=None,
-              help='The collection of the images being ordered (separate '
-                   'multiple collections with a comma).')
 @click.option('--filters', '-f', default=None,
               help='A list of filters for a specific collection.')
 @click.option('--dates', '-d', default=None,
@@ -1330,7 +1339,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
     print("\n##########################################################"
           "#######################")
-    print("# %s v%s                           " 
+    print("# %s v%s                           "
           "             #" % (__title__, __version__))
     print("############################################################"
           "#####################")
@@ -1439,16 +1448,6 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         # Get URL for debug purposes
         rapi_url = get_option(config_info, 'Debug', 'root_url')
-
-        # print("download_path: %s" % download_path)
-        # print("res_path: %s" % res_path)
-        # print("log_loc: %s" % log_loc)
-        # print("timeout_query: %s" % timeout_query)
-        # print("timeout_order: %s" % timeout_order)
-        # print("max_results: %s" % max_results)
-        # print("keep_results: %s" % keep_results)
-        # print("keep_downloads: %s" % keep_downloads)
-        # print("rapi_url: %s" % rapi_url)
 
         eod = eod_util.EodmsOrderDownload(download=download_path,
                                           results=res_path, log=log_loc,

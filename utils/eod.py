@@ -212,12 +212,12 @@ class EodmsOrderDownload:
                 if start.lower().find('t') > -1:
                     start = start.lower().replace('t', '_')
                 else:
-                    start = '%s_000000' % start
+                    start = f'{start}_000000'
 
                 if end.lower().find('t') > -1:
                     end = end.lower().replace('t', '_')
                 else:
-                    end = '%s_000000' % end
+                    end = f'{end}_000000'
 
             dates.append({'start': start, 'end': end})
 
@@ -246,7 +246,7 @@ class EodmsOrderDownload:
             filt = filt.upper()
 
             if not any(x in filt for x in self.operators):
-                print("Filter '%s' entered incorrectly." % filt)
+                print(f"Filter '{filt}' entered incorrectly.")
                 continue
 
             ops = [x for x in self.operators if x in filt]
@@ -266,9 +266,9 @@ class EodmsOrderDownload:
             coll_fields = self.field_mapper.get_fields(coll_id)
 
             if key not in coll_fields.get_eod_fieldnames():
-                err = "Filter '%s' is not available for Collection '%s'." \
-                      % (key, coll_id)
-                self.print_msg("WARNING: %s" % err)
+                err = f"Filter '{key}' is not available for Collection " \
+                      f"'{coll_id}'."
+                self.print_msg(f"WARNING: {err}")
                 self.logger.warning(err)
                 continue
 
@@ -278,8 +278,8 @@ class EodmsOrderDownload:
             val = val.replace('"', '').replace("'", '')
 
             if val is None or val == '':
-                err = "No value specified for Filter ID '%s'." % key
-                self.print_msg("WARNING: %s" % err)
+                err = f"No value specified for Filter ID '{key}'."
+                self.print_msg(f"WARNING: {err}")
                 self.logger.warning(err)
                 continue
 
@@ -297,7 +297,8 @@ class EodmsOrderDownload:
 
         # Get all orders for date range
         # orders = self.eodms_rapi.get_orders(dtstart, dtend)
-        orders = self.eodms_rapi.get_orders(max_orders=imgs.count())
+        max_orders = imgs.count() + 25
+        orders = self.eodms_rapi.get_orders(max_orders=max_orders)
 
         orders = self.eodms_rapi.remove_duplicate_orders(orders)
 
@@ -315,11 +316,11 @@ class EodmsOrderDownload:
         for ord_item in orders:
             # Get the record ID of the order item
             ord_rec_id = ord_item.get('recordId')
-            # print("\nord_rec_id: %s" % ord_rec_id)
 
             for i in img_ids:
                 # If the record ID of the image matches the one of the
                 #   order item
+
                 if i == ord_rec_id:
                     if ord_item['status'].upper() in sub_statuses:
                         exist_orders.add_order(ord_item)
@@ -383,7 +384,7 @@ class EodmsOrderDownload:
                 for s_idx, rec in enumerate(sub_recs):
 
                     cur_idx += 1
-                    print('\nGetting image entry %s...' % str(cur_idx))
+                    print(f'\nGetting image entry {str(cur_idx)}...')
 
                     coll = rec.get('collection')
 
@@ -437,8 +438,8 @@ class EodmsOrderDownload:
                             filt_val = rec.get(f.lower())
 
                             if filt_val is None:
-                                msg = "The value for '%s' in the CSV file is " \
-                                      "None. Skipping this field." % f
+                                msg = f"The value for '{f}' in the CSV file " \
+                                      f"is None. Skipping this field."
                                 self.print_msg(msg)
                                 self.logger.warning(msg)
                                 continue
@@ -514,13 +515,13 @@ class EodmsOrderDownload:
                 for d in dests:
                     loc_dest = d['local_destination']
                     src_url = d['url']
-                    msg += "\nRecord ID %s\n" % rec_id
-                    msg += "    Order Item ID: %s\n" % orderitem_id
-                    msg += "    Order ID: %s\n" % order_id
-                    msg += "    Downloaded File: %s\n" % loc_dest
-                    msg += "    Source URL: %s\n" % src_url
+                    msg += f"\nRecord ID {rec_id}\n"
+                    msg += f"    Order Item ID: {orderitem_id}\n"
+                    msg += f"    Order ID: {order_id}\n"
+                    msg += f"    Downloaded File: {loc_dest}\n"
+                    msg += f"    Source URL: {src_url}\n"
             self.print_footer('Successful Downloads', msg)
-            self.logger.info("Successful Downloads: %s" % msg)
+            self.logger.info(f"Successful Downloads: {msg}")
 
         if len(failed_orders) > 0:
             msg = "The following images did not download:\n"
@@ -531,13 +532,13 @@ class EodmsOrderDownload:
                 status = img.get_metadata('status')
                 stat_msg = img.get_metadata('statusMessage')
 
-                msg += "\nRecord ID %s\n" % rec_id
-                msg += "    Order Item ID: %s\n" % orderitem_id
-                msg += "    Order ID: %s\n" % order_id
-                msg += "    Status: %s\n" % status
-                msg += "    Status Message: %s\n" % stat_msg
+                msg += f"\nRecord ID {rec_id}\n"
+                msg += f"    Order Item ID: {orderitem_id}\n"
+                msg += f"    Order ID: {order_id}\n"
+                msg += f"    Status: {status}\n"
+                msg += f"    Status Message: {stat_msg}\n"
             self.print_footer('Failed Downloads', msg)
-            self.logger.info("Failed Downloads: %s" % msg)
+            self.logger.info(f"Failed Downloads: {msg}")
 
     def _parse_aws(self, query_imgs):
         """
@@ -565,8 +566,8 @@ class EodmsOrderDownload:
         eodms_imgs = image.ImageList(self)
         eodms_imgs.ingest_results(eodms_lst)
 
-        print("\nNumber of AWS images: %s" % aws_imgs.count())
-        print("Number of EODMS images: %s\n" % eodms_imgs.count())
+        print(f"\nNumber of AWS images: {aws_imgs.count()}")
+        print(f"Number of EODMS images: {eodms_imgs.count()}\n")
 
         return eodms_imgs, aws_imgs
 
@@ -592,8 +593,8 @@ class EodmsOrderDownload:
         # Separate orders that already exist
         new_orders, exist_orders = self._check_duplicate_orders(imgs)
 
-        self.print_msg("%s existing orders found.\nSubmitting %s orders."
-                       % (exist_orders.count_items(), new_orders.count()))
+        self.print_msg(f"{exist_orders.count_items()} existing orders found."
+                       f"\nSubmitting {new_orders.count()} orders.")
 
         orders = image.OrderList(self)
         # exist_orders = None
@@ -657,9 +658,9 @@ class EodmsOrderDownload:
         results_start = dateparser.parse(self.keep_results)
 
         if results_start is not None:
-            msg = "Cleaning up files older than %s in 'results' folder..." % \
-                  self.keep_results
-            print("\n%s" % msg)
+            msg = f"Cleaning up files older than {self.keep_results} in " \
+                  f"'results' folder..."
+            print(f"\n{msg}")
             self.logger.info(msg)
 
             res_files = glob.glob(os.path.join(os.sep, self.results_path,
@@ -675,8 +676,8 @@ class EodmsOrderDownload:
         downloads_start = dateparser.parse(self.keep_downloads)
 
         if downloads_start is not None:
-            msg = "Cleaning up files older than %s in 'downloads' folder..." % \
-                  self.keep_downloads
+            msg = f"Cleaning up files older than {self.keep_downloads} in " \
+                  f"'downloads' folder..."
             print(msg)
             self.logger.info(msg)
 
@@ -709,13 +710,12 @@ class EodmsOrderDownload:
             hour = tme[:2]
             minute = tme[2:4]
             sec = tme[4:]
-            out_date = '%s-%s-%sT%s:%s:%sZ' % (year, mth, day, hour, minute,
-                                               sec)
+            out_date = f'{year}-{mth}-{day}T{hour}:{minute}:{sec}Z'
         else:
             year = in_date[:4]
             mth = in_date[4:6]
             day = in_date[6:]
-            out_date = '%s-%s-%sT00:00:00Z' % (year, mth, day)
+            out_date = f'{year}-{mth}-{day}T00:00:00Z'
 
         return out_date
 
@@ -760,15 +760,15 @@ class EodmsOrderDownload:
             if os.path.exists(dest_fn):
                 # if all-good, continue to next file
                 if os.stat(dest_fn).st_size == int(fsize):
-                    msg = "No download necessary. " \
-                          "Local file already exists: %s" % dest_fn
+                    msg = f"No download necessary. Local file already " \
+                          f"exists: {dest_fn}"
                     self.print_msg(msg)
                     continue
                 # Otherwise, delete the incomplete/malformed local file and
                 #   redownload
                 else:
-                    msg = 'Filesize mismatch with %s. Re-downloading...' % \
-                          os.path.basename(dest_fn)
+                    msg = f'Filesize mismatch with ' \
+                          f'{os.path.basename(dest_fn)}. Re-downloading...'
                     self.print_msg(msg)
                     os.remove(dest_fn)
 
@@ -806,13 +806,12 @@ class EodmsOrderDownload:
             return None
 
         # Create EODMS_CSV object to export results
-        res_fn = os.path.join(self.results_path,
-                              "%s_Results.csv" % self.fn_str)
+        res_fn = os.path.join(self.results_path, f"{self.fn_str}_Results.csv")
         res_csv = csv_util.EODMS_CSV(self, res_fn)
 
         res_csv.export_results(self.cur_res)
 
-        msg = "Results exported to '%s'." % res_fn
+        msg = f"Results exported to '{res_fn}'."
         self.print_msg(msg, indent=False)
 
     def export_records(self, csv_f, header, records):
@@ -834,7 +833,7 @@ class EodmsOrderDownload:
                 if h in rec.keys():
                     val = str(rec[h])
                     if val.find(',') > -1:
-                        val = '"%s"' % val
+                        val = f'"{val}"'
                     out_vals.append(val)
                 else:
                     out_vals.append('')
@@ -1044,9 +1043,9 @@ class EodmsOrderDownload:
         if indent:
             indent_str = ' ' * self.indent
         if nl:
-            msg = "\n%s%s" % (indent_str, msg)
+            msg = f"\n{indent_str}{msg}"
         else:
-            msg = "%s%s" % (indent_str, msg)
+            msg = f"{indent_str}{msg}"
 
         print(msg)
 
@@ -1078,7 +1077,7 @@ class EodmsOrderDownload:
 
         print("\n**********************************************************"
               "****************")
-        print(" %s" % msg)
+        print(f" {msg}")
         print("************************************************************"
               "**************")
 
@@ -1091,16 +1090,16 @@ class EodmsOrderDownload:
         """
 
         if err_str is None:
-            print("\nIf you have any questions or require support, "
-                  "please contact the EODMS Support Team at "
-                  "%s" % self.email)
+            print(f"\nIf you have any questions or require support, "
+                  f"please contact the EODMS Support Team at "
+                  f"{self.email}")
         else:
-            print("\nERROR: %s" % err_str)
+            print(f"\nERROR: {err_str}")
 
             print("\nExiting process.")
 
-            print("\nFor help, please contact the EODMS Support Team at "
-                  "%s" % self.email)
+            print(f"\nFor help, please contact the EODMS Support Team at "
+                  f"{self.email}")
 
     def query_entries(self, collections, **kwargs):
         """
@@ -1163,13 +1162,13 @@ class EodmsOrderDownload:
                         result_fields.append(k)
 
             # Send a query to the EODMSRAPI object
-            print("\nSending query to EODMSRAPI with the following parameters:")
-            print("  collection: %s" % self.coll_id)
-            print("  filters: %s" % filters)
-            print("  features: %s" % feats)
-            print("  dates: %s" % dates)
-            print("  resultFields: %s" % result_fields)
-            print("  maxResults: %s" % max_images)
+            print(f"\nSending query to EODMSRAPI with the following parameters:")
+            print(f"  collection: {self.coll_id}")
+            print(f"  filters: {filters}")
+            print(f"  features: {feats}")
+            print(f"  dates: {dates}")
+            print(f"  resultFields: {result_fields}")
+            print(f"  maxResults: {max_images}")
             self.eodms_rapi.search(self.coll_id, filters, feats, dates,
                                    result_fields, max_images)
 
@@ -1210,9 +1209,9 @@ class EodmsOrderDownload:
         if title is None:
             title = "Script Parameters"
 
-        msg = "%s:\n" % title
+        msg = f"{title}:\n"
         for k, v in params.items():
-            msg += "  %s: %s\n" % (k, v)
+            msg += f"  {k}: {v}\n"
         self.logger.info(msg)
 
     def set_silence(self, silent):
@@ -1385,8 +1384,8 @@ class EodmsOrderDownload:
         for f in filts:
             if not any(x in f.upper()
                        for x in coll_fields.get_eod_fieldnames()):
-                err_msg = "Filter '%s' is not available for collection " \
-                          "'%s'." % (f, coll_id)
+                err_msg = f"Filter '{f}' is not available for collection " \
+                          f"'{coll_id}'."
                 self.print_support(err_msg)
                 self.logger.error(err_msg)
                 return False
@@ -1435,7 +1434,7 @@ class EodmsOrderDownload:
         start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
 
-        self.logger.info("Process start time: %s" % start_str)
+        self.logger.info(f"Process start time: {start_str}")
 
         #############################################
         # Search for Images
@@ -1477,16 +1476,16 @@ class EodmsOrderDownload:
             sys.exit(0)
 
         # Print results info
-        msg = "%s images returned from search results.\n" % query_imgs.count()
+        msg = f"{query_imgs.count()} images returned from search results.\n"
         self.print_footer('Query Results', msg)
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if 
             #   they'd like to continue
             if not self.silent:
-                answer = input("\n%s images found for your search filters. "
-                               "Proceed with ordering? (y/n): " %
-                               query_imgs.count())
+                answer = input(f"\n{query_imgs.count()} images found for "
+                               f"your search filters. Proceed with "
+                               f"ordering? (y/n): ")
                 if answer.lower().find('n') > -1:
                     self.export_results()
                     print("Exiting process.")
@@ -1497,12 +1496,12 @@ class EodmsOrderDownload:
             # If the user specified a maximum number of orders, 
             #   trim the results
             if len(collections) == 1:
-                self.print_msg("Proceeding to order and download the first "
-                               "%s images." % max_images)
+                self.print_msg(f"Proceeding to order and download the first "
+                               f"{max_images} images.")
                 query_imgs.trim(max_images)
             else:
-                self.print_msg("Proceeding to order and download the first "
-                               "%s images from each collection." % max_images)
+                self.print_msg(f"Proceeding to order and download the first "
+                               f"{max_images} images from each collection.")
                 query_imgs.trim(max_images, collections)
 
         # Parse out AWS
@@ -1562,7 +1561,7 @@ class EodmsOrderDownload:
         end_time = datetime.datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.logger.info("End time: %s" % end_str)
+        self.logger.info(f"End time: {end_str}")
 
     def order_csv(self, params):
         """
@@ -1595,7 +1594,7 @@ class EodmsOrderDownload:
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
         # folder_str = start_time.strftime("%Y-%m-%d")
 
-        self.logger.info("Process start time: %s" % start_str)
+        self.logger.info(f"Process start time: {start_str}")
 
         #############################################
         # Search for Images
@@ -1673,7 +1672,7 @@ class EodmsOrderDownload:
         end_time = datetime.datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.logger.info("End time: %s" % end_str)
+        self.logger.info(f"End time: {end_str}")
 
     def order_ids(self, params):
         """
@@ -1697,7 +1696,7 @@ class EodmsOrderDownload:
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
         # folder_str = start_time.strftime("%Y-%m-%d")
 
-        self.logger.info("Process start time: %s" % start_str)
+        self.logger.info(f"Process start time: {start_str}")
 
         #############################################
         # Search for Images
@@ -1715,8 +1714,8 @@ class EodmsOrderDownload:
 
             if isinstance(res, dict) and 'errors' in res.keys():
                 if res.get('errors').find('404 Client Error') > -1:
-                    err_msg = "Image with Record ID %s could not be found in " \
-                              "Collection %s." % (rec_id, coll)
+                    err_msg = f"Image with Record ID {rec_id} could not be " \
+                              f"found in Collection {coll}."
                     self.logger.error(err_msg)
                     self.print_support(err_msg)
                     sys.exit(1)

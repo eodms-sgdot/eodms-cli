@@ -497,10 +497,12 @@ class ImageList:
         for item in download_items:
             rec_id = item.get('recordId')
             img = self.get_image(rec_id)
+            order_id = item.get('orderId')
             item_id = item.get('itemId')
             if item_id is None:
                 item_id = item.get('ParentItemId')
             img.set_metadata(item_id, 'itemId')
+            img.set_metadata(order_id, 'orderId')
             img.set_metadata(item.get('dateSubmitted'), 'dateSubmitted')
             img.set_metadata(item.get('userDisplayName'), 'userDisplayName')
             img.set_metadata(item.get('status'), 'status')
@@ -1091,6 +1093,9 @@ class OrderList:
         if isinstance(results, dict):
             if 'items' in results.keys():
                 results = results['items']
+
+        if results is None:
+            return None
 
         for idx, r in enumerate(results):
             self.parse_order_item(r)
