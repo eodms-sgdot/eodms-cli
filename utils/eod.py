@@ -924,22 +924,23 @@ class EodmsOrderDownload:
 
         if orders.count_items() == 0:
             # If no order are found...
+            # if self.silent:
+            #     print("\nNo previous orders could be found.")
+            #     # Export polygons of images
+            #     self.eodms_geo.export_results(query_imgs, self.output)
+            #     self.export_results()
+            #     self.print_support()
+            #     self.logger.info("No previous orders could be found.")
+            #     sys.exit(0)
             if self.silent:
-                print("\nNo previous orders could be found.")
-                # Export polygons of images
-                self.eodms_geo.export_results(query_imgs, self.output)
-                self.export_results()
-                self.print_support()
-                self.logger.info("No previous orders could be found.")
-                sys.exit(0)
+                print("\nNo existing orders could be determined or found. "
+                      "Submitting orders now...")
             else:
                 # Ask user if they'd like to order the images
                 msg = "\nNo existing orders could be found. Would you like " \
                       "to order the images? (y/n): "
                 answer = input(msg)
-                if answer.lower().find('y') > -1:
-                    order_res = self.eodms_rapi.order(json_res)
-                else:
+                if answer.lower().find('y') == -1:
                     # Export polygons of images
                     self.eodms_geo.export_results(query_imgs, self.output)
 
@@ -948,7 +949,8 @@ class EodmsOrderDownload:
                     self.logger.info("Process ended by user.")
                     sys.exit(0)
 
-                orders.ingest_results(order_res)
+            order_res = self.eodms_rapi.order(json_res)
+            orders.ingest_results(order_res)
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
