@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -29,7 +29,7 @@ import sys
 import csv
 import logging
 
-from utils import image
+from scripts import image
 
 
 class EODMS_CSV:
@@ -63,7 +63,8 @@ class EODMS_CSV:
         :type  header: list
         """
         self.header = header
-        self.open_csv.write("%s\n" % ','.join(header))
+        header_str = ','.join(header)
+        self.open_csv.write(f"{header_str}\n")
 
     def determine_collection(self, rec):
         """
@@ -95,9 +96,9 @@ class EODMS_CSV:
                 if self.coll_id is None:
                     # Check if the collection is supported in this script
                     self.coll_id = self.eod.get_collid_by_name(satellite)
-                    msg = "The satellite/collection '%s' is not supported " \
-                          "with this script at this time." % self.coll_id
-                    print("\n%s" % msg)
+                    msg = f"The satellite/collection '{self.coll_id}'' is " \
+                          f"not supported with this script at this time."
+                    print(f"\n{msg}")
                     self.logger.warning(msg)
                     return None
 
@@ -128,13 +129,14 @@ class EODMS_CSV:
             if h in img.get_fields():
                 val = str(img.get_metadata(h))
                 if val.find(',') > -1:
-                    val = '"%s"' % val.replace('"', '""')
+                    val_str = val.replace('"', '""')
+                    val = f'"{val_str}"'
                 out_vals.append(val)
             else:
                 out_vals.append('')
 
-        out_vals = [str(i) for i in out_vals]
-        self.open_csv.write('%s\n' % ','.join(out_vals))
+        out_str = ','.join([str(i) for i in out_vals])
+        self.open_csv.write(f'{out_str}\n')
 
     def export_results(self, results):
         """
@@ -266,8 +268,7 @@ class EODMS_CSV:
 
             # Check for any errors
             if isinstance(res, self.rapi.QueryError):
-                err_msg = "Query to RAPI failed due to '%s'" % \
-                          res.get_msg()
+                err_msg = f"Query to RAPI failed due to '{res.get_msg()}'"
                 self.eod.print_support(err_msg)
                 self.logger.warning(err_msg)
                 continue
@@ -275,7 +276,7 @@ class EODMS_CSV:
             res_json = res.json()
 
             if len(res_json['items']) == 0:
-                err_msg = "No Order exists with Item ID %s." % o_item['itemId']
+                err_msg = f"No Order exists with Item ID {o_item['itemId']}."
                 self.eod.print_support(err_msg)
                 self.logger.warning(err_msg)
                 continue

@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -54,7 +54,7 @@ def to_camel_case(in_str):
     first_word = words[0].lower()
     other_words = ''.join(w.title() for w in words[1:])
 
-    return '%s%s' % (first_word, other_words)
+    return f'{first_word}{other_words}'
 
 
 class Image:
@@ -323,8 +323,8 @@ class ImageList:
         # print("img_lst: %s" % len(self.img_lst))
         # print("filter_lst: %s" % len(filter_lst))
 
-        self.eod.print_msg('Number of images found after filtering for '
-                           'overlap: %s' % len(filter_lst))
+        self.eod.print_msg(f'Number of images found after filtering for '
+                           f'overlap: {len(filter_lst)}')
 
         self.img_lst = filter_lst
 
@@ -692,9 +692,9 @@ class OrderItem:
         :type  tabs: int
         """
 
-        print("\n\tOrder Item Id: %s" % self.metadata['itemId'])
-        print("\tOrder Id: %s" % self.metadata['orderId'])
-        print("\tRecord Id: %s" % self.metadata['recordId'])
+        print(f"\n\tOrder Item Id: {self.metadata['itemId']}")
+        print(f"\tOrder Id: {self.metadata['orderId']}")
+        print(f"\tRecord Id: {self.metadata['recordId']}")
         for m, v in self.metadata.items():
             if m == 'itemId' or m == 'orderId' or m == 'recordId':
                 continue
@@ -1149,7 +1149,7 @@ class OrderList:
         Prints all the Order Items to the terminal.
         """
 
-        print("Number of orders: %s" % len(self.order_lst))
+        print(f"Number of orders: {len(self.order_lst)}")
 
         for o in self.order_lst:
             # ord_id = o.get_order_id()
@@ -1174,7 +1174,8 @@ class OrderList:
         for o in self.order_lst:
             ord_id = o.get_order_id()
             # item_count = o.count()
-            out_str += "\n%sOrder Id: %s\n" % (str('\t' * tabs), ord_id)
+            tab_str = str('\t' * tabs)
+            out_str += f"\n{tab_str}Order Id: {ord_id}\n"
 
         if as_var:
             return out_str

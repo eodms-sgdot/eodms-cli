@@ -1,43 +1,43 @@
-EODMS RAPI Orderer & Downloader
-=================================================
+EODMS Command-line Interface
+============================
 
 ## Overview
 
-The **eodms_orderdownload.py** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
-
-## Getting the Latest Version
-
-It is recommended everytime this repository is cloned, ```pip install -r requirements.txt``` should be run to get the latest version of the [py-eodms-rapi](https://pypi.org/project/py-eodms-rapi/) Python package.
+The **eodms_cli.py** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
 
 ## Requirements
 
 ### Python
 
-The eodms_orderdownload.py was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
+The eodms_cli.py was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
 
 ### Python Packages
 
-| Package Name  | Use                                                 | URL                                     |
-|---------------|-----------------------------------------------------|-----------------------------------------|
-| py-eodms-rapi | The EODMS RAPI Python package.                      | https://pypi.org/project/py-eodms-rapi/ |
-| Requests      | Used to access the RAPI URL.                        | https://pypi.org/project/requests/      |
-| dateparser    | Used to parse a date like "24 hours".               | https://pypi.org/project/dateparser/    |
-| geomet        | Used to import WKT geometry text.                   | https://pypi.org/project/geomet/        |
-| click         | Used for the command-line input.                    | https://pypi.org/project/click/         |
-| GDAL          | (Optional) Only required when using AOI shapefiles. | https://pypi.org/project/GDAL/          |
+| Package Name    | Use                                                       | URL                                       |
+|-----------------|-----------------------------------------------------------|-------------------------------------------|
+| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://pypi.org/project/py-eodms-rapi/   |
+| Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/        |
+| dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/      |
+| geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/          |
+| click           | Used for the command-line input.                          | https://pypi.org/project/click/           |
+| shapely         | Used to determine the percentage of overlap with the AOI. | https://pypi.org/project/Shapely/         |
+| python-dateutil | Used to parse dates.                                      | https://pypi.org/project/python-dateutil/ |
+| tqdm            | Used to access the RAPI and download files.               | https://pypi.org/project/tqdm/            |
+| numpy           | Used to close polygons.                                   | https://pypi.org/project/numpy/           |
+| GDAL            | (Optional) Only required when using AOI shapefiles.       | https://pypi.org/project/GDAL/            |
 
 ## Setup
 
 1. Clone the repository:
 	
 	```dos
-	> git clone https://github.com/eodms-sgdot/eodms-rapi-orderdownload.git
+	> git clone https://github.com/eodms-sgdot/eodms-cli.git
 	```
 	
 2. Install required packages (GDAL not included):
 
 	```dos
-	> cd eodms-rapi-orderdownload
+	> cd eodms-cli
 	> pip install -r requirements.txt
 	```
 	
@@ -46,18 +46,20 @@ The eodms_orderdownload.py was designed using **Python 3.7** however it has been
 - run the batch file and enter values when prompted:
 	
 	```dos
-	> eodms_orderdownload.bat
+	> eodms_cli.bat
 	```
-
+	
 - run the script using Python
 
-	```dos
-	> python eodms_orderdownload.py
+	```bash
+	> python eodms_cli.py
 	```
 	
 ## Configuration
 
-Configuration for the script can be found in the **config.ini** file.
+Configuration for the script can be found in the **config.ini** file in the home folder under ".eodms".
+
+Configuration options can be changed by running ```python eodms_cli.py --configure```.
 
 In the config file, you can: 
 
@@ -66,11 +68,11 @@ In the config file, you can:
 - Set the timeout interval for querying and ordering
 - Set the minimum dates for keeping downloaded images and results files
 
-For more in-depth information on the configuration file, visit [Config File](https://github.com/eodms-sgdot/eodms-rapi-orderdownload/wiki/Config-File).
+For more in-depth information on the configuration file, visit [Config File](https://github.com/eodms-sgdot/eodms-cli/wiki/Config-File).
 
 ## User Guide
 
-For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/eodms-sgdot/eodms-rapi-orderdownload/wiki).
+For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/eodms-sgdot/eodms-cli/wiki).
 
 ## Contact
 

@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -144,8 +144,8 @@ class Geo:
                 # Convert values in point array to strings
                 pnt_array = [[str(p[0]), str(p[1])] for p in pnt_array]
 
-                return "POLYGON ((%s))" % ', '.join([' '.join(pnt)
-                                                     for pnt in pnt_array])
+                coords_str = ', '.join([' '.join(pnt) for pnt in pnt_array])
+                return f"POLYGON (({coords_str}))"
             else:
                 return pnt_array
 
@@ -184,7 +184,7 @@ class Geo:
                 out_fn.lower() == 'gml' or \
                 out_fn.lower() == 'shp':
             fn = self.eod.fn_str
-            out_fn = '%s_outlines.%s' % (fn, out_fn.lower())
+            out_fn = f'{fn}_outlines.{out_fn.lower()}'
 
         # If the output GeoJSON exists, remove it
         if os.path.exists(out_fn):
@@ -207,7 +207,7 @@ class Geo:
                 warn_msg = "The format type for the output geospatial file " \
                            "could not be determined. No geospatial output " \
                            "will be created."
-                print("\n%s" % warn_msg)
+                print(f"\n{warn_msg}")
                 return None
 
             # Create the output Driver
@@ -258,11 +258,13 @@ class Geo:
         else:
 
             if ext == '.gml' or ext == '.kml' or ext == '.shp':
-                warn_msg = "GDAL Python package is not installed. " \
-                           "Cannot export geospatial results in '%s' " \
-                           "format. Exporting results as a GeoJSON." % \
-                           ext.replace('.', '').upper()
-                print("\n%s" % warn_msg)
+                ext_str = ext.replace('.', '').upper()
+                warn_msg = f"GDAL Python package is not installed. " \
+                           f"Cannot export geospatial results in " \
+                           f"'{ext_str}' format. Exporting results as a " \
+                           f"GeoJSON."
+
+                print(f"\n{warn_msg}")
                 self.logger.warning(warn_msg)
 
                 out_fn = out_fn.replace(ext, '.geojson')

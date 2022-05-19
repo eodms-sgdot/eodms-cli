@@ -53,7 +53,7 @@ from . import spatial
 from . import field
 
 
-class EodmsOrderDownload:
+class EodmsUtils:
 
     def __init__(self, **kwargs):
         """
@@ -262,7 +262,6 @@ class EodmsOrderDownload:
 
             # Convert the input field for EODMS_RAPI
             key = filt_split[0].strip()
-            # coll_fields = self.get_fieldMap()[coll_id]
             coll_fields = self.field_mapper.get_fields(coll_id)
 
             if key not in coll_fields.get_eod_fieldnames():
@@ -296,7 +295,6 @@ class EodmsOrderDownload:
         # dtstart = dateparser.parse(self.order_check_date)
 
         # Get all orders for date range
-        # orders = self.eodms_rapi.get_orders(dtstart, dtend)
         max_orders = imgs.count() + 25
         orders = self.eodms_rapi.get_orders(max_orders=max_orders)
 
@@ -320,7 +318,6 @@ class EodmsOrderDownload:
             for i in img_ids:
                 # If the record ID of the image matches the one of the
                 #   order item
-
                 if i == ord_rec_id:
                     if ord_item['status'].upper() in sub_statuses:
                         exist_orders.add_order(ord_item)
@@ -448,8 +445,6 @@ class EodmsOrderDownload:
                                 f = 'Start Date'
 
                             filters[f.title()] = ('=', filt_val)
-
-                        # print("filters: %s" % filters)
 
                         for coll_id in colls:
                             self.eodms_rapi.search(coll_id, filters)
@@ -765,7 +760,7 @@ class EodmsOrderDownload:
                     self.print_msg(msg)
                     continue
                 # Otherwise, delete the incomplete/malformed local file and
-                #   redownload
+                #   re-download
                 else:
                     msg = f'Filesize mismatch with ' \
                           f'{os.path.basename(dest_fn)}. Re-downloading...'
@@ -924,14 +919,7 @@ class EodmsOrderDownload:
 
         if orders.count_items() == 0:
             # If no order are found...
-            # if self.silent:
-            #     print("\nNo previous orders could be found.")
-            #     # Export polygons of images
-            #     self.eodms_geo.export_results(query_imgs, self.output)
-            #     self.export_results()
-            #     self.print_support()
-            #     self.logger.info("No previous orders could be found.")
-            #     sys.exit(0)
+
             if self.silent:
                 print("\nNo existing orders could be determined or found. "
                       "Submitting orders now...")
@@ -1061,13 +1049,14 @@ class EodmsOrderDownload:
         :type  msg: str
         """
 
-        print("\n%s-----%s%s" % (' ' * self.indent, title,
-                                 str((59 - len(title)) * '-')))
+        indent_str = ' ' * self.indent
+        dash_str = (59 - len(title)) * '-'
+        print(f"\n{indent_str}-----{title}{dash_str}")
         msg = msg.strip('\n')
         for m in msg.split('\n'):
-            print("%s| %s" % (' ' * self.indent, m))
-        print("%s------------------------------------------------------------"
-              "----" % str(' ' * self.indent))
+            print(f"{indent_str}| {m}")
+        print(f"{indent_str}------------------------------------------------"
+              f"----------------")
 
     def print_heading(self, msg):
         """
@@ -1164,7 +1153,8 @@ class EodmsOrderDownload:
                         result_fields.append(k)
 
             # Send a query to the EODMSRAPI object
-            print(f"\nSending query to EODMSRAPI with the following parameters:")
+            print(f"\nSending query to EODMSRAPI with the following "
+                  f"parameters:")
             print(f"  collection: {self.coll_id}")
             print(f"  filters: {filters}")
             print(f"  features: {feats}")
@@ -1394,10 +1384,18 @@ class EodmsOrderDownload:
 
         return filt_items
 
+
+class EodmsProcess(EodmsUtils):
+
+    def __init__(self, **kwargs):
+        # self.eod_utils = EodmsUtils()
+
+        super().__init__(**kwargs)
+
     def search_order_download(self, params):
         """
         Runs all steps: querying, ordering and downloading
-        
+
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
         """
@@ -1482,7 +1480,7 @@ class EodmsOrderDownload:
         self.print_footer('Query Results', msg)
 
         if max_images is None or max_images == '':
-            # Inform the user of the total number of found images and ask if 
+            # Inform the user of the total number of found images and ask if
             #   they'd like to continue
             if not self.silent:
                 answer = input(f"\n{query_imgs.count()} images found for "
@@ -1495,7 +1493,7 @@ class EodmsOrderDownload:
                     self.logger.info("Process stopped by user.")
                     sys.exit(0)
         else:
-            # If the user specified a maximum number of orders, 
+            # If the user specified a maximum number of orders,
             #   trim the results
             if len(collections) == 1:
                 self.print_msg(f"Proceeding to order and download the first "
@@ -1538,12 +1536,7 @@ class EodmsOrderDownload:
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            # max_downloads = 100
-            # if orders.count() > 100:
-            #     max_downloads = orders.count()
             download_items = self.eodms_rapi.download(items, self.download_path)
-
-            # print("download_items: %s" % download_items)
 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1568,7 +1561,7 @@ class EodmsOrderDownload:
     def order_csv(self, params):
         """
         Orders and downloads images using the CSV exported from the EODMS UI.
-        
+
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
         """
@@ -1614,8 +1607,9 @@ class EodmsOrderDownload:
             if csv_fields is None:
                 msg = "Could not determine images from the CSV file."
             else:
-                msg = "Sorry, no images found using these CSV fields: %s" \
-                      % ', '.join(csv_fields)
+                fields_str = ', '.join(csv_fields)
+                msg = f"Sorry, no images found using these CSV fields: " \
+                      f"{fields_str}"
             self.print_msg(msg)
             self.print_msg("Exiting process.")
             self.print_support()
@@ -1656,9 +1650,6 @@ class EodmsOrderDownload:
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            # max_downloads = 100
-            # if orders.count() > 100:
-            #     max_downloads = orders.count()
             download_items = self.eodms_rapi.download(items, self.download_path)
 
             # Update images
@@ -1679,7 +1670,7 @@ class EodmsOrderDownload:
     def order_ids(self, params):
         """
         Orders and downloads a single or set of images using Record IDs.
-        
+
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
         """
@@ -1771,9 +1762,6 @@ class EodmsOrderDownload:
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            # max_downloads = 100
-            # if orders.count() > 100:
-            #     max_downloads = orders.count()
             download_items = self.eodms_rapi.download(items, self.download_path)
 
             # Update the images with the download info
@@ -1794,12 +1782,12 @@ class EodmsOrderDownload:
         end_time = datetime.datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.logger.info("End time: %s" % end_str)
+        self.logger.info(f"End time: {end_str}")
 
     def download_aoi(self, params):
         """
         Runs a query and downloads images from existing orders.
-        
+
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
         """
@@ -1840,7 +1828,7 @@ class EodmsOrderDownload:
         start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
 
-        self.logger.info("Process start time: %s" % start_str)
+        self.logger.info(f"Process start time: {start_str}")
 
         #############################################
         # Search for Images
@@ -1874,7 +1862,7 @@ class EodmsOrderDownload:
         self.cur_res = query_imgs
 
         # Print results info
-        msg = "%s images returned from search results.\n" % query_imgs.count()
+        msg = f"{query_imgs.count()} images returned from search results.\n"
         self.print_footer('Query Results', msg)
 
         #############################################
@@ -1895,9 +1883,6 @@ class EodmsOrderDownload:
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        # max_downloads = 100
-        # if orders.count() > 100:
-        #     max_downloads = orders.count()
         download_items = self.eodms_rapi.download(items, self.download_path)
 
         # Update images with download info
@@ -1915,13 +1900,83 @@ class EodmsOrderDownload:
         end_time = datetime.datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.logger.info("End time: %s" % end_str)
+        self.logger.info(f"End time: {end_str}")
 
-    def download_only(self, params):
+    def download_available(self, params):
+        """
+        Downloads order items that have status AVAILABLE_FOR_DOWNLOAD.
+
+        :return:
+        """
+
+        # Log the parameters
+        self.log_parameters(params)
+
+        self.output = params.get('output')
+
+        # Create info folder, if it doesn't exist, to store CSV files
+        start_time = datetime.datetime.now()
+        start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+        self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
+        # folder_str = start_time.strftime("%Y-%m-%d")
+
+        self.logger.info(f"Process start time: {start_str}")
+
+        ################################################
+        # Get Existing Orders
+        ################################################
+        max_orders = 250
+        orders = None
+        # Cycle through until orders have been returned
+        while orders is None and max_orders > 0:
+            orders = self.eodms_rapi.get_orders(max_orders=max_orders,
+                                            status='AVAILABLE_FOR_DOWNLOAD')
+            max_orders -= 50
+
+        if orders is None or len(orders) == 0:
+            msg = "No orders were returned."
+            self.logger.error(msg)
+            self.print_support(msg)
+            sys.exit(1)
+
+        msg = f"Number of order items with status " \
+              f"AVAILABLE_FOR_DOWNLOAD: {len(orders)}"
+        print(f"\n{msg}")
+        self.logger.info(msg)
+
+        ################################################
+        # Download Images
+        ################################################
+
+        # Make the download folder if it doesn't exist
+        if not os.path.exists(self.download_path):
+            os.mkdir(self.download_path)
+
+        # Download images using the EODMSRAPI
+        download_items = self.eodms_rapi.download(orders, self.download_path)
+
+        print(f"download_items: {download_items}")
+
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(download_items)
+
+        self.cur_res = query_imgs
+
+        self.export_results()
+
+        # Export polygons of images
+        self.eodms_geo.export_results(query_imgs, self.output)
+
+        end_time = datetime.datetime.now()
+        end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        self.logger.info(f"End time: {end_str}")
+
+    def download_results(self, params):
         """
         Downloads existing images using the CSV results file from a previous
             session.
-        
+
         :param params: A dictionary containing the arguments and values.
         :type  params: dict
         """
@@ -1945,7 +2000,7 @@ class EodmsOrderDownload:
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
         # folder_str = start_time.strftime("%Y-%m-%d")
 
-        self.logger.info("Process start time: %s" % start_str)
+        self.logger.info(f"Process start time: {start_str}")
 
         ################################################
         # Get results from Results CSV
@@ -1971,9 +2026,6 @@ class EodmsOrderDownload:
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        # max_downloads = 100
-        # if orders.count() > 100:
-        #     max_downloads = orders.count()
         download_items = self.eodms_rapi.download(items, self.download_path)
 
         # Update images with download info
@@ -1989,100 +2041,100 @@ class EodmsOrderDownload:
         end_time = datetime.datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        self.logger.info("End time: %s" % end_str)
+        self.logger.info(f"End time: {end_str}")
 
-    def search_only(self, params):
-        """
-        Only runs a search on the EODMSRAPI based on user parameters.
-        
-        :param params: A dictionary of parameters from the user.
-        :type  params: dict
-        """
-
-        # Log the parameters
-        self.log_parameters(params)
-
-        # Get all the values from the parameters
-        collections = params.get('collections')
-        dates = params.get('dates')
-        aoi = params.get('input_val')
-        filters = params.get('filters')
-        # process = params.get('process')
-        maximum = params.get('maximum')
-        self.output = params.get('output')
-        overlap = params.get('overlap')
-        # priority = params.get('priority')
-
-        # Validate AOI
-        if aoi is not None:
-            if os.path.exists(aoi):
-                aoi_check = self.validate_file(aoi, True)
-                if not aoi_check:
-                    msg = "The provided input file is not a valid AOI file."
-                    self.logger.warning(msg)
-                    aoi = None
-            else:
-                if not self.eodms_geo.is_wkt(aoi):
-                    msg = "The provided WKT feature is not valid."
-                    self.logger.warning(msg)
-                    aoi = None
-
-        # Create info folder, if it doesn't exist, to store CSV files
-        start_time = datetime.datetime.now()
-        start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
-        self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
-
-        self.logger.info("Process start time: %s" % start_str)
-
-        #############################################
-        # Search for Images
-        #############################################
-
-        # Parse maximum items
-        max_images, max_items = self.parse_max(maximum)
-
-        # Convert collections to list if not already
-        if not isinstance(collections, list):
-            collections = [collections]
-
-        # Parse dates if not already done
-        if not isinstance(dates, list):
-            dates = self._parse_dates(dates)
-
-        # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters,
-                                        aoi=aoi, dates=dates,
-                                        max_images=max_images)
-
-        # Filter out minimum overlap
-        if overlap is not None and not overlap == '':
-            query_imgs.filter_overlap(overlap, aoi)
-
-        # If no results were found, inform user and end process
-        if query_imgs.count() == 0:
-            msg = "Sorry, no results found for given AOI or filters."
-            self.print_msg(msg)
-            self.print_msg("Exiting process.")
-            self.logger.warning(msg)
-            self.print_support()
-            sys.exit(1)
-
-        # Update the self.cur_res for output results
-        self.cur_res = query_imgs
-
-        # Print results info
-        msg = "%s images returned from search results.\n" % query_imgs.count()
-        self.print_footer('Query Results', msg)
-
-        # Export polygons of images
-        self.eodms_geo.export_results(query_imgs, self.output)
-
-        # Export results to a CSV file and end process.
-        self.export_results()
-
-        print("\n%s images found for your filters." % query_imgs.count())
-        print("\nPlease check the results folder for more info.")
-        print("\nExiting process.")
-
-        self.print_support()
-        sys.exit(0)
+    # def search_only(self, params):
+    #     """
+    #     Only runs a search on the EODMSRAPI based on user parameters.
+    #
+    #     :param params: A dictionary of parameters from the user.
+    #     :type  params: dict
+    #     """
+    #
+    #     # Log the parameters
+    #     self.log_parameters(params)
+    #
+    #     # Get all the values from the parameters
+    #     collections = params.get('collections')
+    #     dates = params.get('dates')
+    #     aoi = params.get('input_val')
+    #     filters = params.get('filters')
+    #     # process = params.get('process')
+    #     maximum = params.get('maximum')
+    #     self.output = params.get('output')
+    #     overlap = params.get('overlap')
+    #     # priority = params.get('priority')
+    #
+    #     # Validate AOI
+    #     if aoi is not None:
+    #         if os.path.exists(aoi):
+    #             aoi_check = self.validate_file(aoi, True)
+    #             if not aoi_check:
+    #                 msg = "The provided input file is not a valid AOI file."
+    #                 self.logger.warning(msg)
+    #                 aoi = None
+    #         else:
+    #             if not self.eodms_geo.is_wkt(aoi):
+    #                 msg = "The provided WKT feature is not valid."
+    #                 self.logger.warning(msg)
+    #                 aoi = None
+    #
+    #     # Create info folder, if it doesn't exist, to store CSV files
+    #     start_time = datetime.datetime.now()
+    #     start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+    #     self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
+    #
+    #     self.logger.info(f"Process start time: {start_str}")
+    #
+    #     #############################################
+    #     # Search for Images
+    #     #############################################
+    #
+    #     # Parse maximum items
+    #     max_images, max_items = self.parse_max(maximum)
+    #
+    #     # Convert collections to list if not already
+    #     if not isinstance(collections, list):
+    #         collections = [collections]
+    #
+    #     # Parse dates if not already done
+    #     if not isinstance(dates, list):
+    #         dates = self._parse_dates(dates)
+    #
+    #     # Send query to EODMSRAPI
+    #     query_imgs = self.query_entries(collections, filters=filters,
+    #                                     aoi=aoi, dates=dates,
+    #                                     max_images=max_images)
+    #
+    #     # Filter out minimum overlap
+    #     if overlap is not None and not overlap == '':
+    #         query_imgs.filter_overlap(overlap, aoi)
+    #
+    #     # If no results were found, inform user and end process
+    #     if query_imgs.count() == 0:
+    #         msg = "Sorry, no results found for given AOI or filters."
+    #         self.print_msg(msg)
+    #         self.print_msg("Exiting process.")
+    #         self.logger.warning(msg)
+    #         self.print_support()
+    #         sys.exit(1)
+    #
+    #     # Update the self.cur_res for output results
+    #     self.cur_res = query_imgs
+    #
+    #     # Print results info
+    #     msg = f"{query_imgs.count()} images returned from search results.\n"
+    #     self.print_footer('Query Results', msg)
+    #
+    #     # Export polygons of images
+    #     self.eodms_geo.export_results(query_imgs, self.output)
+    #
+    #     # Export results to a CSV file and end process.
+    #     self.export_results()
+    #
+    #     print(f"\n{query_imgs.count()} images found for your filters.")
+    #     print("\nPlease check the results folder for more info.")
+    #     print("\nExiting process.")
+    #
+    #     self.print_support()
+    #     sys.exit(0)
