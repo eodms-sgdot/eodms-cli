@@ -1955,7 +1955,7 @@ class EodmsProcess(EodmsUtils):
         # Download images using the EODMSRAPI
         download_items = self.eodms_rapi.download(orders, self.download_path)
 
-        print(f"download_items: {download_items}")
+        # print(f"download_items: {download_items}")
 
         query_imgs = image.ImageList(self)
         query_imgs.ingest_results(download_items)
