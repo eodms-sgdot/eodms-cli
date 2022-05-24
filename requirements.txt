@@ -1,4 +1,4 @@
-py-eodms-rapi>=1.4.2
+py-eodms-rapi>=1.4.4
 requests>=2.23.0
 dateparser>=1.0.0
 geomet>=0.3.0
