@@ -1232,8 +1232,7 @@ class EodmsUtils:
 
         aliases = [v['aliases'] for v in colls.values()]
 
-        coll_vals = list(colls.keys()) + [v['title'] for v in
-                                          colls.values()]
+        coll_vals = list(colls.keys()) + [v['title'] for v in colls.values()]
 
         for a in aliases:
             coll_vals += a

@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.0.0'
+__version__ = '3.1.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -82,21 +82,21 @@ class Prompter:
     Class used to prompt the user for all inputs.
     """
 
-    def __init__(self, eod, config_info, params, in_click):
+    def __init__(self, eod, config_util, params, in_click):
         """
         Initializer for the Prompter class.
         
         :param eod: The Eodms_OrderDownload object.
         :type  eod: self.Eodms_OrderDownload
-        :param config_info: Configuration information taken from the config
-                file.
-        :type  config_info: configparser.ConfigParser
+        :param config_util: The ConfigUtils object
+        :type  config_util: ConfigUtils
         :param params: An empty dictionary of parameters.
         :type  params: dict
         """
 
         self.eod = eod
-        self.config_info = config_info
+        self.config_util = config_util
+        self.config_info = config_util.get_info()
         self.params = params
         self.click = in_click
         self.process = None
@@ -250,7 +250,9 @@ class Prompter:
                 self.logger.error(err_msg)
                 sys.exit(1)
 
-            # print("coll_lst: %s" % coll_lst)            
+            print(dir(coll_lst))
+
+            # print("coll_lst: %s" % coll_lst)
 
             print("\n--------------Enter Collection--------------")
 
@@ -862,7 +864,7 @@ class Prompter:
 
         if password:
             # If the argument is for password entry, hide entry
-            in_val = getpass.getpass(prompt='->> %s: ' % msg)
+            in_val = getpass.getpass(prompt=f'->> {msg}: ')
         else:
             opt_str = ''
             if options is not None:
@@ -874,7 +876,8 @@ class Prompter:
 
             output = f"\n->> {msg}{opt_str}{def_str}: "
             if msg.endswith('\n'):
-                output = "\n->> %s%s%s:\n" % (msg.strip('\n'), opt_str, def_str)
+                msg_strp = msg.strip('\n')
+                output = f"\n->> {msg_strp}{opt_str}{def_str}:\n"
             try:
                 in_val = input(output)
             except EOFError as error:
@@ -939,7 +942,7 @@ class Prompter:
 
         if username is None:
 
-            username = self.config_info.get('RAPI', 'username')
+            username = self.config_util.get('Credentials', 'username')
             if username == '':
                 msg = "Enter the username for authentication"
                 err_msg = "A username is required to order images."
@@ -950,7 +953,7 @@ class Prompter:
 
         if password is None:
 
-            password = self.config_info.get('RAPI', 'password')
+            password = self.config_util.get('Credentials', 'password')
 
             if password == '':
                 msg = 'Enter the password for authentication'
@@ -970,19 +973,17 @@ class Prompter:
             answer = input(f"\n->> Would you like to store the credentials "
                            f"for a future session{suggestion}? (y/n):")
             if answer.lower().find('y') > -1:
-                self.config_info.set('RAPI', 'username', username)
+                # self.config_info.set('Credentials', 'username', username)
+                self.config_util.set('username', 'Credentials', username)
                 pass_enc = base64.b64encode(password.encode("utf-8")).decode(
                     "utf-8")
-                self.config_info.set('RAPI', 'password', str(pass_enc))
+                # self.config_info.set('Credentials', 'password', str(pass_enc))
+                self.config_util.set('password', 'Credentials', str(pass_enc))
 
-                config_fn = os.path.join(os.sep, os.path.expanduser('~'),
-                                         '.eodms', 'config.ini')
-                cfgfile = open(config_fn, 'w')
-                self.config_info.write(cfgfile, space_around_delimiters=True)
-                cfgfile.close()
+                self.config_util.write()
 
         # Get number of attempts when querying the RAPI
-        self.eod.set_attempts(self.config_info.get('RAPI', 'access_attempts'))
+        self.eod.set_attempts(self.config_util.get('RAPI', 'access_attempts'))
 
         self.eod.create_session(username, password)
 
@@ -997,13 +998,28 @@ class Prompter:
         coll_lst = self.eod.eodms_rapi.get_collections(True)
 
         # print(f"coll_lst: {coll_lst}")
+        # print(f"dir(coll_lst): {dir(coll_lst)}")
+        # print(f"coll_lst.__class__: {coll_lst.__class__}")
+        # print(f"coll_lst type: {type(coll_lst).__name__}")
+        # print(f"{'get_msgs' in dir(coll_lst)}")
 
-        # print(f"dir(eodms_rapi.eodms): {dir(eodms_rapi.eodms)}")
-        # print(f"{isinstance(coll_lst, eodms_rapi.eodms.QueryError)}")
+        if coll_lst is None:
+            msg = f"Failed to retrieve a list of available collections."
+            self.logger.error(msg)
+            self.eod.print_support(msg)
+            sys.exit(1)
 
-        if coll_lst is None or isinstance(coll_lst,
-                                          eodms_rapi.eodms.QueryError):
-            msg = "Failed to retrieve a list of available collections."
+        # if 'get_msgs' in dir(coll_lst):
+        if isinstance(coll_lst, eodms_rapi.QueryError):
+            err_msg = coll_lst.get_msgs(True)
+            if err_msg.find('401 Client Error') > -1:
+                msg = "Failed to retrieve a list of available collections " \
+                      "due to authentication error. Please check your " \
+                      "credentials in the configuration file by running " \
+                      "'python eodms_cli.py --configure credentials'."
+            else:
+                msg = f"Failed to retrieve a list of available collections. " \
+                      f"{coll_lst.get_msgs(True)}"
             self.logger.error(msg)
             self.eod.print_support(msg)
             sys.exit(1)
@@ -1044,7 +1060,7 @@ class Prompter:
                              "using an AOI.")
 
             # Get the collection(s)
-            coll = self.ask_collection(collections)
+            coll = self.ask_collection(collections, coll_lst)
             self.params['collections'] = coll
 
             # If Radarsat-1, ask user if they want to download from AWS
@@ -1345,7 +1361,7 @@ output_help = '''The output file path containing the results in a
 
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
-@click.option('--configure', is_flag=True, default=None,
+@click.option('--configure', default=None,
               help='Runs the configuration setup allowing the user to enter '
                    'configuration values.')
 @click.option('--username', '-u', default=None,
@@ -1414,7 +1430,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     conf_util = config_util.ConfigUtils()
 
     if configure:
-        conf_util.ask_user()
+        conf_util.ask_user(configure)
         # print("You've entered configuration mode.")
         sys.exit(0)
 
@@ -1461,24 +1477,25 @@ def cli(username, password, input_val, collections, process, filters, dates,
         download_path = downloads
         if download_path is None or download_path == '':
             # download_path = config_info.get('Script', 'downloads')
-            download_path = conf_util.get_option(['Script', 'Paths'], 'downloads')
+            download_path = conf_util.get('Paths', 'downloads')
 
             if download_path == '':
-                download_path = os.path.join(os.path.dirname(abs_path), 'downloads')
+                download_path = os.path.join(os.path.dirname(abs_path),
+                                             'downloads')
             elif not os.path.isabs(download_path):
                 download_path = os.path.join(os.path.dirname(abs_path),
                                              download_path)
 
         print(f"\nImages will be downloaded to '{download_path}'.")
 
-        res_path = conf_util.get_option(['Script', 'Paths'], 'results')
+        res_path = conf_util.get('Paths', 'results')
         if res_path == '':
             res_path = os.path.join(os.path.dirname(abs_path), 'results')
         elif not os.path.isabs(res_path):
             res_path = os.path.join(os.path.dirname(abs_path),
                                     res_path)
 
-        log_loc = conf_util.get_option(['Script', 'Paths'], 'log')
+        log_loc = conf_util.get('Paths', 'log')
         if log_loc == '':
             log_loc = os.path.join(os.path.dirname(abs_path), 'log',
                                    'logger.log')
@@ -1506,11 +1523,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         logger.info(f"Script start time: {start_str}")
 
-        timeout_query = conf_util.get_option(['Script', 'RAPI'],
-                                             'timeout_query')
+        timeout_query = conf_util.get('RAPI', 'timeout_query')
         # timeout_order = config_info.get('Script', 'timeout_order')
-        timeout_order = conf_util.get_option(['Script', 'RAPI'],
-                                             'timeout_order')
+        timeout_order = conf_util.get('RAPI', 'timeout_order')
 
         try:
             timeout_query = float(timeout_query)
@@ -1522,17 +1537,17 @@ def cli(username, password, input_val, collections, process, filters, dates,
         except ValueError:
             timeout_order = 180.0
 
-        keep_results = conf_util.get_option('Script', 'keep_results')
-        keep_downloads = conf_util.get_option('Script', 'keep_downloads')
+        keep_results = conf_util.get('Script', 'keep_results')
+        keep_downloads = conf_util.get('Script', 'keep_downloads')
 
         # Get the total number of results per query
-        max_results = conf_util.get_option('RAPI', 'max_results')
+        max_results = conf_util.get('RAPI', 'max_results')
 
         # Get the minimum date value to check orders
-        order_check_date = conf_util.get_option('RAPI', 'order_check_date')
+        order_check_date = conf_util.get('RAPI', 'order_check_date')
 
         # Get URL for debug purposes
-        rapi_url = conf_util.get_option('Debug', 'root_url')
+        rapi_url = conf_util.get('Debug', 'root_url')
 
         eod = eod_util.EodmsProcess(download=download_path,
                                     results=res_path, log=log_loc,
@@ -1552,7 +1567,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         # Get authentication if not specified
         #########################################
 
-        prmpt = Prompter(eod, conf_util.get_info(), params, click)
+        prmpt = Prompter(eod, conf_util, params, click)
 
         prmpt.prompt()
 
