@@ -1130,25 +1130,28 @@ class EodmsUtils:
             # Parse filters
             if filters:
 
+                print(f"self.coll_id: {self.coll_id}")
+                print(f"filters.keys(): {filters.keys()}")
+
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
-                    filters = self._parse_filters(coll_filts)
-                    if isinstance(filters, str):
-                        filters = None
+                    filt_parse = self._parse_filters(coll_filts)
+                    if isinstance(filt_parse, str):
+                        filt_parse = None
                 else:
-                    filters = None
+                    filt_parse = None
             else:
-                filters = None
+                filt_parse = None
 
             if self.coll_id == 'NAPL':
-                filters = {'Price': ('=', True)}
+                filt_parse = {'Price': ('=', True)}
 
             result_fields = []
-            if filters is not None:
+            if filt_parse is not None:
                 av_fields = self.eodms_rapi.get_available_fields(self.coll_id,
                                                                  'title')
 
-                for k in filters.keys():
+                for k in filt_parse.keys():
                     if k in av_fields['results']:
                         result_fields.append(k)
 
@@ -1156,12 +1159,12 @@ class EodmsUtils:
             print(f"\nSending query to EODMSRAPI with the following "
                   f"parameters:")
             print(f"  collection: {self.coll_id}")
-            print(f"  filters: {filters}")
+            print(f"  filters: {filt_parse}")
             print(f"  features: {feats}")
             print(f"  dates: {dates}")
             print(f"  resultFields: {result_fields}")
             print(f"  maxResults: {max_images}")
-            self.eodms_rapi.search(self.coll_id, filters, feats, dates,
+            self.eodms_rapi.search(self.coll_id, filt_parse, feats, dates,
                                    result_fields, max_images)
 
             res = self.eodms_rapi.get_results()

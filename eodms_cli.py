@@ -250,7 +250,7 @@ class Prompter:
                 self.logger.error(err_msg)
                 sys.exit(1)
 
-            print(dir(coll_lst))
+            # print(dir(coll_lst))
 
             # print("coll_lst: %s" % coll_lst)
 
@@ -258,7 +258,9 @@ class Prompter:
 
             # List available collections for this user
             print("\nAvailable Collections:\n")
+            # print(f"coll_lst: {coll_lst}")
             coll_lst = sorted(coll_lst, key=lambda x: x['title'])
+            # coll_lst.sort()
             for idx, c in enumerate(coll_lst):
                 msg = f"{idx + 1}. {c['title']} ({c['id']})"
                 if c['id'] == 'NAPL':
@@ -995,7 +997,7 @@ class Prompter:
                        'downloads': downloads}
 
         print()
-        coll_lst = self.eod.eodms_rapi.get_collections(True)
+        coll_dict = self.eod.eodms_rapi.get_collections(True, opt='both')
 
         # print(f"coll_lst: {coll_lst}")
         # print(f"dir(coll_lst): {dir(coll_lst)}")
@@ -1003,15 +1005,15 @@ class Prompter:
         # print(f"coll_lst type: {type(coll_lst).__name__}")
         # print(f"{'get_msgs' in dir(coll_lst)}")
 
-        if coll_lst is None:
+        if coll_dict is None:
             msg = f"Failed to retrieve a list of available collections."
             self.logger.error(msg)
             self.eod.print_support(msg)
             sys.exit(1)
 
         # if 'get_msgs' in dir(coll_lst):
-        if isinstance(coll_lst, eodms_rapi.QueryError):
-            err_msg = coll_lst.get_msgs(True)
+        if isinstance(coll_dict, eodms_rapi.QueryError):
+            err_msg = coll_dict.get_msgs(True)
             if err_msg.find('401 Client Error') > -1:
                 msg = "Failed to retrieve a list of available collections " \
                       "due to authentication error. Please check your " \
@@ -1019,7 +1021,7 @@ class Prompter:
                       "'python eodms_cli.py --configure credentials'."
             else:
                 msg = f"Failed to retrieve a list of available collections. " \
-                      f"{coll_lst.get_msgs(True)}"
+                      f"{coll_dict.get_msgs(True)}"
             self.logger.error(msg)
             self.eod.print_support(msg)
             sys.exit(1)
@@ -1060,7 +1062,7 @@ class Prompter:
                              "using an AOI.")
 
             # Get the collection(s)
-            coll = self.ask_collection(collections, coll_lst)
+            coll = self.ask_collection(collections, coll_lst=coll_dict)
             self.params['collections'] = coll
 
             # If Radarsat-1, ask user if they want to download from AWS
@@ -1079,6 +1081,7 @@ class Prompter:
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
+            print(f"filt_dict: {filt_dict}")
             self.params['filters'] = filt_dict
 
             # Get the date(s)
