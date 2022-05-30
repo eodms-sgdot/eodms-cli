@@ -2,7 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-_update_git.bat
+_update_local_git.bat
+_commit_changes.sh
+_commit_changes.bat
 
 # Distribution / packaging
 .Python
