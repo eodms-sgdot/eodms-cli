@@ -1130,8 +1130,8 @@ class EodmsUtils:
             # Parse filters
             if filters:
 
-                print(f"self.coll_id: {self.coll_id}")
-                print(f"filters.keys(): {filters.keys()}")
+                # print(f"self.coll_id: {self.coll_id}")
+                # print(f"filters.keys(): {filters.keys()}")
 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
@@ -1150,6 +1150,9 @@ class EodmsUtils:
             if filt_parse is not None:
                 av_fields = self.eodms_rapi.get_available_fields(self.coll_id,
                                                                  'title')
+
+                if av_fields is None:
+                    return None
 
                 for k in filt_parse.keys():
                     if k in av_fields['results']:
@@ -1478,7 +1481,8 @@ class EodmsProcess(EodmsUtils):
             sys.exit(0)
 
         # Print results info
-        msg = f"{query_imgs.count()} images returned from search results.\n"
+        msg = f"{query_imgs.count()} unique images returned from search " \
+              f"results.\n"
         self.print_footer('Query Results', msg)
 
         if max_images is None or max_images == '':
@@ -1957,10 +1961,14 @@ class EodmsProcess(EodmsUtils):
         # Download images using the EODMSRAPI
         download_items = self.eodms_rapi.download(orders, self.download_path)
 
-        # print(f"download_items: {download_items}")
-
         query_imgs = image.ImageList(self)
-        query_imgs.ingest_results(download_items)
+        for rec in download_items:
+            rec_id = rec.get('recordId')
+            coll_id = rec.get('collectionId')
+            res = self.eodms_rapi.get_record(coll_id, rec_id)
+            query_imgs.ingest_results([res])
+
+        query_imgs.update_downloads(download_items)
 
         self.cur_res = query_imgs
 

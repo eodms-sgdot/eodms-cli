@@ -50,6 +50,7 @@ import base64
 import logging
 import logging.handlers as handlers
 import pathlib
+from distutils.version import LooseVersion
 # import unicodedata
 import eodms_rapi
 
@@ -76,6 +77,7 @@ proc_choices = {'full': 'Search, order & download images using an AOI and/or '
                 under "results" folder)'''
                 }
 
+eodmsrapi_recent = '1.4.4'
 
 class Prompter:
     """
@@ -1413,7 +1415,7 @@ output_help = '''The output file path containing the results in a
               help='The path where the images will be downloaded. Overrides '
                    'the downloads parameter in the configuration file.')
 @click.option('--silent', '-s', is_flag=True, default=None,
-              help='Sets process to silent which supresses all questions.')
+              help='Sets process to silent which suppresses all questions.')
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
@@ -1443,6 +1445,14 @@ def cli(username, password, input_val, collections, process, filters, dates,
           f"                        #")
     print("############################################################"
           "#####################")
+
+    if LooseVersion(eodms_rapi.__version__) < LooseVersion(eodmsrapi_recent):
+        err_msg = "The py-eodms-rapi currently installed is an older " \
+                  "version. Please install the latest version using " \
+                  "'pip install py-eodms-rapi -U'."
+        eod_util.EodmsProcess().print_support(err_msg)
+        sys.exit(1)
+
 
     # Create info folder, if it doesn't exist, to store CSV files
     start_time = datetime.datetime.now()
