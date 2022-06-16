@@ -434,6 +434,7 @@ class ImageList:
             rec_id = r.get('recordId')
             if rec_id in img_ids:
                 continue
+
             image = Image()
             if is_csv:
                 image.parse_row(r)
@@ -497,6 +498,10 @@ class ImageList:
         for item in download_items:
             rec_id = item.get('recordId')
             img = self.get_image(rec_id)
+
+            if img is None:
+                img = Image()
+
             order_id = item.get('orderId')
             item_id = item.get('itemId')
             if item_id is None:

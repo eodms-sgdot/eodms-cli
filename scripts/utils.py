@@ -627,7 +627,7 @@ class EodmsUtils:
                 # If no orders could be found
                 self.export_results()
                 err_msg = "No orders were submitted successfully."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -888,7 +888,7 @@ class EodmsUtils:
         if in_csv.find('.csv') == -1:
             err_msg = "The provided input file is not a CSV file. " \
                       "Exiting process."
-            self.print_support(err_msg)
+            self.print_support(True, err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
 
@@ -1072,25 +1072,29 @@ class EodmsUtils:
         print("************************************************************"
               "**************")
 
-    def print_support(self, err_str=None):
+    def print_support(self, err=False, err_str=None):
         """
         Prints the 2 different support message depending if an error occurred.
-        
+
+        :param err: Determines if the output should be for an error.
+        :type  err: bool
         :param err_str: The error string to print along with support.
         :type  err_str: str
         """
 
-        if err_str is None:
-            print(f"\nIf you have any questions or require support, "
-                  f"please contact the EODMS Support Team at "
-                  f"{self.email}")
-        else:
-            print(f"\nERROR: {err_str}")
+        if err:
+            if err_str:
+                print(f"\nERROR: {err_str}")
 
             print("\nExiting process.")
 
             print(f"\nFor help, please contact the EODMS Support Team at "
                   f"{self.email}")
+        else:
+            print(f"\nIf you have any questions or require support, "
+                  f"please contact the EODMS Support Team at "
+                  f"{self.email}")
+
 
     def query_entries(self, collections, **kwargs):
         """
@@ -1130,25 +1134,31 @@ class EodmsUtils:
             # Parse filters
             if filters:
 
+                # print(f"self.coll_id: {self.coll_id}")
+                # print(f"filters.keys(): {filters.keys()}")
+
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
-                    filters = self._parse_filters(coll_filts)
-                    if isinstance(filters, str):
-                        filters = None
+                    filt_parse = self._parse_filters(coll_filts)
+                    if isinstance(filt_parse, str):
+                        filt_parse = None
                 else:
-                    filters = None
+                    filt_parse = None
             else:
-                filters = None
+                filt_parse = None
 
             if self.coll_id == 'NAPL':
-                filters = {'Price': ('=', True)}
+                filt_parse = {'Price': ('=', True)}
 
             result_fields = []
-            if filters is not None:
+            if filt_parse is not None:
                 av_fields = self.eodms_rapi.get_available_fields(self.coll_id,
                                                                  'title')
 
-                for k in filters.keys():
+                if av_fields is None:
+                    return None
+
+                for k in filt_parse.keys():
                     if k in av_fields['results']:
                         result_fields.append(k)
 
@@ -1156,12 +1166,12 @@ class EodmsUtils:
             print(f"\nSending query to EODMSRAPI with the following "
                   f"parameters:")
             print(f"  collection: {self.coll_id}")
-            print(f"  filters: {filters}")
+            print(f"  filters: {filt_parse}")
             print(f"  features: {feats}")
             print(f"  dates: {dates}")
             print(f"  resultFields: {result_fields}")
             print(f"  maxResults: {max_images}")
-            self.eodms_rapi.search(self.coll_id, filters, feats, dates,
+            self.eodms_rapi.search(self.coll_id, filt_parse, feats, dates,
                                    result_fields, max_images)
 
             res = self.eodms_rapi.get_results()
@@ -1232,8 +1242,7 @@ class EodmsUtils:
 
         aliases = [v['aliases'] for v in colls.values()]
 
-        coll_vals = list(colls.keys()) + [v['title'] for v in
-                                          colls.values()]
+        coll_vals = list(colls.keys()) + [v['title'] for v in colls.values()]
 
         for a in aliases:
             coll_vals += a
@@ -1328,13 +1337,13 @@ class EodmsUtils:
                 err_msg = "The AOI file is not a valid file. Please make " \
                           "sure the file is either a GML, KML, GeoJSON " \
                           "or Shapefile."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 
             if not os.path.exists(abs_path):
                 err_msg = "The AOI file does not exist."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 
@@ -1364,7 +1373,7 @@ class EodmsUtils:
                       "filter is in the format of <filter_id><operator>" \
                       "<value>[|<value>] and each filter is separated by " \
                       "a comma."
-            self.print_support(err_msg)
+            self.print_support(True, err_msg)
             self.logger.error(err_msg)
             return False
 
@@ -1378,7 +1387,7 @@ class EodmsUtils:
                        for x in coll_fields.get_eod_fieldnames()):
                 err_msg = f"Filter '{f}' is not available for collection " \
                           f"'{coll_id}'."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 
@@ -1476,7 +1485,8 @@ class EodmsProcess(EodmsUtils):
             sys.exit(0)
 
         # Print results info
-        msg = f"{query_imgs.count()} images returned from search results.\n"
+        msg = f"{query_imgs.count()} unique images returned from search " \
+              f"results.\n"
         self.print_footer('Query Results', msg)
 
         if max_images is None or max_images == '':
@@ -1955,10 +1965,14 @@ class EodmsProcess(EodmsUtils):
         # Download images using the EODMSRAPI
         download_items = self.eodms_rapi.download(orders, self.download_path)
 
-        # print(f"download_items: {download_items}")
-
         query_imgs = image.ImageList(self)
-        query_imgs.ingest_results(download_items)
+        for rec in download_items:
+            rec_id = rec.get('recordId')
+            coll_id = rec.get('collectionId')
+            res = self.eodms_rapi.get_record(coll_id, rec_id)
+            query_imgs.ingest_results([res])
+
+        query_imgs.update_downloads(download_items)
 
         self.cur_res = query_imgs
 
