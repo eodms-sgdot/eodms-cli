@@ -12,6 +12,10 @@ class ConfigUtils:
         # Set the configuration filepath
         self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'config.ini')
+
+        if not os.path.exists(os.path.dirname(self.config_fn)):
+            os.makedirs(os.path.dirname(self.config_fn), exist_ok=True)
+
         # Create configparser
         self.config_info = configparser.ConfigParser(comment_prefixes='/',
                                                      allow_no_value=True)

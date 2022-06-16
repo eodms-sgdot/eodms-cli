@@ -627,7 +627,7 @@ class EodmsUtils:
                 # If no orders could be found
                 self.export_results()
                 err_msg = "No orders were submitted successfully."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -888,7 +888,7 @@ class EodmsUtils:
         if in_csv.find('.csv') == -1:
             err_msg = "The provided input file is not a CSV file. " \
                       "Exiting process."
-            self.print_support(err_msg)
+            self.print_support(True, err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
 
@@ -1072,25 +1072,29 @@ class EodmsUtils:
         print("************************************************************"
               "**************")
 
-    def print_support(self, err_str=None):
+    def print_support(self, err=False, err_str=None):
         """
         Prints the 2 different support message depending if an error occurred.
-        
+
+        :param err: Determines if the output should be for an error.
+        :type  err: bool
         :param err_str: The error string to print along with support.
         :type  err_str: str
         """
 
-        if err_str is None:
-            print(f"\nIf you have any questions or require support, "
-                  f"please contact the EODMS Support Team at "
-                  f"{self.email}")
-        else:
-            print(f"\nERROR: {err_str}")
+        if err:
+            if err_str:
+                print(f"\nERROR: {err_str}")
 
             print("\nExiting process.")
 
             print(f"\nFor help, please contact the EODMS Support Team at "
                   f"{self.email}")
+        else:
+            print(f"\nIf you have any questions or require support, "
+                  f"please contact the EODMS Support Team at "
+                  f"{self.email}")
+
 
     def query_entries(self, collections, **kwargs):
         """
@@ -1333,13 +1337,13 @@ class EodmsUtils:
                 err_msg = "The AOI file is not a valid file. Please make " \
                           "sure the file is either a GML, KML, GeoJSON " \
                           "or Shapefile."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 
             if not os.path.exists(abs_path):
                 err_msg = "The AOI file does not exist."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 
@@ -1369,7 +1373,7 @@ class EodmsUtils:
                       "filter is in the format of <filter_id><operator>" \
                       "<value>[|<value>] and each filter is separated by " \
                       "a comma."
-            self.print_support(err_msg)
+            self.print_support(True, err_msg)
             self.logger.error(err_msg)
             return False
 
@@ -1383,7 +1387,7 @@ class EodmsUtils:
                        for x in coll_fields.get_eod_fieldnames()):
                 err_msg = f"Filter '{f}' is not available for collection " \
                           f"'{coll_id}'."
-                self.print_support(err_msg)
+                self.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 return False
 

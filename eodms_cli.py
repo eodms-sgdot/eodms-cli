@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.1.0'
+__version__ = '3.0.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -64,18 +64,33 @@ from scripts import config_util
 # from utils import image
 # from utils import geo
 
-proc_choices = {'full': 'Search, order & download images using an AOI and/or '
-                        'filters',
-                'order_csv': 'Order & download images using EODMS UI '
-                             'search results (CSV file)',
-                'record_id': 'Order and download a single or set of '
-                             'images using Record IDs',
-                'download_available': 'Downloads order items with status ' 
-                                      'AVAILABLE_FOR_DOWNLOAD',
-                'download_results': '''Download existing orders using a CSV 
-                file from a previous order/download process (files found 
-                under "results" folder)'''
+proc_choices = {'full': {
+                    'name': 'Search, order & download',
+                    'desc': 'Search, order & download images using an AOI '
+                            'and/or filters'
+                },
+                'order_csv': {
+                    'name': 'EODMS UI Ordering',
+                    'desc': 'Order & download images using EODMS UI search '
+                            'results (CSV file)'
+                },
+                'record_id': {
+                    'name': 'Record IDs',
+                    'desc': 'Order and download a single or set of images '
+                            'using Record IDs'
+                },
+                'download_available': {
+                    'name': 'Download Available Order Items',
+                    'desc': 'Downloads order items with status '
+                            'AVAILABLE_FOR_DOWNLOAD'
+                },
+                'download_results': {
+                    'name': 'Download EODMS-CLI Results',
+                    'desc': 'Download existing orders using a CSV file from '
+                            'a previous order/download process (files found '
+                            'under "results" folder)'
                 }
+            }
 
 eodmsrapi_recent = '1.4.4'
 
@@ -248,7 +263,7 @@ class Prompter:
 
             if self.eod.silent:
                 err_msg = "No collection specified. Exiting process."
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -287,7 +302,7 @@ class Prompter:
             if not check:
                 err_msg = "A valid Collection must be specified. " \
                           "Exiting process."
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -303,7 +318,7 @@ class Prompter:
             check = self.eod.validate_collection(c)
             if not check:
                 err_msg = f"Collection '{c}'' is not valid."
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -339,7 +354,7 @@ class Prompter:
 
             if not dates:
                 err_msg = "The dates entered are invalid. "
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -524,7 +539,7 @@ class Prompter:
 
             if self.eod.silent:
                 err_msg = "No CSV file specified. Exiting process."
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 sys.exit(1)
 
@@ -535,7 +550,7 @@ class Prompter:
 
         if not os.path.exists(input_fn):
             err_msg = "Not a valid CSV file. Please enter a valid CSV file."
-            self.eod.print_support(err_msg)
+            self.eod.print_support(True, err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
 
@@ -725,8 +740,9 @@ class Prompter:
         else:
             print("\n--------------Choose Process Option--------------")
             choice_strs = []
+            # print(f"proc_choices.items(): {proc_choices.items()}")
             for idx, v in enumerate(proc_choices.items()):
-                desc_str = re.sub(r'\s+', ' ', v[1].replace('\n', ''))
+                desc_str = re.sub(r'\s+', ' ', v[1]['desc'].replace('\n', ''))
                 choice_strs.append(f"  {idx + 1}: ({v[0]}) {desc_str}")
             choices = '\n'.join(choice_strs)
 
@@ -743,14 +759,14 @@ class Prompter:
                 if not process:
                     err_msg = "Invalid value entered for the 'process' " \
                               "parameter."
-                    self.eod.print_support(err_msg)
+                    self.eod.print_support(True, err_msg)
                     self.logger.error(err_msg)
                     sys.exit(1)
 
                 if process > len(proc_choices.keys()):
                     err_msg = "Invalid value entered for the 'process' " \
                               "parameter."
-                    self.eod.print_support(err_msg)
+                    self.eod.print_support(True, err_msg)
                     self.logger.error(err_msg)
                     sys.exit(1)
                 else:
@@ -890,7 +906,7 @@ class Prompter:
                 sys.exit(1)
 
         if required and in_val == '':
-            eod_util.EodmsProcess().print_support(err_msg)
+            eod_util.EodmsProcess().print_support(True, err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
 
@@ -978,11 +994,11 @@ class Prompter:
                            f"for a future session{suggestion}? (y/n):")
             if answer.lower().find('y') > -1:
                 # self.config_info.set('Credentials', 'username', username)
-                self.config_util.set('username', 'Credentials', username)
+                self.config_util.set('Credentials', 'username', username)
                 pass_enc = base64.b64encode(password.encode("utf-8")).decode(
                     "utf-8")
                 # self.config_info.set('Credentials', 'password', str(pass_enc))
-                self.config_util.set('password', 'Credentials', str(pass_enc))
+                self.config_util.set('Credentials', 'password', str(pass_enc))
 
                 self.config_util.write()
 
@@ -1001,31 +1017,40 @@ class Prompter:
         print()
         coll_dict = self.eod.eodms_rapi.get_collections(True, opt='both')
 
-        # print(f"coll_lst: {coll_lst}")
         # print(f"dir(coll_lst): {dir(coll_lst)}")
         # print(f"coll_lst.__class__: {coll_lst.__class__}")
         # print(f"coll_lst type: {type(coll_lst).__name__}")
         # print(f"{'get_msgs' in dir(coll_lst)}")
 
         if coll_dict is None:
-            msg = f"Failed to retrieve a list of available collections."
+            if self.eod.eodms_rapi.auth_err:
+                msg = "\nAn authentication error has occurred while " \
+                      "trying to access the EODMS RAPI. Please ensure " \
+                      "your account login is in good standing on the actual " \
+                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                      "index-en.html. Once your account is ready, you can " \
+                      "run 'python eodms_cli.py --configure credentials' to " \
+                      "add your new credentials to the configuration file."
+            else:
+                msg = f"Failed to retrieve a list of available collections."
             self.logger.error(msg)
-            self.eod.print_support(msg)
+            self.eod.print_support(True)
             sys.exit(1)
 
         # if 'get_msgs' in dir(coll_lst):
         if isinstance(coll_dict, eodms_rapi.QueryError):
             err_msg = coll_dict.get_msgs(True)
             if err_msg.find('401 Client Error') > -1:
-                msg = "Failed to retrieve a list of available collections " \
-                      "due to authentication error. Please check your " \
-                      "credentials in the configuration file by running " \
-                      "'python eodms_cli.py --configure credentials'."
+                msg = "An authentication error has occurred while " \
+                      "trying to access the EODMS RAPI.\n\nPlease ensure " \
+                      "your account login is in good standing on the actual " \
+                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                      "index-en.html."
             else:
                 msg = f"Failed to retrieve a list of available collections. " \
                       f"{coll_dict.get_msgs(True)}"
             self.logger.error(msg)
-            self.eod.print_support(msg)
+            self.eod.print_support(True, msg)
             sys.exit(1)
 
         print("\n(For more information on the following prompts, please refer"
@@ -1039,6 +1064,13 @@ class Prompter:
             self.process = self.ask_process()
         else:
             self.process = process
+
+        proc_num = list(proc_choices.keys()).index(self.process) + 1
+        print("\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        print(f" Running Process "
+              f"{proc_num}: "
+              f"{proc_choices[self.process]['name']}")
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
 
         if self.process == 'search_only':
             msg = "\nNOTE: The 'search_only' process is no longer available. " \
@@ -1347,7 +1379,7 @@ def print_support(err_str=None):
     :type  err_str: str
     """
 
-    eod_util.EodmsProcess().print_support(err_str)
+    eod_util.EodmsProcess().print_support(True, err_str)
 
 
 output_help = '''The output file path containing the results in a
@@ -1450,7 +1482,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         err_msg = "The py-eodms-rapi currently installed is an older " \
                   "version. Please install the latest version using " \
                   "'pip install py-eodms-rapi -U'."
-        eod_util.EodmsProcess().print_support(err_msg)
+        eod_util.EodmsProcess().print_support(True, err_msg)
         sys.exit(1)
 
 

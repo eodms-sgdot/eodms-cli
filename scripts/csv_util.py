@@ -182,7 +182,7 @@ class EODMS_CSV:
             return in_lines
         except Exception:
             err_msg = "The input file cannot be read."
-            self.eod.print_support(err_msg)
+            self.eod.print_support(True, err_msg)
             logger = logging.getLogger('eodms')
             logger.error(err_msg)
             sys.exit(1)
@@ -223,7 +223,7 @@ class EODMS_CSV:
     Image Info
     A combination of Downlink Segment ID and Order Key
     A combination of Photo Number and Roll Number'''
-            self.eod.print_support(err_msg)
+            self.eod.print_support(True, err_msg)
             sys.exit(1)
 
         # Populate the list of records from the input file
@@ -269,7 +269,7 @@ class EODMS_CSV:
             # Check for any errors
             if isinstance(res, self.rapi.QueryError):
                 err_msg = f"Query to RAPI failed due to '{res.get_msg()}'"
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.warning(err_msg)
                 continue
 
@@ -277,7 +277,7 @@ class EODMS_CSV:
 
             if len(res_json['items']) == 0:
                 err_msg = f"No Order exists with Item ID {o_item['itemId']}."
-                self.eod.print_support(err_msg)
+                self.eod.print_support(True, err_msg)
                 self.logger.warning(err_msg)
                 continue
 
