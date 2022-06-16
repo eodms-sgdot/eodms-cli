@@ -92,7 +92,7 @@ proc_choices = {'full': {
                 }
             }
 
-eodmsrapi_recent = '1.4.4'
+eodmsrapi_recent = '1.4.5'
 
 class Prompter:
     """
