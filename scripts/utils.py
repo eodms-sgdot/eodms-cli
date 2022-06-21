@@ -202,7 +202,10 @@ class EodmsUtils:
         else:
 
             # Modify date for the EODMSRAPI object
+            # print(f"in_dates: {in_dates}")
             date_ranges = in_dates.split(',')
+
+            # print(f"date_ranges: {date_ranges}")
 
             dates = []
             start = ''
@@ -219,7 +222,7 @@ class EodmsUtils:
                 else:
                     end = f'{end}_000000'
 
-            dates.append({'start': start, 'end': end})
+                dates.append({'start': start, 'end': end})
 
         return dates
 
@@ -504,6 +507,7 @@ class EodmsUtils:
             msg = "The following images have been downloaded:\n"
             for img in success_orders:
                 rec_id = img.get_record_id()
+                coll_id = img.get_metadata('collectionId')
                 order_id = img.get_metadata('orderId')
                 orderitem_id = img.get_metadata('itemId')
                 dests = img.get_metadata('downloadPaths')
@@ -511,6 +515,7 @@ class EodmsUtils:
                     loc_dest = d['local_destination']
                     src_url = d['url']
                     msg += f"\nRecord ID {rec_id}\n"
+                    msg += f"    Collection ID: {coll_id}\n"
                     msg += f"    Order Item ID: {orderitem_id}\n"
                     msg += f"    Order ID: {order_id}\n"
                     msg += f"    Downloaded File: {loc_dest}\n"
@@ -1420,6 +1425,7 @@ class EodmsProcess(EodmsUtils):
         # process = params.get('process')
         maximum = params.get('maximum')
         self.output = params.get('output')
+        overlap = params.get("overlap")
         priority = params.get('priority')
         aws_download = params.get('aws')
         no_order = params.get('no_order')
@@ -1465,6 +1471,16 @@ class EodmsProcess(EodmsUtils):
                                         aoi=aoi, dates=dates,
                                         max_images=max_images)
 
+        # print("#1")
+
+        if overlap is not None \
+                and not overlap == '' \
+                and aoi is not None \
+                and not aoi == '':
+            query_imgs.filter_overlap(overlap, aoi)
+
+        # print("#2")
+
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
             msg = "Sorry, no results found for given AOI or filters."
@@ -1477,17 +1493,17 @@ class EodmsProcess(EodmsUtils):
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
 
+        # Print results info
+        msg = f"{query_imgs.count()} unique images returned from search " \
+              f"results.\n"
+        self.print_footer('Query Results', msg)
+
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
             self.export_results()
             print("Exiting process.")
             self.print_support()
             sys.exit(0)
-
-        # Print results info
-        msg = f"{query_imgs.count()} unique images returned from search " \
-              f"results.\n"
-        self.print_footer('Query Results', msg)
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if
@@ -1526,7 +1542,7 @@ class EodmsProcess(EodmsUtils):
         #############################################
         orders = image.OrderList(self)
         if eodms_imgs.count() > 0:
-            orders = self._submit_orders(eodms_imgs, priority)
+            orders = self._submit_orders(eodms_imgs, priority, max_items)
 
         #############################################
         # Download Images
@@ -1809,6 +1825,7 @@ class EodmsProcess(EodmsUtils):
         collections = params.get('collections')
         dates = params.get('dates')
         aoi = params.get('input_val')
+        overlap = params.get('overlap')
         filters = params.get('filters')
         # process = params.get('process')
         maximum = params.get('maximum')
@@ -1858,6 +1875,12 @@ class EodmsProcess(EodmsUtils):
         # Send query to EODMSRAPI
         query_imgs = self.query_entries(collections, filters=filters,
                                         aoi=aoi, dates=dates)
+
+        if overlap is not None \
+                and not overlap == '' \
+                and aoi is not None \
+                and not aoi == '':
+            query_imgs.filter_overlap(overlap, aoi)
 
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:

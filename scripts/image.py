@@ -310,8 +310,6 @@ class ImageList:
 
         geo_util = spatial.Geo(self.eod, aoi)
 
-        # aoi_feats = geo_util.get_polygon()
-
         filter_lst = []
         for img in self.img_lst:
             overlap_aoi, overlap_img = geo_util.get_overlap(img, aoi)

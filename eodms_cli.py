@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.0.1'
+__version__ = '3.0.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -65,8 +65,8 @@ from scripts import config_util
 # from utils import geo
 
 proc_choices = {'full': {
-                    'name': 'Search, order & download',
-                    'desc': 'Search, order & download images using an AOI '
+                    'name': 'Search, order and/or download',
+                    'desc': 'Search, order and/or download images using an AOI '
                             'and/or filters'
                 },
                 'order_csv': {
@@ -1115,7 +1115,7 @@ class Prompter:
 
             # Get the filter(s)
             filt_dict = self.ask_filter(filters)
-            print(f"filt_dict: {filt_dict}")
+            # print(f"filt_dict: {filt_dict}")
             self.params['filters'] = filt_dict
 
             # Get the date(s)
