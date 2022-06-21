@@ -287,7 +287,7 @@ class Geo:
 
     def get_overlap(self, img, aoi):
 
-        rapi_geo = EODMSGeo()
+        rapi_geo = EODMSGeo(self.eod.eodms_rapi)
 
         img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
         aoi_wkts = rapi_geo.convert_to_wkt(aoi, 'file')
