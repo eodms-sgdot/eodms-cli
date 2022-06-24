@@ -5,8 +5,8 @@ name: EODMS-CLI Test 1 - Process 1
 # Controls when the workflow will run
 on:
   # Triggers the workflow on push or pull request events but only for the "development" branch
-  push:
-    branches: [ "development" ]
+  # push:
+  #   branches: [ "development" ]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
         env:
           USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
-        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i workflow\files\NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o workflow\files\test1_output.geojson -dn workflow\files\downloads\test1 -pri low -s
+        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i workflow/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o workflow/files/test1_output.geojson -dn workflow/files/downloads/test1 -pri low -s
 
       # Runs a set of commands using the runners shell
       # - name: Run a multi-line script
