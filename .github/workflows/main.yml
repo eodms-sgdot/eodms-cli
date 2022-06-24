@@ -30,7 +30,10 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run a one-line script
-        run: python eodms_cli.py -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -max 5:3 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -pri low -s
+        env: 
+          USERNAME: ${{ secrets.USERNAME }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: python eodms_cli.py -u %USERNAME% -p %PASSWORD% -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -max 5:3 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -pri low -s
 
       # Runs a set of commands using the runners shell
       # - name: Run a multi-line script
