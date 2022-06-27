@@ -25,8 +25,8 @@ jobs:
         with:
           ref: 'development'
           
-      - name: Use local workflow
-        uses: ./.github/workflow/files
+      - name: Use local workflows/files
+        uses: ./.github/workflows/files
       
       # List files
       - name: List files
