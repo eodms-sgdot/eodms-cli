@@ -41,7 +41,7 @@ jobs:
         env:
           USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
-        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i workflow/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o workflow/files/test1_output.geojson -pri low -s
+        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i tests/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o tests/files/test1_output.geojson -pri low -s
         
       # List files
       - name: List files
