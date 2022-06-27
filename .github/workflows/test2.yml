@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: CI
+name: EODMS-CLI Test 2 - Process 2
 
 # Controls when the workflow will run
 on:
@@ -24,7 +24,10 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: 'development'
-
+          
+      # - name: Use local workflows/files
+      #   uses: ./.github/workflows/files
+      
       # List files
       - name: List files
         run: ls
@@ -38,8 +41,14 @@ jobs:
         env:
           USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
-        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i workflow/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o workflow/files/test1_output.geojson -dn workflow/files/downloads/test1 -pri low -s
+        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -i tests\files\RCMImageProducts_Results.csv -max 4 -prc order_csv -cf "sequence id" -o tests\files\test2_auto.geojson -pri low -s
         
       # List files
       - name: List files
         run: ls
+
+      # Runs a set of commands using the runners shell
+      # - name: Run a multi-line script
+      #   run: |
+      #     echo Add other actions to build,
+      #     echo test, and deploy your project.
