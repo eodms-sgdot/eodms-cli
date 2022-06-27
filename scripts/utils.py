@@ -465,7 +465,7 @@ class EodmsUtils:
 
     def _get_prev_res(self, csv_fn):
         """
-        Creates a EODMSRAPI instance.
+        Imports image info from a CSV file
         
         :param csv_fn: The filename of the previous results CSV file.
         :type  csv_fn: str
