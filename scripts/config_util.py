@@ -363,50 +363,6 @@ class ConfigUtils:
         if section in self.config_dict.keys():
             self.config_dict[section][option] = value
 
-    # def move_option(self, option, section_src, section_targ, value=None):
-    #     """
-    #     Moves an option from one section to another
-    #
-    #     :param option: The name of the option.
-    #     :type  option: str
-    #     :param section_src: The name of the section from where the option
-    #     is coming.
-    #     :type  section_src: str
-    #     :param section_targ: The name of the target section.
-    #     :type  section_targ: str
-    #     :param value: A new value for the target option.
-    #     :type  value: str
-    #
-    #     :return: n/a
-    #     """
-    #
-    #     if value is None:
-    #         value = self.config_info.get(section_src, option)
-    #
-    #     if not self.config_info.has_section(section_targ):
-    #         self.config_info.add_section(section_targ)
-    #
-    #     self.config_info.remove_option(section_src, option)
-    #
-    #     self.config_info.set(section_targ, option, value)
-    #
-    # def remove_option(self, section, option):
-    #     """
-    #     Removes an option from the configuration file.
-    #
-    #     :param section: The section in the configuration file.
-    #     :type  section: str
-    #     :param option: The option in the section
-    #     :type  option: str
-    #
-    #     :return: n/a
-    #     """
-    #
-    #     try:
-    #         self.config_info.remove_option(section, option)
-    #     except (configparser.NoSectionError, configparser.NoOptionError):
-    #         pass
-
     def update_dict(self):
         """
         Updates the config_dict based on config_info

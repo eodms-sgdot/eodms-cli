@@ -754,7 +754,7 @@ class EodmsUtils:
             dest_fn = os.path.join(self.download_path, aws_f)
 
             # Get the file size of the link
-            resp = requests.head(dl_link)
+            resp = requests.head(dl_link, verify=False)
             fsize = resp.headers['content-length']
 
             if os.path.exists(dest_fn):
@@ -773,7 +773,7 @@ class EodmsUtils:
                     os.remove(dest_fn)
 
             # Use streamed download so we can wrap nicely with tqdm
-            with requests.get(dl_link, stream=True) as stream:
+            with requests.get(dl_link, stream=True, verify=False) as stream:
                 with open(dest_fn, 'wb') as pipe:
                     with tqdm.wrapattr(
                             pipe,

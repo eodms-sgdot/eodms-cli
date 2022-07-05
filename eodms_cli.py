@@ -45,7 +45,7 @@ import getpass
 import datetime
 # from geomet import wkt
 # import json
-import configparser
+# import configparser
 import base64
 import logging
 import logging.handlers as handlers
@@ -495,6 +495,7 @@ class Prompter:
                 # Split filters by comma
                 filt_lst = filters.split(',')
                 for f in filt_lst:
+                    f = f.strip('"')
                     if f == '':
                         continue
                     if f.find('.') > -1:
@@ -749,6 +750,8 @@ class Prompter:
             print(f"\nWhat would you like to do?\n\n{choices}\n")
             process = input("->> Please choose the type of process [1]: ")
 
+            # print(f"FOR DEBUG - Process entered: {process}")
+
             if process == '':
                 process = 'full'
             else:
@@ -805,8 +808,11 @@ class Prompter:
 
         click_ctx = click.get_current_context(silent=True)
 
-        cmd_params = click_ctx.to_info_dict()['command']['params']
         flags = {}
+        if click_ctx is None:
+            return ''
+
+        cmd_params = click_ctx.to_info_dict()['command']['params']
         for p in cmd_params:
             flags[p['name']] = p['opts']
 
@@ -912,6 +918,8 @@ class Prompter:
 
         if in_val == '' and default is not None and not default == '':
             in_val = default
+
+        # print(f"FOR DEBUG - Value entered: {in_val}")
 
         return in_val
 
@@ -1301,86 +1309,7 @@ class Prompter:
                               "the prompt.")
             sys.exit(1)
 
-
-# def get_config():
-#     """
-#     Gets the configuration information from the config file.
-#
-#     :return: The information extracted from the config file.
-#     :rtype: configparser.ConfigParser
-#     """
-#
-#     config = configparser.ConfigParser(comment_prefixes='/',
-#                                        allow_no_value=True)
-#
-#     # config_fn = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-#     #                          'config.ini')
-#     config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-#                              'config.ini')
-#
-#     # If the config file does not exist, create and fill with defaults
-#     if not os.path.exists(config_fn):
-#         os.makedirs(os.path.dirname(config_fn), exist_ok=True)
-#         config_contents = """[Script]
-# # the minimum date the csv result files will be kept; all files prior to this date will be deleted.
-# keep_results =
-# # the minimum date the download files will be kept; all files prior to this date will be deleted.
-# keep_downloads =
-#
-# [Paths]
-# # path of the image files downloaded from the rapi.
-# downloads =
-# # path of the results csv files from the script.
-# results =
-# # path of the log files.
-# log =
-#
-# [RAPI]
-# # username of the eodms account used to access the rapi.
-# username =
-# # password of the eodms account used to access the rapi.
-# password =
-# # number of attempts made to the rapi when a timeout occurs.
-# access_attempts = 4
-# # maximum number of results to return from the rapi.
-# max_results = 1000
-# # number of seconds before a timeout occurs when querying the rapi.
-# timeout_query = 120.0
-# # number of seconds before a timeout occurs when ordering using the rapi.
-# timeout_order = 180.0
-# # when checking for available_for_download orders, this date is the earliest they will be checked. can be hours, days, months or years.
-# order_check_date = 3 days
-#
-# [Debug]
-# # root_url = https://www-staging-eodms.aws.nrcan-rncan.cloud/wes/rapi
-# """
-#         with open(config_fn, "w") as f:
-#             f.write(config_contents)
-#
-#     config.read(config_fn)
-#
-#     return config
-#
-#
-# def get_option(config_info, section, option):
-#     if isinstance(section, str):
-#         section = [section]
-#
-#     for sec in section:
-#         if config_info.has_option(sec, option):
-#             return config_info.get(sec, option)
-
-
-def print_support(err_str=None):
-    """
-    Prints the 2 different support message depending if an error occurred.
-    
-    :param err_str: The error string to print along with support.
-    :type  err_str: str
-    """
-
-    eod_util.EodmsProcess().print_support(True, err_str)
-
+#------------------------------------------------------------------------------
 
 output_help = '''The output file path containing the results in a
                              geospatial format.
@@ -1395,6 +1324,85 @@ output_help = '''The output file path containing the results in a
         Python package)
  - Shapefile: The output will be ESRI Shapefile (requires GDAL Python package)
      (use extension .shp)'''
+
+abs_path = os.path.abspath(__file__)
+
+def get_configuration_values(config_util, download_path):
+
+    config_params = {}
+
+    # Set the various paths
+    if download_path is None or download_path == '':
+        # download_path = config_info.get('Script', 'downloads')
+        download_path = config_util.get('Paths', 'downloads')
+
+        if download_path == '':
+            download_path = os.path.join(os.path.dirname(abs_path),
+                                         'downloads')
+        elif not os.path.isabs(download_path):
+            download_path = os.path.join(os.path.dirname(abs_path),
+                                         download_path)
+    config_params['download_path'] = download_path
+
+    res_path = config_util.get('Paths', 'results')
+    if res_path == '':
+        res_path = os.path.join(os.path.dirname(abs_path), 'results')
+    elif not os.path.isabs(res_path):
+        res_path = os.path.join(os.path.dirname(abs_path),
+                                res_path)
+    config_params['res_path'] = res_path
+
+    log_path = config_util.get('Paths', 'log')
+    if log_path == '':
+        log_path = os.path.join(os.path.dirname(abs_path), 'log',
+                               'logger.log')
+    elif not os.path.isabs(log_path):
+        log_path = os.path.join(os.path.dirname(abs_path),
+                               log_path)
+    config_params['log_path'] = log_path
+
+    # Set the timeout values
+    timeout_query = config_util.get('RAPI', 'timeout_query')
+    # timeout_order = config_info.get('Script', 'timeout_order')
+    timeout_order = config_util.get('RAPI', 'timeout_order')
+
+    try:
+        timeout_query = float(timeout_query)
+    except ValueError:
+        timeout_query = 60.0
+
+    try:
+        timeout_order = float(timeout_order)
+    except ValueError:
+        timeout_order = 180.0
+    config_params['timeout_query'] = timeout_query
+    config_params['timeout_order'] = timeout_order
+
+    config_params['keep_results'] = config_util.get('Script', 'keep_results')
+    config_params['keep_downloads'] = config_util.get('Script',
+                                                      'keep_downloads')
+
+    # Get the total number of results per query
+    config_params['max_results'] = config_util.get('RAPI', 'max_results')
+
+    # Get the minimum date value to check orders
+    config_params['order_check_date'] = config_util.get('RAPI',
+                                                        'order_check_date')
+
+    # Get URL for debug purposes
+    config_params['rapi_url'] = config_util.get('Debug', 'root_url')
+
+    return config_params
+
+def print_support(err_str=None):
+    """
+    Prints the 2 different support message depending if an error occurred.
+    
+    :param err_str: The error string to print along with support.
+    :type  err_str: str
+    """
+
+    eod_util.EodmsProcess().print_support(True, err_str)
 
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
@@ -1517,36 +1525,19 @@ def cli(username, password, input_val, collections, process, filters, dates,
         # config_info = get_config()
         conf_util.import_config()
 
-        abs_path = os.path.abspath(__file__)
-
-        download_path = downloads
-        if download_path is None or download_path == '':
-            # download_path = config_info.get('Script', 'downloads')
-            download_path = conf_util.get('Paths', 'downloads')
-
-            if download_path == '':
-                download_path = os.path.join(os.path.dirname(abs_path),
-                                             'downloads')
-            elif not os.path.isabs(download_path):
-                download_path = os.path.join(os.path.dirname(abs_path),
-                                             download_path)
+        config_params = get_configuration_values(config_util, downloads)
+        download_path = config_params['download_path']
+        res_path = config_params['res_path']
+        log_path = config_params['log_path']
+        timeout_query = config_params['timeout_query']
+        timeout_order = config_params['timeout_order']
+        keep_results = config_params['keep_results']
+        keep_downloads = config_params['keep_downloads']
+        max_results = config_params['max_results']
+        order_check_date = config_params['order_check_date']
+        rapi_url = config_params['rapi_url']
 
         print(f"\nImages will be downloaded to '{download_path}'.")
-
-        res_path = conf_util.get('Paths', 'results')
-        if res_path == '':
-            res_path = os.path.join(os.path.dirname(abs_path), 'results')
-        elif not os.path.isabs(res_path):
-            res_path = os.path.join(os.path.dirname(abs_path),
-                                    res_path)
-
-        log_loc = conf_util.get('Paths', 'log')
-        if log_loc == '':
-            log_loc = os.path.join(os.path.dirname(abs_path), 'log',
-                                   'logger.log')
-        elif not os.path.isabs(log_loc):
-            log_loc = os.path.join(os.path.dirname(abs_path),
-                                   log_loc)
 
         # Setup logging
         logger = logging.getLogger('EODMSRAPI')
@@ -1555,11 +1546,11 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                       '%(message)s',
                                       datefmt='%Y-%m-%d %I:%M:%S %p')
 
-        if not os.path.exists(os.path.dirname(log_loc)):
-            pathlib.Path(os.path.dirname(log_loc)).mkdir(
+        if not os.path.exists(os.path.dirname(log_path)):
+            pathlib.Path(os.path.dirname(log_path)).mkdir(
                 parents=True, exist_ok=True)
 
-        log_handler = handlers.RotatingFileHandler(log_loc,
+        log_handler = handlers.RotatingFileHandler(log_path,
                                                    maxBytes=500000,
                                                    backupCount=2)
         log_handler.setLevel(logging.DEBUG)
@@ -1568,34 +1559,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         logger.info(f"Script start time: {start_str}")
 
-        timeout_query = conf_util.get('RAPI', 'timeout_query')
-        # timeout_order = config_info.get('Script', 'timeout_order')
-        timeout_order = conf_util.get('RAPI', 'timeout_order')
-
-        try:
-            timeout_query = float(timeout_query)
-        except ValueError:
-            timeout_query = 60.0
-
-        try:
-            timeout_order = float(timeout_order)
-        except ValueError:
-            timeout_order = 180.0
-
-        keep_results = conf_util.get('Script', 'keep_results')
-        keep_downloads = conf_util.get('Script', 'keep_downloads')
-
-        # Get the total number of results per query
-        max_results = conf_util.get('RAPI', 'max_results')
-
-        # Get the minimum date value to check orders
-        order_check_date = conf_util.get('RAPI', 'order_check_date')
-
-        # Get URL for debug purposes
-        rapi_url = conf_util.get('Debug', 'root_url')
-
         eod = eod_util.EodmsProcess(download=download_path,
-                                    results=res_path, log=log_loc,
+                                    results=res_path, log=log_path,
                                     timeout_order=timeout_order,
                                     timeout_query=timeout_query,
                                     max_res=max_results,
@@ -1633,11 +1598,12 @@ def cli(username, password, input_val, collections, process, filters, dates,
         sys.exit(1)
     except Exception:
         trc_back = f"\n{traceback.format_exc()}"
+        # print(f"trc_back: {trc_back}")
         if 'eod' in vars() or 'eod' in globals():
-            eod.print_support(trc_back)
+            eod.print_support(True, trc_back)
             eod.export_results()
         else:
-            eod_util.EodmsProcess().print_support(trc_back)
+            eod_util.EodmsProcess().print_support(True, trc_back)
         logger.error(traceback.format_exc())
 
 

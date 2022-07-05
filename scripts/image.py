@@ -493,6 +493,9 @@ class ImageList:
         :type  download_items: list
         """
 
+        if download_items is None:
+            return None
+
         for item in download_items:
             rec_id = item.get('recordId')
             img = self.get_image(rec_id)
