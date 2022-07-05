@@ -35,6 +35,10 @@ jobs:
       # Install requirements
       - name: Install requirements
         run: pip install -r requirements.txt
+        
+      # Go to 'test' folder
+      - name: Go to 'test' folder
+        run: cd test
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI
