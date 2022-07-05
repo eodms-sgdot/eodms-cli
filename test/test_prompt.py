@@ -32,6 +32,8 @@ class TestEodmsCli(unittest.TestCase):
                   'silent': None,
                   'version': None}
 
+        print(f"params: {params}")
+
         conf_util = config_util.ConfigUtils()
         conf_util.import_config()
 
@@ -57,21 +59,21 @@ class TestEodmsCli(unittest.TestCase):
                                     order_check_date=order_check_date,
                                     rapi_url=rapi_url)
 
-        prmpt = eodms_cli.Prompter(eod, conf_util, params, click)
+        prmpt = eodms_cli.Prompter(eod, conf_util, params, click, testing=True)
 
         return prmpt
 
-    inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
+    inputs = {'test1': ['', '1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
                     '', 'output.geojson', '', '3', '', 'low'],
-              'test2': ['2', 'files\\RCMImageProducts_Results.csv',
+              'test2': ['', '2', 'files\\RCMImageProducts_Results.csv',
                     'files\\test2_output.geojson', '', '4', 'low'],
-              'test3': ['3', 'RCMImageProducts:13531983,'
+              'test3': ['', '3', 'RCMImageProducts:13531983,'
                                 'RCMImageProducts:13531917,'
                                 'Radarsat2:13532412,'
                                 'Radarsat1:5053934',
                         'Yes', 'files\\test3_output.geojson', '', 'low'],
-              'test4': ['4', 'files\\test4_output.geojson'],
-              'test5': ['5', 'files\\20220530_145625_Results.csv',
+              'test4': ['','4', 'files\\test4_output.geojson'],
+              'test5': ['', '5', 'files\\20220530_145625_Results.csv',
                         'files\\test5_output.geojson']
               }
 

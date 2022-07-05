@@ -99,7 +99,7 @@ class Prompter:
     Class used to prompt the user for all inputs.
     """
 
-    def __init__(self, eod, config_util, params, in_click):
+    def __init__(self, eod, config_util, params, in_click, testing=False):
         """
         Initializer for the Prompter class.
         
@@ -117,6 +117,7 @@ class Prompter:
         self.params = params
         self.click = in_click
         self.process = None
+        self.testing = testing
 
         self.logger = logging.getLogger('eodms')
 
@@ -750,7 +751,8 @@ class Prompter:
             print(f"\nWhat would you like to do?\n\n{choices}\n")
             process = input("->> Please choose the type of process [1]: ")
 
-            # print(f"FOR DEBUG - Process entered: {process}")
+            if self.testing:
+                print(f"FOR TESTING - Process entered: {process}")
 
             if process == '':
                 process = 'full'
@@ -919,7 +921,8 @@ class Prompter:
         if in_val == '' and default is not None and not default == '':
             in_val = default
 
-        # print(f"FOR DEBUG - Value entered: {in_val}")
+        if self.testing:
+            print(f"FOR TESTING - Value entered: {in_val}")
 
         return in_val
 
