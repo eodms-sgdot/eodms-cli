@@ -39,6 +39,10 @@ jobs:
       # Go to 'test' folder
       - name: Go to 'test' folder
         run: cd test
+        
+      # List files
+      - name: List files
+        run: ls
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI
