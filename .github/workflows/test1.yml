@@ -54,6 +54,51 @@ jobs:
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process2
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 3 - Process 3
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_process3
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 4 - Process 4
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_process4
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 5 - Process 5
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_process5
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 6 - Process 1 Search Only
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_searchonly
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 7 - Wrong Creds
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_wrongcreds
         
       # List files
       - name: List files
