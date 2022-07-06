@@ -38,6 +38,7 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 1 - Process 1
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -48,6 +49,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 2 - Process 2
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -57,6 +59,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 3 - Process 3
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -66,6 +69,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 4 - Process 4
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -75,6 +79,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 5 - Process 5
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -84,6 +89,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 6 - Process 1 Search Only
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -93,6 +99,7 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 7 - Wrong Creds
+        continue-on-error: true
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
