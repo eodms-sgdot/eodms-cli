@@ -65,16 +65,16 @@ class TestEodmsCli(unittest.TestCase):
 
     inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
                     '', 'output.geojson', '', '3', '', 'low'],
-              'test2': ['2', 'files\\RCMImageProducts_Results.csv',
-                    'files\\test2_output.geojson', '', '4', 'low'],
+              'test2': ['2', 'files/RCMImageProducts_Results.csv',
+                    'files/test2_output.geojson', '', '4', 'low'],
               'test3': ['3', 'RCMImageProducts:13531983,'
                                 'RCMImageProducts:13531917,'
                                 'Radarsat2:13532412,'
                                 'Radarsat1:5053934',
-                        'Yes', 'files\\test3_output.geojson', '', 'low'],
-              'test4': ['4', 'files\\test4_output.geojson'],
-              'test5': ['5', 'files\\20220530_145625_Results.csv',
-                        'files\\test5_output.geojson']
+                        'Yes', 'files/test3_output.geojson', '', 'low'],
+              'test4': ['4', 'files/test4_output.geojson'],
+              'test5': ['5', 'files/20220530_145625_Results.csv',
+                        'files/test5_output.geojson']
               }
 
     @patch('builtins.input', side_effect=inputs['test1'])
