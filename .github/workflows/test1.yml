@@ -37,7 +37,7 @@ jobs:
         run: pip install -r requirements.txt
 
       # Runs a single command using the runners shell
-      - name: Run EODMS-CLI
+      - name: Run EODMS-CLI Prompt Test 1 - Process 1
         env:
           EODMS_USER: ${{ secrets.USERNAME }}
           EODMS_PASSWORD: ${{ secrets.PASSWORD }}
@@ -45,6 +45,15 @@ jobs:
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process1
+          
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 2 - Process 2
+        env:
+          EODMS_USER: ${{ secrets.USERNAME }}
+          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_process2
         
       # List files
       - name: List files
