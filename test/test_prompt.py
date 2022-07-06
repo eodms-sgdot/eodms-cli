@@ -13,9 +13,16 @@ from scripts import utils as eod_util
 
 class TestEodmsCli(unittest.TestCase):
 
-    def _setup_prompt(self):
-        params = {'username': os.getenv('EODMS_USER'),
-                  'password': os.environ.get('EODMS_PASSWORD'),
+    def _setup_prompt(self, username=None, password=None):
+
+        if username is None:
+            username = os.getenv('EODMS_USER')
+
+        if password is None:
+            password = os.environ.get('EODMS_PASSWORD')
+
+        params = {'username': username,
+                  'password': password,
                   'input_val': None,
                   'collections': None,
                   'process': None,
@@ -64,7 +71,7 @@ class TestEodmsCli(unittest.TestCase):
         return prmpt
 
     inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
-                    '', 'output.geojson', '', '3', '', 'low'],
+                    '', 'files/test1_output.geojson', '', '3', '', 'low'],
               'test2': ['2', 'files/RCMImageProducts_Results.csv',
                     'files/test2_output.geojson', '', '4', 'low'],
               'test3': ['3', 'RCMImageProducts:13531983,'
@@ -74,11 +81,19 @@ class TestEodmsCli(unittest.TestCase):
                         'Yes', 'files/test3_output.geojson', '', 'low'],
               'test4': ['4', 'files/test4_output.geojson'],
               'test5': ['5', 'files/20220530_145625_Results.csv',
-                        'files/test5_output.geojson']
+                        'files/test5_output.geojson'],
+              'test6': ['', '17,15', 'files/NCR_AOI.geojson', '30',
+                        'beam_mnemonic like 16M%,product_type=SLC',
+                        'beam_mnemonic like EH%,transmit_polarization=H',
+                        '20170101-20220527', 'files/test6_output.geojson',
+                        'y', 'low']
               }
 
     @patch('builtins.input', side_effect=inputs['test1'])
     def test_process1(self, mock_input):
+        """
+        Runs a test of Process 1 with both RCM and Radarsat-1 imagery.
+        """
 
         prmpt = self._setup_prompt()
 
@@ -87,8 +102,61 @@ class TestEodmsCli(unittest.TestCase):
 
     @patch('builtins.input', side_effect=inputs['test2'])
     def test_process2(self, mock_input):
+        """
+        Runs a test of Process 2 with results from the EODMS UI.
+        """
 
         prmpt = self._setup_prompt()
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=inputs['test3'])
+    def test_process3(self, mock_input):
+        """
+        Runs a test of Process 3 with a set of Record IDs.
+        """
+
+        prmpt = self._setup_prompt()
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=inputs['test4'])
+    def test_process4(self, mock_input):
+        """
+        Runs a test of Process 4 (download AVAILABLE_FOR_DOWNLOAD).
+        """
+
+        prmpt = self._setup_prompt()
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=inputs['test5'])
+    def test_process5(self, mock_input):
+        """
+        Runs a test of Process 5 with previous results.
+        """
+
+        prmpt = self._setup_prompt()
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=inputs['test6'])
+    def test_searchonly(self, mock_input):
+        """
+        Runs a test of Process 1 but without ordering and downloading.
+        """
+
+        prmpt = self._setup_prompt()
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=[])
+    def test_wrongcreds(self, mock_input):
+        """
+        Runs a test with the wrong credentials.
+        """
+
+        prmpt = self._setup_prompt(username='fdhsdffsd', password='dfghdfsh')
 
         self.assertEqual(prmpt.prompt(), None)
 
