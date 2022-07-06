@@ -297,7 +297,7 @@ class EODMS_CSV:
         :rtype: list
         """
 
-        reader = csv.reader(open(self.csv_fn, 'r'))
+        reader = csv.reader(open(self.csv_fn, 'r', encoding="ISO-8859-1"))
         records = []
         for idx, row in enumerate(reader):
             if idx == 0:
