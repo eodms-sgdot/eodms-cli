@@ -38,9 +38,10 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 1 - Process 1
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         # run: python eodms_cli.py -u $USERNAME -p $PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i tests/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o tests/files/test1_output.geojson -pri low -s
         run: |
           cd test
@@ -48,54 +49,60 @@ jobs:
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 2 - Process 2
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process2
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 3 - Process 3
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process3
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 4 - Process 4
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process4
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 5 - Process 5
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_process5
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 6 - Process 1 Search Only
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_searchonly
           
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI Prompt Test 7 - Wrong Creds
+        continue-on-error: true
         env:
-          EODMS_USER: ${{ secrets.USERNAME }}
-          EODMS_PASSWORD: ${{ secrets.PASSWORD }}
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_wrongcreds
