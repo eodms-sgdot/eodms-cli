@@ -940,7 +940,7 @@ class EodmsUtils:
                     self.export_results()
                     self.print_support()
                     self.logger.info("Process ended by user.")
-                    sys.exit(0)
+                    sys.exit()
 
             order_res = self.eodms_rapi.order(json_res)
             orders.ingest_results(order_res)
@@ -1488,7 +1488,7 @@ class EodmsProcess(EodmsUtils):
             self.print_msg("Exiting process.")
             self.print_support()
             self.logger.warning(msg)
-            sys.exit(1)
+            sys.exit()
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1503,7 +1503,7 @@ class EodmsProcess(EodmsUtils):
             self.export_results()
             print("Exiting process.")
             self.print_support()
-            sys.exit(0)
+            sys.exit()
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if
@@ -1517,7 +1517,7 @@ class EodmsProcess(EodmsUtils):
                     print("Exiting process.")
                     self.print_support()
                     self.logger.info("Process stopped by user.")
-                    sys.exit(0)
+                    sys.exit()
         else:
             # If the user specified a maximum number of orders,
             #   trim the results
@@ -1652,7 +1652,7 @@ class EodmsProcess(EodmsUtils):
             self.export_results()
             print("Exiting process.")
             self.print_support()
-            sys.exit(0)
+            sys.exit()
 
         #############################################
         # Order Images

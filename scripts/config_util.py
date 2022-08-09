@@ -10,8 +10,14 @@ class ConfigUtils:
 
     def __init__(self):
         # Set the configuration filepath
-        self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
+        old_config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'config.ini')
+
+        self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
+                                      'eodmscli_config.ini')
+
+        if os.path.exists(old_config_fn):
+            os.rename(old_config_fn, self.config_fn)
 
         if not os.path.exists(os.path.dirname(self.config_fn)):
             os.makedirs(os.path.dirname(self.config_fn), exist_ok=True)

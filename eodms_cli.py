@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.0.3'
+__version__ = '3.0.4'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -47,6 +47,7 @@ import datetime
 # import json
 # import configparser
 import base64
+import binascii
 import logging
 import logging.handlers as handlers
 import pathlib
@@ -961,7 +962,7 @@ class Prompter:
 
         if version:
             print(f"{__title__}: Version {__version__}")
-            sys.exit(0)
+            sys.exit()
 
         self.eod.set_silence(silent)
 
@@ -992,7 +993,11 @@ class Prompter:
                 password = self.get_input(msg, err_msg, password=True)
                 new_pass = True
             else:
-                password = base64.b64decode(password).decode("utf-8")
+                try:
+                    password = base64.b64decode(password).decode("utf-8")
+                except binascii.Error as err:
+                    password = base64.b64decode(password +
+                                                "========").decode("utf-8")
                 print("Using the password set in the 'config.ini' file...")
 
         if new_user or new_pass:
@@ -1473,14 +1478,14 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
         print(f"\n  {__title__}, version {__version__}\n")
-        sys.exit(0)
+        sys.exit()
 
     conf_util = config_util.ConfigUtils()
 
     if configure:
         conf_util.ask_user(configure)
         # print("You've entered configuration mode.")
-        sys.exit(0)
+        sys.exit()
 
     print("\n##########################################################"
           "#######################")
@@ -1528,7 +1533,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         # config_info = get_config()
         conf_util.import_config()
 
-        config_params = get_configuration_values(config_util, downloads)
+        config_params = get_configuration_values(conf_util, downloads)
         download_path = config_params['download_path']
         res_path = config_params['res_path']
         log_path = config_params['log_path']
