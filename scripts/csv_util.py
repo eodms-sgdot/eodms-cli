@@ -204,27 +204,27 @@ class EODMS_CSV:
         in_header = in_lines[0].lower().replace('\n', '').split(',')
 
         # Check for columns in input file
-        if 'sequence id' not in in_header and \
-                'order key' not in in_header and \
-                'downlink segment id' not in in_header and \
-                'image id' not in in_header and \
-                'record id' not in in_header and \
-                'recordid' not in in_header and \
-                'image info' not in in_header and \
-                'photo number' not in in_header and \
-                'roll number' not in in_header:
-            err_msg = '''The input file does not contain the proper columns.
-  The input file must contain one of the following columns:
-    Record ID
-    recordId
-    Sequence ID
-    Image ID
-    Order Key
-    Image Info
-    A combination of Downlink Segment ID and Order Key
-    A combination of Photo Number and Roll Number'''
-            self.eod.print_support(True, err_msg)
-            sys.exit(1)
+  #       if 'sequence id' not in in_header and \
+  #               'order key' not in in_header and \
+  #               'downlink segment id' not in in_header and \
+  #               'image id' not in in_header and \
+  #               'record id' not in in_header and \
+  #               'recordid' not in in_header and \
+  #               'image info' not in in_header and \
+  #               'photo number' not in in_header and \
+  #               'roll number' not in in_header:
+  #           err_msg = '''The input file does not contain the proper columns.
+  # The input file must contain one of the following columns:
+  #   Record ID
+  #   recordId
+  #   Sequence ID
+  #   Image ID
+  #   Order Key
+  #   Image Info
+  #   A combination of Downlink Segment ID and Order Key
+  #   A combination of Photo Number and Roll Number'''
+  #           self.eod.print_support(True, err_msg)
+  #           sys.exit(1)
 
         # Populate the list of records from the input file
         records = []

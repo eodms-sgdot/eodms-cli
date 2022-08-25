@@ -952,7 +952,7 @@ class Prompter:
         maximum = self.params.get('maximum')
         priority = self.params.get('priority')
         output = self.params.get('output')
-        csv_fields = self.params.get('csv_fields')
+        # csv_fields = self.params.get('csv_fields')
         aws = self.params.get('aws')
         overlap = self.params.get('overlap')
         no_order = self.params.get('no_order')
@@ -1174,9 +1174,9 @@ class Prompter:
             inputs = self.ask_input_file(input_val, msg)
             self.params['input_val'] = inputs
 
-            fields = self.eod.get_input_fields(inputs)
-            csv_fields = self.ask_fields(csv_fields, fields)
-            self.params['csv_fields'] = csv_fields
+            # fields = self.eod.get_input_fields(inputs)
+            # csv_fields = self.ask_fields(csv_fields, fields)
+            # self.params['csv_fields'] = csv_fields
 
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -1449,8 +1449,8 @@ def print_support(err_str=None):
               help='The priority level of the order.\nOne of "Low", '
                    '"Medium", "High" or "Urgent" (default "Medium").')
 @click.option('--output', '-o', default=None, help=output_help)
-@click.option('--csv_fields', '-cf', default=None,
-              help='The fields in the input CSV file used to get images.')
+# @click.option('--csv_fields', '-cf', default=None,
+#               help='The fields in the input CSV file used to get images.')
 @click.option('--aws', '-a', is_flag=True, default=None,
               help='Determines whether to download from AWS (only applies '
                    'to Radarsat-1 imagery).')
@@ -1467,7 +1467,7 @@ def print_support(err_str=None):
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
-        maximum, priority, output, csv_fields, aws, overlap, no_order,
+        maximum, priority, output, aws, overlap, no_order,
         downloads, silent, version, configure):
     """
     Search & Order EODMS products.
@@ -1521,7 +1521,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'maximum': maximum,
                   'priority': priority,
                   'output': output,
-                  'csv_fields': csv_fields,
+                  # 'csv_fields': csv_fields,
                   'aws': aws,
                   'overlap': overlap,
                   'no_order': no_order,
