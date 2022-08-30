@@ -55,6 +55,8 @@ The eodms_cli.py was designed using **Python 3.7** however it has been tested su
 	> python eodms_cli.py
 	```
 	
+NOTE: Depending on your installation of Python, you may have to run ```python3 eodms_cli.py```.
+	
 ## Configuration
 
 Configuration for the script can be found in the **config.ini** file in the home folder under ".eodms".

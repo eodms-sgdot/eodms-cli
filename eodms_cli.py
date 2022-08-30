@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.0.4'
+__version__ = '3.1.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -1475,6 +1475,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
     os.system("title " + __title__)
     sys.stdout.write("\x1b]2;%s\x07" % __title__)
+
+    if sys.version_info[0] < 3.6:
+        raise Exception("Must be using Python 3.6 or higher")
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
         print(f"\n  {__title__}, version {__version__}\n")
