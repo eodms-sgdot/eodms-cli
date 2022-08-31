@@ -1,9 +1,42 @@
+##############################################################################
+# MIT License
+#
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
+# represented by the President of the Treasury Board
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+##############################################################################
+
+__title__ = 'EODMS-CLI Prompt Tester'
+__author__ = 'Kevin Ballantyne'
+__copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
+__license__ = 'MIT License'
+__description__ = 'Performs various prompt tests of the EODMS-CLI.'
+__email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
+
 import os
 import sys
 import unittest
 from unittest.mock import Mock, patch
 import click
-import argparse
+# import argparse
 
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 
@@ -79,7 +112,7 @@ class TestEodmsCli(unittest.TestCase):
                                 'Radarsat2:13532412,'
                                 'Radarsat1:5053934',
                         'Yes', 'files/test3_output.geojson', '', 'low'],
-              'test4': ['4', 'files/test4_output.geojson'],
+              'test4': ['4', '', '3', 'files/test4_output.geojson'],
               'test5': ['5', 'files/20220530_145625_Results.csv',
                         'files/test5_output.geojson'],
               'test6': ['', '17,15', 'files/NCR_AOI.geojson', '30',
