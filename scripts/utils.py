@@ -37,6 +37,7 @@ import glob
 import logging
 # from copy import copy
 
+import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 
 try:
@@ -1952,6 +1953,8 @@ class EodmsProcess(EodmsUtils):
         # Log the parameters
         self.log_parameters(params)
 
+        self.order_items = params.get('orderitems')
+        self.max_downloads = params.get('maximum')
         self.output = params.get('output')
 
         # Create info folder, if it doesn't exist, to store CSV files
@@ -1965,13 +1968,42 @@ class EodmsProcess(EodmsUtils):
         ################################################
         # Get Existing Orders
         ################################################
-        max_orders = 250
-        orders = None
-        # Cycle through until orders have been returned
-        while orders is None and max_orders > 0:
-            orders = self.eodms_rapi.get_orders(max_orders=max_orders,
-                                            status='AVAILABLE_FOR_DOWNLOAD')
-            max_orders -= 50
+        if self.order_items is not None and not self.order_items == '':
+            # Parse orders and order items
+            oi_split = self.order_items.split('|')
+
+            order_ids = []
+            item_ids = []
+            for i in oi_split:
+                if i.find('order') > -1:
+                    ids = [id for id in i.split(':')[1].split(',')]
+                    order_ids += ids
+                elif i.find('item') > -1:
+                    ids =[id for id in i.split(':')[1].split(',')]
+                    item_ids += ids
+
+            orders = []
+            for id in order_ids:
+                order = self.eodms_rapi.get_order(id)
+                if order is not None:
+                    orders += order
+
+            for id in item_ids:
+                item = self.eodms_rapi.get_order_item(id)
+                if item is not None and \
+                    not isinstance(item, rapi.QueryError):
+                    orders += item['items']
+        elif self.max_downloads is not None and not self.max_downloads == '':
+            orders = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+        else:
+            max_orders = 250
+            orders = None
+            # Cycle through until orders have been returned
+            while orders is None and max_orders > 0:
+                orders = self.eodms_rapi.get_orders(max_orders=max_orders,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+                max_orders -= 50
 
         if orders is None or len(orders) == 0:
             msg = "No orders were returned."

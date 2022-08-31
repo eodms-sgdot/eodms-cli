@@ -52,6 +52,7 @@ import logging
 import logging.handlers as handlers
 import pathlib
 from distutils.version import LooseVersion
+from distutils.version import StrictVersion
 # import unicodedata
 import eodms_rapi
 
@@ -559,84 +560,125 @@ class Prompter:
 
         return input_fn
 
-    def ask_maximum(self, maximum):
+    def ask_maximum(self, maximum, max_type='order'):
         """
         Asks the user for maximum number of order items and the number of
             items per order.
         
         :param maximum: The maximum if already set by the command-line.
         :type  maximum: str
+        :param max_type: The type of maximum to set ('order' or 'download').
+        :type  max_type: str
         
-        :return: The maximum number of order items and/or number of items
-                per order, separated by ':'.
+        :return: If max_type is 'order', the maximum number of order items
+        and/or number of items per order, separated by ':'. If max_type is
+        'download', a single number specifying how many images to download.
         :rtype: str
         """
 
         if maximum is None or maximum == '':
 
             if not self.eod.silent:
-                if not self.process == 'order_csv':
+                if max_type == 'download':
+                    print("\n--------------Enter Maximum Downloads------------"
+                          "--")
+                    msg = "Enter the number of images with status " \
+                          "AVAILABLE_FOR_DOWNLOAD you would like to download " \
+                          "(leave blank to download all images with this " \
+                          "status)"
 
-                    print("\n--------------Enter Maximums--------------")
+                    maximum = self.get_input(msg, required=False)
 
-                    msg = "Enter the total number of images you'd " \
-                          "like to order (leave blank for no limit)"
+                    return maximum
+                else:
+                    if not self.process == 'order_csv':
 
-                    total_records = self.get_input(msg, required=False)
+                        print("\n--------------Enter Maximums--------------")
 
-                    # ------------------------------------------
-                    # Check validity of the total_records entry
-                    # ------------------------------------------
+                        msg = "Enter the total number of images you'd " \
+                              "like to order (leave blank for no limit)"
 
-                    if total_records == '':
-                        total_records = None
-                    else:
-                        total_records = self.eod.validate_int(total_records)
-                        if not total_records:
-                            self.eod.print_msg("WARNING: Total number of "
-                                               "images value not valid. "
-                                               "Excluding it.", indent=False)
+                        total_records = self.get_input(msg, required=False)
+
+                        # ------------------------------------------
+                        # Check validity of the total_records entry
+                        # ------------------------------------------
+
+                        if total_records == '':
                             total_records = None
                         else:
-                            total_records = str(total_records)
-                else:
-                    total_records = None
+                            total_records = self.eod.validate_int(total_records)
+                            if not total_records:
+                                self.eod.print_msg("WARNING: Total number of "
+                                                   "images value not valid. "
+                                                   "Excluding it.",
+                                                   indent=False)
+                                total_records = None
+                            else:
+                                total_records = str(total_records)
+                    else:
+                        total_records = None
 
-                msg = "If you'd like a limit of images per order, " \
-                      "enter a value (EODMS sets a maximum limit of 100)"
+                    msg = "If you'd like a limit of images per order, " \
+                          "enter a value (EODMS sets a maximum limit of 100)"
 
-                order_limit = self.get_input(msg, required=False)
+                    order_limit = self.get_input(msg, required=False)
 
-                if order_limit == '':
-                    order_limit = None
-                else:
-                    order_limit = self.eod.validate_int(order_limit, 100)
-                    if not order_limit:
-                        self.eod.print_msg("WARNING: Order limit value not "
-                                           "valid. Excluding it.", indent=False)
+                    if order_limit == '':
                         order_limit = None
                     else:
-                        order_limit = str(order_limit)
+                        order_limit = self.eod.validate_int(order_limit, 100)
+                        if not order_limit:
+                            self.eod.print_msg("WARNING: Order limit value not "
+                                               "valid. Excluding it.",
+                                               indent=False)
+                            order_limit = None
+                        else:
+                            order_limit = str(order_limit)
 
-                maximum = ':'.join(filter(None, [total_records,
-                                                 order_limit]))
+                    maximum = ':'.join(filter(None, [total_records,
+                                                     order_limit]))
 
         else:
 
-            if self.process == 'order_csv':
+            if max_type == 'order':
+                if self.process == 'order_csv':
 
-                print("\n--------------Enter Images per Order--------------")
+                    print("\n--------------Enter Images per Order------------"
+                          "--")
 
-                if maximum.find(':') > -1:
-                    total_records, order_limit = maximum.split(':')
-                else:
-                    total_records = None
-                    order_limit = maximum
+                    if maximum.find(':') > -1:
+                        total_records, order_limit = maximum.split(':')
+                    else:
+                        total_records = None
+                        order_limit = maximum
 
-                maximum = ':'.join(filter(None, [total_records,
-                                                 order_limit]))
+                    maximum = ':'.join(filter(None, [total_records,
+                                                     order_limit]))
 
         return maximum
+
+    def ask_orderitems(self, orderitems):
+        """
+        Asks the user for a list Order IDs or Order Item IDs.
+
+        :param orderitems
+
+        """
+
+        if orderitems is None:
+            if not self.eod.silent:
+                print("\n--------------Order/Order Item IDs--------------")
+
+                msg = "\nEnter a list of Order IDs and/or Order Item IDs, " \
+                      "separating each ID with a comma and separating Order " \
+                      "IDs and Order Items with a vertical line " \
+                      "(ex: 'orders:<order_id>,<order_id>|items:" \
+                      "<order_item_id>,...') (leave blank to skip)\n"
+
+                orderitems = self.get_input(msg, required=False)
+
+        return orderitems
 
     def ask_order(self, no_order):
         """
@@ -860,6 +902,8 @@ class Prompter:
             else:
                 if isinstance(pv, str) and pv.find(' ') > -1:
                     pv = f'"{pv}"'
+                elif isinstance(pv, str) and pv.find('|') > -1:
+                    pv = f'"{pv}"'
 
             syntax_params.append(f'{flag} {pv}')
 
@@ -955,6 +999,7 @@ class Prompter:
         # csv_fields = self.params.get('csv_fields')
         aws = self.params.get('aws')
         overlap = self.params.get('overlap')
+        orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
         silent = self.params.get('silent')
@@ -1267,6 +1312,14 @@ class Prompter:
             self.logger.info("Downloading existing order items with status"
                              "AVAILABLE_FOR_DOWNLOAD.")
 
+            orderitems = self.ask_orderitems(orderitems)
+            self.params['orderitems'] = orderitems
+
+            if orderitems is None or orderitems == '':
+                # Get the maximum(s)
+                maximum = self.ask_maximum(maximum, 'download')
+                self.params['maximum'] = maximum
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
@@ -1442,9 +1495,11 @@ def print_support(err_str=None):
 @click.option('--dates', '-d', default=None,
               help='The date ranges for the search.')
 @click.option('--maximum', '-max', '-m', default=None,
-              help='The maximum number of images to order and download '
-                   'and the maximum number of images per order, separated '
-                   'by a colon.')
+              help='For Process 1 & 2, the maximum number of images to order '
+                   'and download and the maximum number of images per order, '
+                   'separated by a colon. For Process 4, a single value '
+                   'to specify the maximum number of images with status '
+                   'AVAILABLE_FOR_DOWNLOAD to download.')
 @click.option('--priority', '-pri', '-l', default=None,
               help='The priority level of the order.\nOne of "Low", '
                    '"Medium", "High" or "Urgent" (default "Medium").')
@@ -1457,6 +1512,10 @@ def print_support(err_str=None):
 @click.option('--overlap', '-ov', default=None,
               help='The minimum percentage of overlap between AOI and images '
                    '(if no AOI specified, this parameter is ignored).')
+@click.option('--orderitems', '-oid', default=None,
+              help="For Process 4, a set of Order IDs and/or Order Item IDs. "
+                   "This example specifies Order IDs and Order Item IDs: "
+                   "'order:151873,151872|item:1706113,1706111'")
 @click.option('--no_order', '-nord', is_flag=True, default=None,
               help='If set, no ordering and downloading will occur.')
 @click.option('--downloads', '-dn', default=None,
@@ -1467,7 +1526,7 @@ def print_support(err_str=None):
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
-        maximum, priority, output, aws, overlap, no_order,
+        maximum, priority, output, aws, overlap, orderitems, no_order,
         downloads, silent, version, configure):
     """
     Search & Order EODMS products.
@@ -1476,7 +1535,10 @@ def cli(username, password, input_val, collections, process, filters, dates,
     os.system("title " + __title__)
     sys.stdout.write("\x1b]2;%s\x07" % __title__)
 
-    if sys.version_info[0] < 3.6:
+    python_version_cur = ".".join([str(sys.version_info.major),
+                                   str(sys.version_info.minor),
+                                   str(sys.version_info.micro)])
+    if StrictVersion(python_version_cur) < StrictVersion('3.6'):
         raise Exception("Must be using Python 3.6 or higher")
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
@@ -1527,6 +1589,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   # 'csv_fields': csv_fields,
                   'aws': aws,
                   'overlap': overlap,
+                  'orderitems': orderitems,
                   'no_order': no_order,
                   'downloads': downloads,
                   'silent': silent,
