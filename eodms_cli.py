@@ -30,7 +30,7 @@ __copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.0.2'
+__version__ = '3.1.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -45,12 +45,14 @@ import getpass
 import datetime
 # from geomet import wkt
 # import json
-import configparser
+# import configparser
 import base64
+import binascii
 import logging
 import logging.handlers as handlers
 import pathlib
 from distutils.version import LooseVersion
+from distutils.version import StrictVersion
 # import unicodedata
 import eodms_rapi
 
@@ -99,7 +101,7 @@ class Prompter:
     Class used to prompt the user for all inputs.
     """
 
-    def __init__(self, eod, config_util, params, in_click):
+    def __init__(self, eod, config_util, params, in_click, testing=False):
         """
         Initializer for the Prompter class.
         
@@ -117,6 +119,7 @@ class Prompter:
         self.params = params
         self.click = in_click
         self.process = None
+        self.testing = testing
 
         self.logger = logging.getLogger('eodms')
 
@@ -495,6 +498,7 @@ class Prompter:
                 # Split filters by comma
                 filt_lst = filters.split(',')
                 for f in filt_lst:
+                    f = f.strip('"')
                     if f == '':
                         continue
                     if f.find('.') > -1:
@@ -556,84 +560,125 @@ class Prompter:
 
         return input_fn
 
-    def ask_maximum(self, maximum):
+    def ask_maximum(self, maximum, max_type='order'):
         """
         Asks the user for maximum number of order items and the number of
             items per order.
         
         :param maximum: The maximum if already set by the command-line.
         :type  maximum: str
+        :param max_type: The type of maximum to set ('order' or 'download').
+        :type  max_type: str
         
-        :return: The maximum number of order items and/or number of items
-                per order, separated by ':'.
+        :return: If max_type is 'order', the maximum number of order items
+        and/or number of items per order, separated by ':'. If max_type is
+        'download', a single number specifying how many images to download.
         :rtype: str
         """
 
         if maximum is None or maximum == '':
 
             if not self.eod.silent:
-                if not self.process == 'order_csv':
+                if max_type == 'download':
+                    print("\n--------------Enter Maximum Downloads------------"
+                          "--")
+                    msg = "Enter the number of images with status " \
+                          "AVAILABLE_FOR_DOWNLOAD you would like to download " \
+                          "(leave blank to download all images with this " \
+                          "status)"
 
-                    print("\n--------------Enter Maximums--------------")
+                    maximum = self.get_input(msg, required=False)
 
-                    msg = "Enter the total number of images you'd " \
-                          "like to order (leave blank for no limit)"
+                    return maximum
+                else:
+                    if not self.process == 'order_csv':
 
-                    total_records = self.get_input(msg, required=False)
+                        print("\n--------------Enter Maximums--------------")
 
-                    # ------------------------------------------
-                    # Check validity of the total_records entry
-                    # ------------------------------------------
+                        msg = "Enter the total number of images you'd " \
+                              "like to order (leave blank for no limit)"
 
-                    if total_records == '':
-                        total_records = None
-                    else:
-                        total_records = self.eod.validate_int(total_records)
-                        if not total_records:
-                            self.eod.print_msg("WARNING: Total number of "
-                                               "images value not valid. "
-                                               "Excluding it.", indent=False)
+                        total_records = self.get_input(msg, required=False)
+
+                        # ------------------------------------------
+                        # Check validity of the total_records entry
+                        # ------------------------------------------
+
+                        if total_records == '':
                             total_records = None
                         else:
-                            total_records = str(total_records)
-                else:
-                    total_records = None
+                            total_records = self.eod.validate_int(total_records)
+                            if not total_records:
+                                self.eod.print_msg("WARNING: Total number of "
+                                                   "images value not valid. "
+                                                   "Excluding it.",
+                                                   indent=False)
+                                total_records = None
+                            else:
+                                total_records = str(total_records)
+                    else:
+                        total_records = None
 
-                msg = "If you'd like a limit of images per order, " \
-                      "enter a value (EODMS sets a maximum limit of 100)"
+                    msg = "If you'd like a limit of images per order, " \
+                          "enter a value (EODMS sets a maximum limit of 100)"
 
-                order_limit = self.get_input(msg, required=False)
+                    order_limit = self.get_input(msg, required=False)
 
-                if order_limit == '':
-                    order_limit = None
-                else:
-                    order_limit = self.eod.validate_int(order_limit, 100)
-                    if not order_limit:
-                        self.eod.print_msg("WARNING: Order limit value not "
-                                           "valid. Excluding it.", indent=False)
+                    if order_limit == '':
                         order_limit = None
                     else:
-                        order_limit = str(order_limit)
+                        order_limit = self.eod.validate_int(order_limit, 100)
+                        if not order_limit:
+                            self.eod.print_msg("WARNING: Order limit value not "
+                                               "valid. Excluding it.",
+                                               indent=False)
+                            order_limit = None
+                        else:
+                            order_limit = str(order_limit)
 
-                maximum = ':'.join(filter(None, [total_records,
-                                                 order_limit]))
+                    maximum = ':'.join(filter(None, [total_records,
+                                                     order_limit]))
 
         else:
 
-            if self.process == 'order_csv':
+            if max_type == 'order':
+                if self.process == 'order_csv':
 
-                print("\n--------------Enter Images per Order--------------")
+                    print("\n--------------Enter Images per Order------------"
+                          "--")
 
-                if maximum.find(':') > -1:
-                    total_records, order_limit = maximum.split(':')
-                else:
-                    total_records = None
-                    order_limit = maximum
+                    if maximum.find(':') > -1:
+                        total_records, order_limit = maximum.split(':')
+                    else:
+                        total_records = None
+                        order_limit = maximum
 
-                maximum = ':'.join(filter(None, [total_records,
-                                                 order_limit]))
+                    maximum = ':'.join(filter(None, [total_records,
+                                                     order_limit]))
 
         return maximum
+
+    def ask_orderitems(self, orderitems):
+        """
+        Asks the user for a list Order IDs or Order Item IDs.
+
+        :param orderitems
+
+        """
+
+        if orderitems is None:
+            if not self.eod.silent:
+                print("\n--------------Order/Order Item IDs--------------")
+
+                msg = "\nEnter a list of Order IDs and/or Order Item IDs, " \
+                      "separating each ID with a comma and separating Order " \
+                      "IDs and Order Items with a vertical line " \
+                      "(ex: 'orders:<order_id>,<order_id>|items:" \
+                      "<order_item_id>,...') (leave blank to skip)\n"
+
+                orderitems = self.get_input(msg, required=False)
+
+        return orderitems
 
     def ask_order(self, no_order):
         """
@@ -749,6 +794,9 @@ class Prompter:
             print(f"\nWhat would you like to do?\n\n{choices}\n")
             process = input("->> Please choose the type of process [1]: ")
 
+            if self.testing:
+                print(f"FOR TESTING - Process entered: {process}")
+
             if process == '':
                 process = 'full'
             else:
@@ -805,8 +853,11 @@ class Prompter:
 
         click_ctx = click.get_current_context(silent=True)
 
-        cmd_params = click_ctx.to_info_dict()['command']['params']
         flags = {}
+        if click_ctx is None:
+            return ''
+
+        cmd_params = click_ctx.to_info_dict()['command']['params']
         for p in cmd_params:
             flags[p['name']] = p['opts']
 
@@ -850,6 +901,8 @@ class Prompter:
                     pv = ''
             else:
                 if isinstance(pv, str) and pv.find(' ') > -1:
+                    pv = f'"{pv}"'
+                elif isinstance(pv, str) and pv.find('|') > -1:
                     pv = f'"{pv}"'
 
             syntax_params.append(f'{flag} {pv}')
@@ -913,6 +966,9 @@ class Prompter:
         if in_val == '' and default is not None and not default == '':
             in_val = default
 
+        if self.testing:
+            print(f"FOR TESTING - Value entered: {in_val}")
+
         return in_val
 
     def print_syntax(self):
@@ -940,9 +996,10 @@ class Prompter:
         maximum = self.params.get('maximum')
         priority = self.params.get('priority')
         output = self.params.get('output')
-        csv_fields = self.params.get('csv_fields')
+        # csv_fields = self.params.get('csv_fields')
         aws = self.params.get('aws')
         overlap = self.params.get('overlap')
+        orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
         silent = self.params.get('silent')
@@ -950,7 +1007,7 @@ class Prompter:
 
         if version:
             print(f"{__title__}: Version {__version__}")
-            sys.exit(0)
+            sys.exit()
 
         self.eod.set_silence(silent)
 
@@ -981,7 +1038,11 @@ class Prompter:
                 password = self.get_input(msg, err_msg, password=True)
                 new_pass = True
             else:
-                password = base64.b64decode(password).decode("utf-8")
+                try:
+                    password = base64.b64decode(password).decode("utf-8")
+                except binascii.Error as err:
+                    password = base64.b64decode(password +
+                                                "========").decode("utf-8")
                 print("Using the password set in the 'config.ini' file...")
 
         if new_user or new_pass:
@@ -1158,9 +1219,9 @@ class Prompter:
             inputs = self.ask_input_file(input_val, msg)
             self.params['input_val'] = inputs
 
-            fields = self.eod.get_input_fields(inputs)
-            csv_fields = self.ask_fields(csv_fields, fields)
-            self.params['csv_fields'] = csv_fields
+            # fields = self.eod.get_input_fields(inputs)
+            # csv_fields = self.ask_fields(csv_fields, fields)
+            # self.params['csv_fields'] = csv_fields
 
             # Get the output geospatial filename
             output = self.ask_output(output)
@@ -1251,6 +1312,14 @@ class Prompter:
             self.logger.info("Downloading existing order items with status"
                              "AVAILABLE_FOR_DOWNLOAD.")
 
+            orderitems = self.ask_orderitems(orderitems)
+            self.params['orderitems'] = orderitems
+
+            if orderitems is None or orderitems == '':
+                # Get the maximum(s)
+                maximum = self.ask_maximum(maximum, 'download')
+                self.params['maximum'] = maximum
+
             # Get the output geospatial filename
             output = self.ask_output(output)
             self.params['output'] = output
@@ -1301,86 +1370,7 @@ class Prompter:
                               "the prompt.")
             sys.exit(1)
 
-
-# def get_config():
-#     """
-#     Gets the configuration information from the config file.
-#
-#     :return: The information extracted from the config file.
-#     :rtype: configparser.ConfigParser
-#     """
-#
-#     config = configparser.ConfigParser(comment_prefixes='/',
-#                                        allow_no_value=True)
-#
-#     # config_fn = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-#     #                          'config.ini')
-#     config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-#                              'config.ini')
-#
-#     # If the config file does not exist, create and fill with defaults
-#     if not os.path.exists(config_fn):
-#         os.makedirs(os.path.dirname(config_fn), exist_ok=True)
-#         config_contents = """[Script]
-# # the minimum date the csv result files will be kept; all files prior to this date will be deleted.
-# keep_results =
-# # the minimum date the download files will be kept; all files prior to this date will be deleted.
-# keep_downloads =
-#
-# [Paths]
-# # path of the image files downloaded from the rapi.
-# downloads =
-# # path of the results csv files from the script.
-# results =
-# # path of the log files.
-# log =
-#
-# [RAPI]
-# # username of the eodms account used to access the rapi.
-# username =
-# # password of the eodms account used to access the rapi.
-# password =
-# # number of attempts made to the rapi when a timeout occurs.
-# access_attempts = 4
-# # maximum number of results to return from the rapi.
-# max_results = 1000
-# # number of seconds before a timeout occurs when querying the rapi.
-# timeout_query = 120.0
-# # number of seconds before a timeout occurs when ordering using the rapi.
-# timeout_order = 180.0
-# # when checking for available_for_download orders, this date is the earliest they will be checked. can be hours, days, months or years.
-# order_check_date = 3 days
-#
-# [Debug]
-# # root_url = https://www-staging-eodms.aws.nrcan-rncan.cloud/wes/rapi
-# """
-#         with open(config_fn, "w") as f:
-#             f.write(config_contents)
-#
-#     config.read(config_fn)
-#
-#     return config
-#
-#
-# def get_option(config_info, section, option):
-#     if isinstance(section, str):
-#         section = [section]
-#
-#     for sec in section:
-#         if config_info.has_option(sec, option):
-#             return config_info.get(sec, option)
-
-
-def print_support(err_str=None):
-    """
-    Prints the 2 different support message depending if an error occurred.
-    
-    :param err_str: The error string to print along with support.
-    :type  err_str: str
-    """
-
-    eod_util.EodmsProcess().print_support(True, err_str)
-
+#------------------------------------------------------------------------------
 
 output_help = '''The output file path containing the results in a
                              geospatial format.
@@ -1395,6 +1385,85 @@ output_help = '''The output file path containing the results in a
         Python package)
  - Shapefile: The output will be ESRI Shapefile (requires GDAL Python package)
      (use extension .shp)'''
+
+abs_path = os.path.abspath(__file__)
+
+def get_configuration_values(config_util, download_path):
+
+    config_params = {}
+
+    # Set the various paths
+    if download_path is None or download_path == '':
+        # download_path = config_info.get('Script', 'downloads')
+        download_path = config_util.get('Paths', 'downloads')
+
+        if download_path == '':
+            download_path = os.path.join(os.path.dirname(abs_path),
+                                         'downloads')
+        elif not os.path.isabs(download_path):
+            download_path = os.path.join(os.path.dirname(abs_path),
+                                         download_path)
+    config_params['download_path'] = download_path
+
+    res_path = config_util.get('Paths', 'results')
+    if res_path == '':
+        res_path = os.path.join(os.path.dirname(abs_path), 'results')
+    elif not os.path.isabs(res_path):
+        res_path = os.path.join(os.path.dirname(abs_path),
+                                res_path)
+    config_params['res_path'] = res_path
+
+    log_path = config_util.get('Paths', 'log')
+    if log_path == '':
+        log_path = os.path.join(os.path.dirname(abs_path), 'log',
+                               'logger.log')
+    elif not os.path.isabs(log_path):
+        log_path = os.path.join(os.path.dirname(abs_path),
+                               log_path)
+    config_params['log_path'] = log_path
+
+    # Set the timeout values
+    timeout_query = config_util.get('RAPI', 'timeout_query')
+    # timeout_order = config_info.get('Script', 'timeout_order')
+    timeout_order = config_util.get('RAPI', 'timeout_order')
+
+    try:
+        timeout_query = float(timeout_query)
+    except ValueError:
+        timeout_query = 60.0
+
+    try:
+        timeout_order = float(timeout_order)
+    except ValueError:
+        timeout_order = 180.0
+    config_params['timeout_query'] = timeout_query
+    config_params['timeout_order'] = timeout_order
+
+    config_params['keep_results'] = config_util.get('Script', 'keep_results')
+    config_params['keep_downloads'] = config_util.get('Script',
+                                                      'keep_downloads')
+
+    # Get the total number of results per query
+    config_params['max_results'] = config_util.get('RAPI', 'max_results')
+
+    # Get the minimum date value to check orders
+    config_params['order_check_date'] = config_util.get('RAPI',
+                                                        'order_check_date')
+
+    # Get URL for debug purposes
+    config_params['rapi_url'] = config_util.get('Debug', 'root_url')
+
+    return config_params
+
+def print_support(err_str=None):
+    """
+    Prints the 2 different support message depending if an error occurred.
+    
+    :param err_str: The error string to print along with support.
+    :type  err_str: str
+    """
+
+    eod_util.EodmsProcess().print_support(True, err_str)
 
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
@@ -1426,21 +1495,27 @@ output_help = '''The output file path containing the results in a
 @click.option('--dates', '-d', default=None,
               help='The date ranges for the search.')
 @click.option('--maximum', '-max', '-m', default=None,
-              help='The maximum number of images to order and download '
-                   'and the maximum number of images per order, separated '
-                   'by a colon.')
+              help='For Process 1 & 2, the maximum number of images to order '
+                   'and download and the maximum number of images per order, '
+                   'separated by a colon. For Process 4, a single value '
+                   'to specify the maximum number of images with status '
+                   'AVAILABLE_FOR_DOWNLOAD to download.')
 @click.option('--priority', '-pri', '-l', default=None,
               help='The priority level of the order.\nOne of "Low", '
                    '"Medium", "High" or "Urgent" (default "Medium").')
 @click.option('--output', '-o', default=None, help=output_help)
-@click.option('--csv_fields', '-cf', default=None,
-              help='The fields in the input CSV file used to get images.')
+# @click.option('--csv_fields', '-cf', default=None,
+#               help='The fields in the input CSV file used to get images.')
 @click.option('--aws', '-a', is_flag=True, default=None,
               help='Determines whether to download from AWS (only applies '
                    'to Radarsat-1 imagery).')
 @click.option('--overlap', '-ov', default=None,
               help='The minimum percentage of overlap between AOI and images '
                    '(if no AOI specified, this parameter is ignored).')
+@click.option('--orderitems', '-oid', default=None,
+              help="For Process 4, a set of Order IDs and/or Order Item IDs. "
+                   "This example specifies Order IDs and Order Item IDs: "
+                   "'order:151873,151872|item:1706113,1706111'")
 @click.option('--no_order', '-nord', is_flag=True, default=None,
               help='If set, no ordering and downloading will occur.')
 @click.option('--downloads', '-dn', default=None,
@@ -1451,7 +1526,7 @@ output_help = '''The output file path containing the results in a
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
-        maximum, priority, output, csv_fields, aws, overlap, no_order,
+        maximum, priority, output, aws, overlap, orderitems, no_order,
         downloads, silent, version, configure):
     """
     Search & Order EODMS products.
@@ -1460,16 +1535,22 @@ def cli(username, password, input_val, collections, process, filters, dates,
     os.system("title " + __title__)
     sys.stdout.write("\x1b]2;%s\x07" % __title__)
 
+    python_version_cur = ".".join([str(sys.version_info.major),
+                                   str(sys.version_info.minor),
+                                   str(sys.version_info.micro)])
+    if StrictVersion(python_version_cur) < StrictVersion('3.6'):
+        raise Exception("Must be using Python 3.6 or higher")
+
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
         print(f"\n  {__title__}, version {__version__}\n")
-        sys.exit(0)
+        sys.exit()
 
     conf_util = config_util.ConfigUtils()
 
     if configure:
         conf_util.ask_user(configure)
         # print("You've entered configuration mode.")
-        sys.exit(0)
+        sys.exit()
 
     print("\n##########################################################"
           "#######################")
@@ -1505,9 +1586,10 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'maximum': maximum,
                   'priority': priority,
                   'output': output,
-                  'csv_fields': csv_fields,
+                  # 'csv_fields': csv_fields,
                   'aws': aws,
                   'overlap': overlap,
+                  'orderitems': orderitems,
                   'no_order': no_order,
                   'downloads': downloads,
                   'silent': silent,
@@ -1517,36 +1599,19 @@ def cli(username, password, input_val, collections, process, filters, dates,
         # config_info = get_config()
         conf_util.import_config()
 
-        abs_path = os.path.abspath(__file__)
-
-        download_path = downloads
-        if download_path is None or download_path == '':
-            # download_path = config_info.get('Script', 'downloads')
-            download_path = conf_util.get('Paths', 'downloads')
-
-            if download_path == '':
-                download_path = os.path.join(os.path.dirname(abs_path),
-                                             'downloads')
-            elif not os.path.isabs(download_path):
-                download_path = os.path.join(os.path.dirname(abs_path),
-                                             download_path)
+        config_params = get_configuration_values(conf_util, downloads)
+        download_path = config_params['download_path']
+        res_path = config_params['res_path']
+        log_path = config_params['log_path']
+        timeout_query = config_params['timeout_query']
+        timeout_order = config_params['timeout_order']
+        keep_results = config_params['keep_results']
+        keep_downloads = config_params['keep_downloads']
+        max_results = config_params['max_results']
+        order_check_date = config_params['order_check_date']
+        rapi_url = config_params['rapi_url']
 
         print(f"\nImages will be downloaded to '{download_path}'.")
-
-        res_path = conf_util.get('Paths', 'results')
-        if res_path == '':
-            res_path = os.path.join(os.path.dirname(abs_path), 'results')
-        elif not os.path.isabs(res_path):
-            res_path = os.path.join(os.path.dirname(abs_path),
-                                    res_path)
-
-        log_loc = conf_util.get('Paths', 'log')
-        if log_loc == '':
-            log_loc = os.path.join(os.path.dirname(abs_path), 'log',
-                                   'logger.log')
-        elif not os.path.isabs(log_loc):
-            log_loc = os.path.join(os.path.dirname(abs_path),
-                                   log_loc)
 
         # Setup logging
         logger = logging.getLogger('EODMSRAPI')
@@ -1555,11 +1620,11 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                       '%(message)s',
                                       datefmt='%Y-%m-%d %I:%M:%S %p')
 
-        if not os.path.exists(os.path.dirname(log_loc)):
-            pathlib.Path(os.path.dirname(log_loc)).mkdir(
+        if not os.path.exists(os.path.dirname(log_path)):
+            pathlib.Path(os.path.dirname(log_path)).mkdir(
                 parents=True, exist_ok=True)
 
-        log_handler = handlers.RotatingFileHandler(log_loc,
+        log_handler = handlers.RotatingFileHandler(log_path,
                                                    maxBytes=500000,
                                                    backupCount=2)
         log_handler.setLevel(logging.DEBUG)
@@ -1568,34 +1633,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         logger.info(f"Script start time: {start_str}")
 
-        timeout_query = conf_util.get('RAPI', 'timeout_query')
-        # timeout_order = config_info.get('Script', 'timeout_order')
-        timeout_order = conf_util.get('RAPI', 'timeout_order')
-
-        try:
-            timeout_query = float(timeout_query)
-        except ValueError:
-            timeout_query = 60.0
-
-        try:
-            timeout_order = float(timeout_order)
-        except ValueError:
-            timeout_order = 180.0
-
-        keep_results = conf_util.get('Script', 'keep_results')
-        keep_downloads = conf_util.get('Script', 'keep_downloads')
-
-        # Get the total number of results per query
-        max_results = conf_util.get('RAPI', 'max_results')
-
-        # Get the minimum date value to check orders
-        order_check_date = conf_util.get('RAPI', 'order_check_date')
-
-        # Get URL for debug purposes
-        rapi_url = conf_util.get('Debug', 'root_url')
-
         eod = eod_util.EodmsProcess(download=download_path,
-                                    results=res_path, log=log_loc,
+                                    results=res_path, log=log_path,
                                     timeout_order=timeout_order,
                                     timeout_query=timeout_query,
                                     max_res=max_results,
@@ -1633,11 +1672,12 @@ def cli(username, password, input_val, collections, process, filters, dates,
         sys.exit(1)
     except Exception:
         trc_back = f"\n{traceback.format_exc()}"
+        # print(f"trc_back: {trc_back}")
         if 'eod' in vars() or 'eod' in globals():
-            eod.print_support(trc_back)
+            eod.print_support(True, trc_back)
             eod.export_results()
         else:
-            eod_util.EodmsProcess().print_support(trc_back)
+            eod_util.EodmsProcess().print_support(True, trc_back)
         logger.error(traceback.format_exc())
 
 

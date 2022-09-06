@@ -1,0 +1,54 @@
+# This is a basic workflow to help you get started with Actions
+
+name: EODMS-CLI Test 2 - Process 2
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "development" branch
+  # push:
+  #   branches: [ "development" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+        with:
+          ref: 'development'
+          
+      # - name: Use local workflows/files
+      #   uses: ./.github/workflows/files
+      
+      # List files
+      - name: List files
+        run: ls
+      
+      # Install requirements
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI
+        env:
+          USERNAME: ${{ secrets.USERNAME }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: python eodms_cli.py -u $USERNAME -p $PASSWORD -i tests\files\RCMImageProducts_Results.csv -max 4 -prc order_csv -cf "sequence id" -o tests\files\test2_auto.geojson -pri low -s
+        
+      # List files
+      - name: List files
+        run: ls
+
+      # Runs a set of commands using the runners shell
+      # - name: Run a multi-line script
+      #   run: |
+      #     echo Add other actions to build,
+      #     echo test, and deploy your project.

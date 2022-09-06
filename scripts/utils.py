@@ -1,7 +1,7 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020-2021 Her Majesty the Queen in Right of Canada, as 
+# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
 # represented by the President of the Treasury Board
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
@@ -27,6 +27,7 @@
 import sys
 import os
 import requests
+import re
 from tqdm.auto import tqdm
 import datetime
 import dateutil.parser as util_parser
@@ -36,6 +37,7 @@ import glob
 import logging
 # from copy import copy
 
+import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 
 try:
@@ -328,7 +330,7 @@ class EodmsUtils:
 
         return new_orders, exist_orders
 
-    def _get_eodms_res(self, csv_fn, csv_fields, max_images=None):
+    def _get_eodms_res(self, csv_fn, max_images=None):
         """
         Gets the results based on a CSV file from the EODMS UI.
         
@@ -371,91 +373,97 @@ class EodmsUtils:
 
         for sat, recs in sat_recs.items():
 
-            cur_idx = 0
+            for idx, rec in enumerate(recs):
+                self.print_msg(f"Getting image {idx + 1} of {len(recs)}")
 
-            for idx in range(0, len(recs), 25):
+                # If no satellite given, the record is an aerial image
+                if sat is None:
+                    if 'photo number' in rec.keys():
+                        sat = 'NAPL'
+                    elif 'photo name' in rec.keys():
+                        sat = 'sgap'
 
-                # Get the next 100 images
-                if len(recs) < idx + 25:
-                    sub_recs = recs[idx:]
+                res = []
+                if 'sequence id' in rec.keys():
+                    # If Sequence Id is in the CSV file
+                    rec_id = rec.get('sequence id')
+                    if rec_id is None:
+                        rec_id = rec.get('sequence id')
+                    colls = self.sat_coll_mapping.get(sat)
+
+                    if rec_id == '':
+                        continue
+
+                    # Get the results
+                    for coll in colls:
+                        res = self.eodms_rapi.get_record(coll, rec_id)
+                        if len(res) > 0:
+                            break
+
+                elif 'image info' in rec.keys():
+                    img_info = rec.get('image info')
+
+                    if img_info == '':
+                        continue
+
+                    if img_info is None or img_info == '':
+                        msg = "Could not determine a unique field from the " \
+                              "CSV results."
+                        self.print_msg(msg)
+                        self.logger.warning(msg)
+                        self.results = image.ImageList(self)
+                        return self.results
+
+                    # pattern = r'(?!^\\)":True'
+                    img_info = img_info.replace('" "', '", "')\
+                        .replace('] "', '], "').replace('} {', '}, {')
+                    img_info_json = json.loads(img_info)
+
+                    rec_id = img_info_json['imageID']
+                    coll_id = img_info_json['collectionID']
+
+                    res = self.eodms_rapi.get_record(coll_id, rec_id)
                 else:
-                    sub_recs = recs[idx:25 + idx]
+                    filters = {}
+                    if sat == 'NAPL':
+                        roll_number = rec.get('roll number')
+                        photo_number = rec.get('photo number')
 
-                for s_idx, rec in enumerate(sub_recs):
+                        if roll_number == '' or photo_number == '':
+                            continue
 
-                    cur_idx += 1
-                    print(f'\nGetting image entry {str(cur_idx)}...')
+                        filters['ROLL.ROLL_NUMBER'] = ('=', roll_number)
+                        filters['PHOTO.PHOTO_NUMBER'] = ('=', photo_number)
+                    elif sat == 'sgap':
+                        # line_number = rec.get('line number')
+                        photo_name = rec.get('photo name')
 
-                    coll = rec.get('collection')
+                        if photo_name == '':
+                            continue
 
-                    if coll is None:
-                        coll = rec.get('collectionid')
-
-                    if coll is None:
-                        if sat is None:
-                            roll_number = rec.get('roll number')
-
-                            if roll_number.lower().find('sgb') > -1:
-                                sat = 'sgap'
-                            else:
-                                sat = 'NAPL'
-
-                        colls = self.sat_coll_mapping.get(sat)
+                        photo_split = photo_name.split('_')
+                        photo_number = photo_split[-2]
+                        roll_number = f"SGB_{photo_split[0]}_{photo_split[-1]}"
+                        filters['ROLL.ROLL_NUMBER'] = ('=', roll_number)
+                        filters['PHOTO.PHOTO_NUMBER'] = ('=', photo_number)
                     else:
-                        colls = [coll]
+                        msg = "Could not determine a unique field from the " \
+                              "CSV results."
+                        self.print_msg(msg)
+                        self.logger.warning(msg)
+                        self.results = image.ImageList(self)
+                        return self.results
 
-                    res = []
+                    coll_id = self.sat_coll_mapping.get(sat)[0]
 
-                    if not isinstance(csv_fields, list):
-                        csv_fields = [csv_fields]
+                    print()
+                    self.eodms_rapi.search(coll_id, filters)
+                    res = self.eodms_rapi.get_results()
 
-                    csv_fields = list(filter(None, csv_fields))
-
-                    if any(k.lower() in self.csv_unique for k in rec.keys()):
-                        id_val = None
-                        for k in rec.keys():
-                            if k.lower() in self.csv_unique:
-                                id_val = rec.get(k)
-
-                        # Check all Collections related to the Satellite
-                        for coll_id in colls:
-                            res = [self.eodms_rapi.get_record(coll_id, id_val)]
-                            if len(res) > 0:
-                                break
-
-                    else:
-
-                        if len(csv_fields) == 0:
-                            msg = "No CSV fields specified to determine the " \
-                                  "images."
-                            self.print_msg(msg)
-                            self.logger.warning(msg)
-                            self.results = image.ImageList(self)
-                            return self.results
-
-                        filters = {}
-                        for f in csv_fields:
-                            filt_val = rec.get(f.lower())
-
-                            if filt_val is None:
-                                msg = f"The value for '{f}' in the CSV file " \
-                                      f"is None. Skipping this field."
-                                self.print_msg(msg)
-                                self.logger.warning(msg)
-                                continue
-
-                            if 'Radarsat2' in colls and f == 'Date':
-                                f = 'Start Date'
-
-                            filters[f.title()] = ('=', filt_val)
-
-                        for coll_id in colls:
-                            self.eodms_rapi.search(coll_id, filters)
-                            res = self.eodms_rapi.get_results()
-                            if len(res) > 0:
-                                break
-
+                if isinstance(res, list):
                     all_res += res
+                else:
+                    all_res.append(res)
 
         # Convert results to ImageList
         self.results = image.ImageList(self)
@@ -465,7 +473,7 @@ class EodmsUtils:
 
     def _get_prev_res(self, csv_fn):
         """
-        Creates a EODMSRAPI instance.
+        Imports image info from a CSV file
         
         :param csv_fn: The filename of the previous results CSV file.
         :type  csv_fn: str
@@ -754,7 +762,7 @@ class EodmsUtils:
             dest_fn = os.path.join(self.download_path, aws_f)
 
             # Get the file size of the link
-            resp = requests.head(dl_link)
+            resp = requests.head(dl_link, verify=False)
             fsize = resp.headers['content-length']
 
             if os.path.exists(dest_fn):
@@ -773,7 +781,7 @@ class EodmsUtils:
                     os.remove(dest_fn)
 
             # Use streamed download so we can wrap nicely with tqdm
-            with requests.get(dl_link, stream=True) as stream:
+            with requests.get(dl_link, stream=True, verify=False) as stream:
                 with open(dest_fn, 'wb') as pipe:
                     with tqdm.wrapattr(
                             pipe,
@@ -940,7 +948,7 @@ class EodmsUtils:
                     self.export_results()
                     self.print_support()
                     self.logger.info("Process ended by user.")
-                    sys.exit(0)
+                    sys.exit()
 
             order_res = self.eodms_rapi.order(json_res)
             orders.ingest_results(order_res)
@@ -1488,14 +1496,14 @@ class EodmsProcess(EodmsUtils):
             self.print_msg("Exiting process.")
             self.print_support()
             self.logger.warning(msg)
-            sys.exit(1)
+            sys.exit()
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
 
         # Print results info
         msg = f"{query_imgs.count()} unique images returned from search " \
-              f"results.\n"
+              f"results.\n\n"
         self.print_footer('Query Results', msg)
 
         if no_order:
@@ -1503,7 +1511,7 @@ class EodmsProcess(EodmsUtils):
             self.export_results()
             print("Exiting process.")
             self.print_support()
-            sys.exit(0)
+            sys.exit()
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if
@@ -1517,7 +1525,7 @@ class EodmsProcess(EodmsUtils):
                     print("Exiting process.")
                     self.print_support()
                     self.logger.info("Process stopped by user.")
-                    sys.exit(0)
+                    sys.exit()
         else:
             # If the user specified a maximum number of orders,
             #   trim the results
@@ -1627,7 +1635,7 @@ class EodmsProcess(EodmsUtils):
         max_images, max_items = self.parse_max(maximum)
 
         # Import and query entries from the CSV
-        query_imgs = self._get_eodms_res(csv_fn, csv_fields, max_images)
+        query_imgs = self._get_eodms_res(csv_fn, max_images)
 
         if query_imgs.count() == 0:
             if csv_fields is None:
@@ -1652,7 +1660,7 @@ class EodmsProcess(EodmsUtils):
             self.export_results()
             print("Exiting process.")
             self.print_support()
-            sys.exit(0)
+            sys.exit()
 
         #############################################
         # Order Images
@@ -1945,6 +1953,8 @@ class EodmsProcess(EodmsUtils):
         # Log the parameters
         self.log_parameters(params)
 
+        self.order_items = params.get('orderitems')
+        self.max_downloads = params.get('maximum')
         self.output = params.get('output')
 
         # Create info folder, if it doesn't exist, to store CSV files
@@ -1958,13 +1968,42 @@ class EodmsProcess(EodmsUtils):
         ################################################
         # Get Existing Orders
         ################################################
-        max_orders = 250
-        orders = None
-        # Cycle through until orders have been returned
-        while orders is None and max_orders > 0:
-            orders = self.eodms_rapi.get_orders(max_orders=max_orders,
-                                            status='AVAILABLE_FOR_DOWNLOAD')
-            max_orders -= 50
+        if self.order_items is not None and not self.order_items == '':
+            # Parse orders and order items
+            oi_split = self.order_items.split('|')
+
+            order_ids = []
+            item_ids = []
+            for i in oi_split:
+                if i.find('order') > -1:
+                    ids = [id for id in i.split(':')[1].split(',')]
+                    order_ids += ids
+                elif i.find('item') > -1:
+                    ids =[id for id in i.split(':')[1].split(',')]
+                    item_ids += ids
+
+            orders = []
+            for id in order_ids:
+                order = self.eodms_rapi.get_order(id)
+                if order is not None:
+                    orders += order
+
+            for id in item_ids:
+                item = self.eodms_rapi.get_order_item(id)
+                if item is not None and \
+                    not isinstance(item, rapi.QueryError):
+                    orders += item['items']
+        elif self.max_downloads is not None and not self.max_downloads == '':
+            orders = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+        else:
+            max_orders = 250
+            orders = None
+            # Cycle through until orders have been returned
+            while orders is None and max_orders > 0:
+                orders = self.eodms_rapi.get_orders(max_orders=max_orders,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+                max_orders -= 50
 
         if orders is None or len(orders) == 0:
             msg = "No orders were returned."
