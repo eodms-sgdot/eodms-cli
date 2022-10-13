@@ -84,8 +84,8 @@ If you have any questions or require support, please contact the EODMS Support T
 
 MIT License
 
-Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as 
-represented by the President of the Treasury Board
+Copyright (c) His Majesty the King in Right of Canada, as 
+represented by the Minister of Natural Resources, 2022
 
 Permission is hereby granted, free of charge, to any person obtaining a 
 copy of this software and associated documentation files (the "Software"), 
