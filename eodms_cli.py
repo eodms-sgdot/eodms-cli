@@ -1450,6 +1450,9 @@ def get_configuration_values(config_util, download_path):
     config_params['order_check_date'] = config_util.get('RAPI',
                                                         'order_check_date')
 
+    config_params['download_attempts'] = config_util.get('RAPI',
+                                                        'download_attempts')
+
     # Get URL for debug purposes
     config_params['rapi_url'] = config_util.get('Debug', 'root_url')
 
@@ -1609,6 +1612,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         keep_downloads = config_params['keep_downloads']
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
+        download_attempts = config_params['download_attempts']
         rapi_url = config_params['rapi_url']
 
         print(f"\nImages will be downloaded to '{download_path}'.")
@@ -1641,6 +1645,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
                                     order_check_date=order_check_date,
+                                    download_attempts=download_attempts,
                                     rapi_url=rapi_url)
 
         print(f"\nCSV Results will be placed in '{eod.results_path}'.")

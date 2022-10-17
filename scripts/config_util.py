@@ -75,7 +75,12 @@ class ConfigUtils:
                                  "orders, this date is the earliest they will "
                                  "be checked. can be hours, days, months or "
                                  "years": None,
-                                 "order_check_date": "3 days"}
+                                 "order_check_date": "3 days",
+                                 "# Maximum number of attempts to download "
+                                 "images while waiting for orders to become "
+                                 "AVAILABLE_FOR_DOWNLOAD": None,
+                                 "download_attempts": ""
+                                 }
                             }
 
         # # The contents of the configuration file
@@ -394,6 +399,7 @@ class ConfigUtils:
         self._set_dict('RAPI', sr, 'timeout_query')
         self._set_dict('RAPI', sr, 'timeout_order')
         self._set_dict('RAPI', 'RAPI', 'order_check_date')
+        self._set_dict('RAPI', 'RAPI', 'download_attempts')
 
     def write(self):
         """

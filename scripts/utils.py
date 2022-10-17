@@ -134,9 +134,27 @@ class EodmsUtils:
         if kwargs.get('order_check_date') is not None:
             self.order_check_date = kwargs.get('order_check_date')
 
+        self.download_attempts = ''
+        if kwargs.get('download_attempts') is not None:
+            self.download_attempts = kwargs.get('download_attempts')
+
         if kwargs.get('rapi_url') is not None:
             self.rapi_domain = str(kwargs.get('rapi_url'))
             # self.eodms_rapi.set_root_url(self.rapi_domain)
+
+        if self.download_attempts is not None:
+            if self.download_attempts == '':
+                self.download_attempts = None
+            else:
+                try:
+                    self.download_attempts = int(self.download_attempts)
+                except:
+                    msg = "'download_attempts' parameter in the configuration" \
+                          " file is not a valid number. 'download_attempts' " \
+                          "will be set to None."
+                    self.print_msg(f"WARNING: {msg}")
+                    self.logger.warning(msg)
+                    self.download_attempts = None
 
         self.aoi_extensions = ['.gml', '.kml', '.json', '.geojson', '.shp']
 
@@ -547,6 +565,14 @@ class EodmsUtils:
                 msg += f"    Status Message: {stat_msg}\n"
             self.print_footer('Failed Downloads', msg)
             self.logger.info(f"Failed Downloads: {msg}")
+
+            if self.download_attempts is not None:
+                self.print_msg(f"The 'download_attempts' parameter in the "
+                               f"configuration file is currently "
+                               f"set to {self.download_attempts}.\nPlease "
+                               f"consider increasing it to make sure the "
+                               f"script continues to check for your orders "
+                               f"until they become AVAILABLE_FOR_DOWNLOAD.")
 
     def _parse_aws(self, query_imgs):
         """
@@ -1613,7 +1639,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1734,7 +1762,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update images
             query_imgs.update_downloads(download_items)
@@ -1846,7 +1876,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1974,7 +2006,9 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
         # Update images with download info
         query_imgs.update_downloads(download_items)
@@ -2075,7 +2109,8 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(orders, self.download_path)
+        download_items = self.eodms_rapi.download(orders, self.download_path,
+                                            max_attempts=self.download_attempts)
 
         query_imgs = image.ImageList(self)
         for rec in download_items:
@@ -2152,7 +2187,8 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        download_items = self.eodms_rapi.download(items, self.download_path,
+                                            max_attempts=self.download_attempts)
 
         # Update images with download info
         query_imgs.update_downloads(download_items)
