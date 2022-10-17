@@ -243,8 +243,20 @@ class ConfigUtils:
 
         self.import_config()
 
-        sections = '\n'.join([f'    {k}\tEdits parameters under section {k}.'
+        sections = '\n'.join([f'    {k}\t\t\tAsks user for parameters under '
+                              f'section {k}.'
                               for k in self.config_dict.keys()])
+
+        options = []
+        for section, opts in self.config_dict.items():
+            for opt, val in opts.items():
+                if opt.find('#') > -1: continue
+
+                options.append(f"    {section}.{opt}=<value>\t\t\tSets "
+                               f"parameter {opt} in section {section} to "
+                               f"<value>.")
+
+        opt_str = '\n'.join(options)
 
         if in_sect == '-h':
             print(f"""
@@ -253,27 +265,47 @@ Usage: eodms_cli.py --configure [OPTIONS]
     Sets the parameters in the configuration file
     
 Options:
-    all         Edits all parameters in the configuration file.
+    all\t\t\t\tAsks user for all parameters in the configuration file.
 {sections}
+{opt_str}
             """)
         elif in_sect == 'all':
             for section, opts in self.config_dict.items():
                 self._ask_input(section, opts)
         else:
-            sect_opts = None
-            sect_key = None
-            for k, v in self.config_dict.items():
-                if k.lower() == in_sect.lower():
-                    sect_key = k
-                    sect_opts = v
+            if in_sect.find('.') > -1:
+                sect_title, opt = in_sect.split('.')
 
-            if sect_opts is None:
-                err = f"The section '{in_sect}' does not exist in the log file."
-                print(f"WARNING: {err}")
-                self.logger.warning(err)
-                return None
+                if sect_title not in self.config_dict.keys():
+                    err = f"The section '{sect_title}' does not exist in the " \
+                          f"configuration file."
+                    print(f"WARNING: {err}")
+                    self.logger.warning(err)
+                    return None
 
-            self._ask_input(sect_key, sect_opts)
+                opt_key, opt_val = opt.split('=')
+
+                self.config_dict[sect_title][opt_key] = opt_val
+
+                print(f"\nParameter '{opt_key}' in section '{sect_title}' "
+                      f"has been changed to '{opt_val}' in the configuration "
+                      f"file.")
+            else:
+                sect_opts = None
+                sect_key = None
+                for k, v in self.config_dict.items():
+                    if k.lower() == in_sect.lower():
+                        sect_key = k
+                        sect_opts = v
+
+                if sect_opts is None:
+                    err = f"The section '{in_sect}' does not exist in the " \
+                          f"configuration file."
+                    print(f"WARNING: {err}")
+                    self.logger.warning(err)
+                    return None
+
+                self._ask_input(sect_key, sect_opts)
 
         # for section, opts in self.config_contents.items():
         #     for opt in opts:
