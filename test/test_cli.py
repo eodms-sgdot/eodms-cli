@@ -1,8 +1,8 @@
 ##############################################################################
 # MIT License
 #
-# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
-# represented by the President of the Treasury Board
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2022
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,8 @@
 
 __title__ = 'EODMS-CLI Tester'
 __author__ = 'Kevin Ballantyne'
-__copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
+__copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
+                'as represented by the Minister of Natural Resources, 2022'
 __license__ = 'MIT License'
 __description__ = 'Performs various tests of the EODMS-CLI.'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
@@ -148,7 +149,7 @@ class TestEodmsCli(unittest.TestCase):
         command = ["python", "../eodms_cli.py",
                    '-u', os.getenv('EODMS_USER'),
                    '-p', os.environ.get('EODMS_PASSWORD'),
-                   '-c', 'RCMImageProducts,Radarsat2',
+                   '-c', 'RCMImageProducts,Radarsat2,ALOS-2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
                    '-prc', 'full',
@@ -159,7 +160,6 @@ class TestEodmsCli(unittest.TestCase):
                          'Radarsat2.beam_mnemonic like EH%,'
                          'Radarsat2.transmit_polarization=H"',
                    '-o', 'files/test6_output.geojson',
-                   '-pri', 'low',
                    '-nord',
                    '-s']
         out, err, exitcode = self.capture(command)

@@ -1,8 +1,8 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
-# represented by the President of the Treasury Board
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2022.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
 # copy of this software and associated documentation files (the "Software"), 
@@ -134,9 +134,27 @@ class EodmsUtils:
         if kwargs.get('order_check_date') is not None:
             self.order_check_date = kwargs.get('order_check_date')
 
+        self.download_attempts = ''
+        if kwargs.get('download_attempts') is not None:
+            self.download_attempts = kwargs.get('download_attempts')
+
         if kwargs.get('rapi_url') is not None:
             self.rapi_domain = str(kwargs.get('rapi_url'))
             # self.eodms_rapi.set_root_url(self.rapi_domain)
+
+        if self.download_attempts is not None:
+            if self.download_attempts == '':
+                self.download_attempts = None
+            else:
+                try:
+                    self.download_attempts = int(self.download_attempts)
+                except:
+                    msg = "'download_attempts' parameter in the configuration" \
+                          " file is not a valid number. 'download_attempts' " \
+                          "will be set to None."
+                    self.print_msg(f"WARNING: {msg}")
+                    self.logger.warning(msg)
+                    self.download_attempts = None
 
         self.aoi_extensions = ['.gml', '.kml', '.json', '.geojson', '.shp']
 
@@ -146,7 +164,8 @@ class EodmsUtils:
 
         self.eodms_geo = spatial.Geo(self)
 
-        self.field_mapper = field.EodFieldMapper()
+        # self.field_mapper = field.EodFieldMapper(self.eodms_rapi)
+        self.field_mapper = None
 
         self.csv_unique = ['recordid', 'record id', 'sequence id']
 
@@ -178,6 +197,51 @@ class EodmsUtils:
         self.attempts = None
         self.output = None
         self.fn_str = None
+
+    def _get_collection(self, sat):
+
+        if sat.lower() == 'cosmos-skymed':
+            return ['COSMO-SkyMed1']
+        elif sat.lower() == 'napl':
+            return ['NAPL']
+        elif sat.lower() == 'sgap':
+            return ['SGBAirPhotos']
+        elif sat.lower() == 'rcm':
+            return ['RCMImageProducts', 'RCMScienceData']
+        elif sat.lower() == 'radarsat-1':
+            return ['Radarsat1', 'Radarsat1RawProducts']
+        elif sat.lower() == 'radarsat-2':
+            return ['Radarsat2', 'Radarsat2RawProducts']
+        elif sat.lower().find('terrasar') > -1:
+            return ['TerraSarX']
+        elif sat.lower() == 'dmc':
+            return ['DMC']
+        elif sat.lower() == 'gaofen-1':
+            return ['Gaofen-1']
+        elif sat.lower() == 'geoeye-1':
+            return ['GeoEye-1']
+        elif sat.lower() == 'ikonos':
+            return ['IKONOS']
+        elif sat.lower() == 'irsp6-awifs':
+            return ['IRS']
+        elif sat.lower() == 'planetscope':
+            return ['PlanetScope']
+        elif sat.lower() == 'pleiades':
+            return ['Pleiades']
+        elif sat.lower() == 'quickbird-2':
+            return ['QuickBird-2']
+        elif sat.lower() == 'rapideye':
+            return ['RapidEye']
+        elif sat.lower().find('spot') > -1:
+            return ['SPOT']
+        elif sat.lower() == 'worldview-1':
+            return ['WorldView-1']
+        elif sat.lower() == 'worldview-2':
+            return ['WorldView-2']
+        elif sat.lower() == 'worldview-3':
+            return ['WorldView-3']
+        elif sat.lower() == 'worldview-4':
+            return ['WorldView-4']
 
     def _parse_dates(self, in_dates):
         """
@@ -371,10 +435,16 @@ class EodmsUtils:
 
         all_res = []
 
+        counter = 0
+        total = len(csv_res)
         for sat, recs in sat_recs.items():
 
+            self.print_msg(f"Getting images for {sat}:", indent=False)
+
             for idx, rec in enumerate(recs):
-                self.print_msg(f"Getting image {idx + 1} of {len(recs)}")
+                self.print_msg(f"Getting image {counter + 1} of {total}", False)
+
+                counter += 1
 
                 # If no satellite given, the record is an aerial image
                 if sat is None:
@@ -389,7 +459,7 @@ class EodmsUtils:
                     rec_id = rec.get('sequence id')
                     if rec_id is None:
                         rec_id = rec.get('sequence id')
-                    colls = self.sat_coll_mapping.get(sat)
+                    colls = self._get_collection(sat)
 
                     if rec_id == '':
                         continue
@@ -400,65 +470,13 @@ class EodmsUtils:
                         if len(res) > 0:
                             break
 
-                elif 'image info' in rec.keys():
-                    img_info = rec.get('image info')
-
-                    if img_info == '':
-                        continue
-
-                    if img_info is None or img_info == '':
-                        msg = "Could not determine a unique field from the " \
-                              "CSV results."
-                        self.print_msg(msg)
-                        self.logger.warning(msg)
-                        self.results = image.ImageList(self)
-                        return self.results
-
-                    # pattern = r'(?!^\\)":True'
-                    img_info = img_info.replace('" "', '", "')\
-                        .replace('] "', '], "').replace('} {', '}, {')
-                    img_info_json = json.loads(img_info)
-
-                    rec_id = img_info_json['imageID']
-                    coll_id = img_info_json['collectionID']
-
-                    res = self.eodms_rapi.get_record(coll_id, rec_id)
                 else:
-                    filters = {}
-                    if sat == 'NAPL':
-                        roll_number = rec.get('roll number')
-                        photo_number = rec.get('photo number')
-
-                        if roll_number == '' or photo_number == '':
-                            continue
-
-                        filters['ROLL.ROLL_NUMBER'] = ('=', roll_number)
-                        filters['PHOTO.PHOTO_NUMBER'] = ('=', photo_number)
-                    elif sat == 'sgap':
-                        # line_number = rec.get('line number')
-                        photo_name = rec.get('photo name')
-
-                        if photo_name == '':
-                            continue
-
-                        photo_split = photo_name.split('_')
-                        photo_number = photo_split[-2]
-                        roll_number = f"SGB_{photo_split[0]}_{photo_split[-1]}"
-                        filters['ROLL.ROLL_NUMBER'] = ('=', roll_number)
-                        filters['PHOTO.PHOTO_NUMBER'] = ('=', photo_number)
-                    else:
-                        msg = "Could not determine a unique field from the " \
+                    msg = "Could not determine a unique field from the " \
                               "CSV results."
-                        self.print_msg(msg)
-                        self.logger.warning(msg)
-                        self.results = image.ImageList(self)
-                        return self.results
-
-                    coll_id = self.sat_coll_mapping.get(sat)[0]
-
-                    print()
-                    self.eodms_rapi.search(coll_id, filters)
-                    res = self.eodms_rapi.get_results()
+                    self.print_msg(msg)
+                    self.logger.warning(msg)
+                    self.results = image.ImageList(self)
+                    return self.results
 
                 if isinstance(res, list):
                     all_res += res
@@ -548,6 +566,18 @@ class EodmsUtils:
             self.print_footer('Failed Downloads', msg)
             self.logger.info(f"Failed Downloads: {msg}")
 
+            if self.download_attempts is not None:
+                self.print_msg(f"The 'download_attempts' parameter in the "
+                               f"configuration file is currently "
+                               f"set to {self.download_attempts}.\nPlease "
+                               f"consider increasing it to make sure the "
+                               f"script continues to check for your orders "
+                               f"until they become AVAILABLE_FOR_DOWNLOAD.\n"
+                               f"(You can change the value by runnning "
+                               f"'python eodms_cli.py --configure RAPI' "
+                               f"and go through the parameters until you "
+                               f"reach the 'download_attempts').")
+
     def _parse_aws(self, query_imgs):
         """
         Separates AWS Radarsat1 images from EODMS images.
@@ -578,6 +608,47 @@ class EodmsUtils:
         print(f"Number of EODMS images: {eodms_imgs.count()}\n")
 
         return eodms_imgs, aws_imgs
+
+    def _filter_for_order(self, imgs):
+
+        order_disabled = ['Radarsat1RawProducts', 'Radarsat2RawProducts',
+                          'RCMScienceData']
+        cli_order_disabled = ['NAPL']
+
+        # Create a duplicate of the images for ordering
+        filt_imgs = image.ImageList(self)
+        filt_imgs.combine(imgs)
+
+        # Add collection to this list so the message will appear only once
+        already_mentioned = []
+
+        # Get the raw metadata of the images
+        raw_data = filt_imgs.get_raw()
+
+        for img in raw_data:
+            rec_id = img.get('recordId')
+            coll_id = img.get('collectionId')
+            if coll_id in order_disabled:
+                # If the collection for this image is Raw, remove it
+                filt_imgs.remove_image(rec_id)
+                if coll_id not in already_mentioned:
+                    # If not already, inform the user
+                    self.print_msg(f"\nCollection {coll_id} cannot be ordered. "
+                                   f"Images from this collection will be "
+                                   f"removed for ordering.")
+                    already_mentioned.append(coll_id)
+            if coll_id in cli_order_disabled:
+                # If the collection for this image is NAPL, remove it
+                filt_imgs.remove_image(rec_id)
+                if coll_id not in already_mentioned:
+                    # If not already, inform the user
+                    self.print_msg(f"\nCollection {coll_id} cannot be order "
+                                   f"using the EODMS-CLI or RAPI at this time. "
+                                   f"Images from this collection will be "
+                                   f"removed for ordering.")
+                    already_mentioned.append(coll_id)
+
+        return filt_imgs
 
     def _submit_orders(self, imgs, priority=None, max_items=None):
         """
@@ -740,6 +811,8 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
+
+        self.field_mapper = field.EodFieldMapper(self.eodms_rapi)
 
         if self.rapi_domain is not None:
             self.eodms_rapi.set_root_url(self.rapi_domain)
@@ -1570,7 +1643,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1666,9 +1741,16 @@ class EodmsProcess(EodmsUtils):
         # Order Images
         #############################################
 
+        # print(f"query_imgs: {query_imgs.count()}")
+
+        # Remove collections that don't allow ordering
+        filt_imgs = self._filter_for_order(query_imgs)
+
+        # print(f"filt_imgs: {filt_imgs.count()}")
+
         orders = image.OrderList(self)
-        if query_imgs.count() > 0:
-            orders = self._submit_orders(query_imgs, priority)
+        if filt_imgs.count() > 0:
+            orders = self._submit_orders(filt_imgs, priority)
 
         #############################################
         # Download Images
@@ -1684,7 +1766,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update images
             query_imgs.update_downloads(download_items)
@@ -1796,7 +1880,9 @@ class EodmsProcess(EodmsUtils):
             items = orders.get_raw()
 
             # Download images using the EODMSRAPI
-            download_items = self.eodms_rapi.download(items, self.download_path)
+            download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
             # Update the images with the download info
             eodms_imgs.update_downloads(download_items)
@@ -1924,7 +2010,9 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        download_items = self.eodms_rapi.download(items,
+                                          self.download_path,
+                                          max_attempts=self.download_attempts)
 
         # Update images with download info
         query_imgs.update_downloads(download_items)
@@ -2025,7 +2113,8 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(orders, self.download_path)
+        download_items = self.eodms_rapi.download(orders, self.download_path,
+                                            max_attempts=self.download_attempts)
 
         query_imgs = image.ImageList(self)
         for rec in download_items:
@@ -2102,7 +2191,8 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download images using the EODMSRAPI
-        download_items = self.eodms_rapi.download(items, self.download_path)
+        download_items = self.eodms_rapi.download(items, self.download_path,
+                                            max_attempts=self.download_attempts)
 
         # Update images with download info
         query_imgs.update_downloads(download_items)

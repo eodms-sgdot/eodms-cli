@@ -1,8 +1,8 @@
 ##############################################################################
 # MIT License
 # 
-# Copyright (c) 2020-2022 Her Majesty the Queen in Right of Canada, as
-# represented by the President of the Treasury Board
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2022
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
 # copy of this software and associated documentation files (the "Software"), 
@@ -26,11 +26,12 @@
 
 __title__ = 'EODMS-CLI'
 __author__ = 'Kevin Ballantyne'
-__copyright__ = 'Copyright 2020-2022 Her Majesty the Queen in Right of Canada'
+__copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
+                'as represented by the Minister of Natural Resources, 2022'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.1.0'
+__version__ = '3.1.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -414,10 +415,9 @@ class Prompter:
                 for coll in self.params['collections']:
                     coll_id = self.eod.get_full_collid(coll)
 
-                    field_mapper = field.EodFieldMapper()
-                    coll_fields = field_mapper.get_fields(coll_id)
+                    coll_fields = self.eod.field_mapper.get_fields(coll_id)
 
-                    if coll_id in field_mapper.get_colls():
+                    if coll_id in self.eod.field_mapper.get_colls():
                         # field_map = self.eod.get_fieldMap()[coll_id]
 
                         print(f"\nAvailable fields for '{coll}':")
@@ -1450,6 +1450,9 @@ def get_configuration_values(config_util, download_path):
     config_params['order_check_date'] = config_util.get('RAPI',
                                                         'order_check_date')
 
+    config_params['download_attempts'] = config_util.get('RAPI',
+                                                        'download_attempts')
+
     # Get URL for debug purposes
     config_params['rapi_url'] = config_util.get('Debug', 'root_url')
 
@@ -1609,6 +1612,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         keep_downloads = config_params['keep_downloads']
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
+        download_attempts = config_params['download_attempts']
         rapi_url = config_params['rapi_url']
 
         print(f"\nImages will be downloaded to '{download_path}'.")
@@ -1641,6 +1645,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
                                     order_check_date=order_check_date,
+                                    download_attempts=download_attempts,
                                     rapi_url=rapi_url)
 
         print(f"\nCSV Results will be placed in '{eod.results_path}'.")
