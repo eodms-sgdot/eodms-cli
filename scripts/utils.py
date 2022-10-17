@@ -572,7 +572,11 @@ class EodmsUtils:
                                f"set to {self.download_attempts}.\nPlease "
                                f"consider increasing it to make sure the "
                                f"script continues to check for your orders "
-                               f"until they become AVAILABLE_FOR_DOWNLOAD.")
+                               f"until they become AVAILABLE_FOR_DOWNLOAD.\n"
+                               f"(You can change the value by runnning "
+                               f"'python eodms_cli.py --configure RAPI' "
+                               f"and go through the parameters until you "
+                               f"reach the 'download_attempts').")
 
     def _parse_aws(self, query_imgs):
         """

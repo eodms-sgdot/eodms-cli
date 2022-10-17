@@ -228,7 +228,7 @@ class ConfigUtils:
                     val = base64.b64encode(val.encode("utf-8")).decode(
                         "utf-8")
             else:
-                val = input(f"\n->> {desc} [{prev_val}]: ")
+                val = input(f"\n->> {desc} ({opt}) [{prev_val}]: ")
                 if val == '':
                     val = prev_val
 
@@ -243,7 +243,20 @@ class ConfigUtils:
 
         self.import_config()
 
-        if in_sect == 'all':
+        sections = '\n'.join([f'    {k}\tEdits parameters under section {k}.'
+                              for k in self.config_dict.keys()])
+
+        if in_sect == '-h':
+            print(f"""
+Usage: eodms_cli.py --configure [OPTIONS]
+            
+    Sets the parameters in the configuration file
+    
+Options:
+    all         Edits all parameters in the configuration file.
+{sections}
+            """)
+        elif in_sect == 'all':
             for section, opts in self.config_dict.items():
                 self._ask_input(section, opts)
         else:
@@ -261,8 +274,6 @@ class ConfigUtils:
                 return None
 
             self._ask_input(sect_key, sect_opts)
-
-
 
         # for section, opts in self.config_contents.items():
         #     for opt in opts:
