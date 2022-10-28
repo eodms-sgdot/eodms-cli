@@ -49,8 +49,11 @@ class TestEodmsCli(unittest.TestCase):
 
     def _print_header(self, title):
 
-        terminal_sizes = os.get_terminal_size()
-        term_width = terminal_sizes.columns - 2
+        try:
+            terminal_sizes = os.get_terminal_size()
+            term_width = terminal_sizes.columns - 2
+        except:
+            term_width = 80
 
         line = "#" * int(term_width / 2)
 
