@@ -31,7 +31,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.1.1'
+__version__ = '3.1.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -52,8 +52,9 @@ import binascii
 import logging
 import logging.handlers as handlers
 import pathlib
-from distutils.version import LooseVersion
-from distutils.version import StrictVersion
+# from distutils.version import LooseVersion
+# from distutils.version import StrictVersion
+from packaging import version as pack_v
 # import unicodedata
 import eodms_rapi
 
@@ -1017,9 +1018,12 @@ class Prompter:
         if username is None or password is None:
             print("\n--------------Enter EODMS Credentials--------------")
 
-        if username is None:
+        if username is None or username == '':
 
             username = self.config_util.get('Credentials', 'username')
+
+            # print(f"username: {username}")
+
             if username == '':
                 msg = "Enter the username for authentication"
                 err_msg = "A username is required to order images."
@@ -1028,7 +1032,7 @@ class Prompter:
             else:
                 print("\nUsing the username set in the 'config.ini' file...")
 
-        if password is None:
+        if password is None or password == '':
 
             password = self.config_util.get('Credentials', 'password')
 
@@ -1541,7 +1545,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
     python_version_cur = ".".join([str(sys.version_info.major),
                                    str(sys.version_info.minor),
                                    str(sys.version_info.micro)])
-    if StrictVersion(python_version_cur) < StrictVersion('3.6'):
+    # if StrictVersion(python_version_cur) < StrictVersion('3.6'):
+    if pack_v.Version(python_version_cur) < pack_v.Version('3.6'):
         raise Exception("Must be using Python 3.6 or higher")
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
@@ -1562,7 +1567,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
     print("############################################################"
           "#####################")
 
-    if LooseVersion(eodms_rapi.__version__) < LooseVersion(eodmsrapi_recent):
+    if pack_v.Version(eodms_rapi.__version__) < \
+            pack_v.Version(eodmsrapi_recent):
         err_msg = "The py-eodms-rapi currently installed is an older " \
                   "version. Please install the latest version using " \
                   "'pip install py-eodms-rapi -U'."

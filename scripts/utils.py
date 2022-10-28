@@ -242,6 +242,8 @@ class EodmsUtils:
             return ['WorldView-3']
         elif sat.lower() == 'worldview-4':
             return ['WorldView-4']
+        elif sat.lower().find('alos-2') > -1:
+            return ['ALOS-2']
 
     def _parse_dates(self, in_dates):
         """

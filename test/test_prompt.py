@@ -2,7 +2,7 @@
 # MIT License
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2022
+# represented by the Minister of Natural Resources, 2022.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -26,8 +26,8 @@
 
 __title__ = 'EODMS-CLI Prompt Tester'
 __author__ = 'Kevin Ballantyne'
-__copyright__ = 'Copyright His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2022'
+__copyright__ = '# Copyright (c) His Majesty the King in Right of Canada, ' \
+                'as represented by the Minister of Natural Resources, 2022.'
 __license__ = 'MIT License'
 __description__ = 'Performs various prompt tests of the EODMS-CLI.'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
@@ -46,6 +46,18 @@ from scripts import config_util
 from scripts import utils as eod_util
 
 class TestEodmsCli(unittest.TestCase):
+
+    def _print_header(self, title):
+
+        terminal_sizes = os.get_terminal_size()
+        term_width = terminal_sizes.columns - 2
+
+        line = "#" * int(term_width / 2)
+
+        print("\n" + line.center(term_width))
+        print("EODMS-CLI - Prompt Test".center(term_width))
+        print(title.center(term_width))
+        print(line.center(term_width) + "\n")
 
     def _setup_prompt(self, username=None, password=None):
 
@@ -73,8 +85,6 @@ class TestEodmsCli(unittest.TestCase):
                   'silent': None,
                   'version': None}
 
-        print(f"params: {params}")
-
         conf_util = config_util.ConfigUtils()
         conf_util.import_config()
 
@@ -88,6 +98,7 @@ class TestEodmsCli(unittest.TestCase):
         keep_downloads = config_params['keep_downloads']
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
+        download_attempts = config_params['download_attempts']
         rapi_url = config_params['rapi_url']
 
         eod = eod_util.EodmsProcess(download=download_path,
@@ -98,6 +109,7 @@ class TestEodmsCli(unittest.TestCase):
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
                                     order_check_date=order_check_date,
+                                    download_attempts=download_attempts,
                                     rapi_url=rapi_url)
 
         prmpt = eodms_cli.Prompter(eod, conf_util, params, click, testing=True)
@@ -129,6 +141,8 @@ class TestEodmsCli(unittest.TestCase):
         Runs a test of Process 1 with both RCM and Radarsat-1 imagery.
         """
 
+        self._print_header("Process 1")
+
         prmpt = self._setup_prompt()
 
         self.assertEqual(prmpt.prompt(), None)
@@ -140,6 +154,8 @@ class TestEodmsCli(unittest.TestCase):
         Runs a test of Process 2 with results from the EODMS UI.
         """
 
+        self._print_header("Process 2")
+
         prmpt = self._setup_prompt()
 
         self.assertEqual(prmpt.prompt(), None)
@@ -149,6 +165,8 @@ class TestEodmsCli(unittest.TestCase):
         """
         Runs a test of Process 3 with a set of Record IDs.
         """
+
+        self._print_header("Process 3")
 
         prmpt = self._setup_prompt()
 
@@ -160,6 +178,8 @@ class TestEodmsCli(unittest.TestCase):
         Runs a test of Process 4 (download AVAILABLE_FOR_DOWNLOAD).
         """
 
+        self._print_header("Process 4")
+
         prmpt = self._setup_prompt()
 
         self.assertEqual(prmpt.prompt(), None)
@@ -169,6 +189,8 @@ class TestEodmsCli(unittest.TestCase):
         """
         Runs a test of Process 5 with previous results.
         """
+
+        self._print_header("Process 5")
 
         prmpt = self._setup_prompt()
 
@@ -180,6 +202,8 @@ class TestEodmsCli(unittest.TestCase):
         Runs a test of Process 1 but without ordering and downloading.
         """
 
+        self._print_header("Search Only")
+
         prmpt = self._setup_prompt()
 
         self.assertEqual(prmpt.prompt(), None)
@@ -189,6 +213,8 @@ class TestEodmsCli(unittest.TestCase):
         """
         Runs a test with the wrong credentials.
         """
+
+        self._print_header("Wrong Credentials")
 
         prmpt = self._setup_prompt(username='fdhsdffsd', password='dfghdfsh')
 
