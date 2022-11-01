@@ -31,7 +31,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.1.2'
+__version__ = '3.2.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -285,8 +285,8 @@ class Prompter:
             # coll_lst.sort()
             for idx, c in enumerate(coll_lst):
                 msg = f"{idx + 1}. {c['title']} ({c['id']})"
-                if c['id'] == 'NAPL':
-                    msg += ' (open data only)'
+                # if c['id'] == 'NAPL':
+                #     msg += ' (open data only)'
                 print(msg)
 
             # Prompted user for number(s) from list
@@ -570,6 +570,9 @@ class Prompter:
         :type  maximum: str
         :param max_type: The type of maximum to set ('order' or 'download').
         :type  max_type: str
+        :param no_order: Determines whether the maximum is for searching or
+        ordering.
+        :type  no_order: boolean
         
         :return: If max_type is 'order', the maximum number of order items
         and/or number of items per order, separated by ':'. If max_type is
@@ -577,16 +580,30 @@ class Prompter:
         :rtype: str
         """
 
+        # Get the no_order value
+        no_order = self.params.get('no_order')
+
         if maximum is None or maximum == '':
 
             if not self.eod.silent:
+                if no_order:
+                    print("\n--------------Enter Maximum Search Results------"
+                              "------")
+                    msg = "Enter the maximum number of images you would " \
+                          "like to search for (leave blank to search for all " \
+                          "images)"
+
+                    maximum = self.get_input(msg, required=False)
+
+                    return maximum
+
                 if max_type == 'download':
-                    print("\n--------------Enter Maximum Downloads------------"
-                          "--")
+                    print("\n--------------Enter Maximum Downloads--------"
+                          "------")
                     msg = "Enter the number of images with status " \
-                          "AVAILABLE_FOR_DOWNLOAD you would like to download " \
-                          "(leave blank to download all images with this " \
-                          "status)"
+                          "AVAILABLE_FOR_DOWNLOAD you would like to " \
+                          "download (leave blank to download all images " \
+                          "with this status)"
 
                     maximum = self.get_input(msg, required=False)
 
@@ -594,7 +611,8 @@ class Prompter:
                 else:
                     if not self.process == 'order_csv':
 
-                        print("\n--------------Enter Maximums--------------")
+                        print("\n--------------Enter Maximums------------"
+                              "--")
 
                         msg = "Enter the total number of images you'd " \
                               "like to order (leave blank for no limit)"
@@ -610,8 +628,9 @@ class Prompter:
                         else:
                             total_records = self.eod.validate_int(total_records)
                             if not total_records:
-                                self.eod.print_msg("WARNING: Total number of "
-                                                   "images value not valid. "
+                                self.eod.print_msg("WARNING: Total "
+                                                   "number of images "
+                                                   "value not valid. "
                                                    "Excluding it.",
                                                    indent=False)
                                 total_records = None
@@ -621,17 +640,20 @@ class Prompter:
                         total_records = None
 
                     msg = "If you'd like a limit of images per order, " \
-                          "enter a value (EODMS sets a maximum limit of 100)"
+                          "enter a value (EODMS sets a maximum limit of " \
+                          "100)"
 
                     order_limit = self.get_input(msg, required=False)
 
                     if order_limit == '':
                         order_limit = None
                     else:
-                        order_limit = self.eod.validate_int(order_limit, 100)
+                        order_limit = self.eod.validate_int(order_limit,
+                                                            100)
                         if not order_limit:
-                            self.eod.print_msg("WARNING: Order limit value not "
-                                               "valid. Excluding it.",
+                            self.eod.print_msg("WARNING: Order limit "
+                                               "value not valid. "
+                                               "Excluding it.",
                                                indent=False)
                             order_limit = None
                         else:
@@ -1195,11 +1217,11 @@ class Prompter:
             no_order = self.ask_order(no_order)
             self.params['no_order'] = no_order
 
-            if not no_order:
-                # Get the maximum(s)
-                maximum = self.ask_maximum(maximum)
-                self.params['maximum'] = maximum
+            # Get the maximum(s)
+            maximum = self.ask_maximum(maximum)
+            self.params['maximum'] = maximum
 
+            if not no_order:
                 # Get the priority
                 priority = self.ask_priority(priority)
                 self.params['priority'] = priority
@@ -1235,11 +1257,11 @@ class Prompter:
             no_order = self.ask_order(no_order)
             self.params['no_order'] = no_order
 
-            if not no_order:
-                # Get the maximum(s)
-                maximum = self.ask_maximum(maximum)
-                self.params['maximum'] = maximum
+            # Get the maximum(s)
+            maximum = self.ask_maximum(maximum)
+            self.params['maximum'] = maximum
 
+            if not no_order:
                 # Get the priority
                 priority = self.ask_priority(priority)
                 self.params['priority'] = priority
@@ -1504,9 +1526,11 @@ def print_support(err_str=None):
 @click.option('--maximum', '-max', '-m', default=None,
               help='For Process 1 & 2, the maximum number of images to order '
                    'and download and the maximum number of images per order, '
-                   'separated by a colon. For Process 4, a single value '
-                   'to specify the maximum number of images with status '
-                   'AVAILABLE_FOR_DOWNLOAD to download.')
+                   'separated by a colon. If no_order is set to True, this '
+                   'parameter will set the maximum images for which to search. '
+                   'For Process 4, a single value to specify the maximum '
+                   'number of images with status AVAILABLE_FOR_DOWNLOAD '
+                   'to download.')
 @click.option('--priority', '-pri', '-l', default=None,
               help='The priority level of the order.\nOne of "Low", '
                    '"Medium", "High" or "Urgent" (default "Medium").')

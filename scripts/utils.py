@@ -424,6 +424,7 @@ class EodmsUtils:
 
         # Group by satellite
         for rec in csv_res:
+
             # Get the collection ID for the image
             satellite = rec.get('satellite')
 
@@ -449,7 +450,7 @@ class EodmsUtils:
                 counter += 1
 
                 # If no satellite given, the record is an aerial image
-                if sat is None:
+                if sat is None or sat == '':
                     if 'photo number' in rec.keys():
                         sat = 'NAPL'
                     elif 'photo name' in rec.keys():

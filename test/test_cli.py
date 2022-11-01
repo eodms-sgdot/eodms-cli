@@ -134,11 +134,12 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 2")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-i', 'files/RCMImageProducts_Results.csv',
+                   '-i', 'files/EODMS_Results.csv',
                    '-max', '4',
                    '-prc', 'order_csv',
                    '-o', 'files/test2_output.geojson',
                    '-pri', 'low',
+                   '-nord',
                    '-s']
 
         self.add_creds()

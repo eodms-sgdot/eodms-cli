@@ -121,8 +121,8 @@ class TestEodmsCli(unittest.TestCase):
 
     inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
                     '', 'files/test1_output.geojson', '', '3', '', 'low'],
-              'test2': ['2', 'files/RCMImageProducts_Results.csv',
-                    'files/test2_output.geojson', '', '4', 'low'],
+              'test2': ['2', 'files/EODMS_Results.csv',
+                    'files/test2_output.geojson', 'y', ''],
               'test3': ['3', 'RCMImageProducts:13531983,'
                                 'RCMImageProducts:13531917,'
                                 'Radarsat2:13532412,'
@@ -135,7 +135,7 @@ class TestEodmsCli(unittest.TestCase):
                         'beam_mnemonic like 16M%,product_type=SLC',
                         'beam_mnemonic like EH%,transmit_polarization=H',
                         '20170101-20220527', 'files/test6_output.geojson',
-                        'y', 'low']
+                        'y', '']
               }
 
     @patch('builtins.input', side_effect=inputs['test1'])
