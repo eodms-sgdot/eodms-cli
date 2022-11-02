@@ -1109,36 +1109,7 @@ class Prompter:
         # print(f"coll_lst type: {type(coll_lst).__name__}")
         # print(f"{'get_msgs' in dir(coll_lst)}")
 
-        if coll_dict is None:
-            if self.eod.eodms_rapi.auth_err:
-                msg = "\nAn authentication error has occurred while " \
-                      "trying to access the EODMS RAPI. Please ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html. Once your account is ready, you can " \
-                      "run 'python eodms_cli.py --configure credentials' to " \
-                      "add your new credentials to the configuration file."
-            else:
-                msg = f"Failed to retrieve a list of available collections."
-            self.logger.error(msg)
-            self.eod.print_support(True)
-            sys.exit(1)
-
-        # if 'get_msgs' in dir(coll_lst):
-        if isinstance(coll_dict, eodms_rapi.QueryError):
-            err_msg = coll_dict.get_msgs(True)
-            if err_msg.find('401 Client Error') > -1:
-                msg = "An authentication error has occurred while " \
-                      "trying to access the EODMS RAPI.\n\nPlease ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html."
-            else:
-                msg = f"Failed to retrieve a list of available collections. " \
-                      f"{coll_dict.get_msgs(True)}"
-            self.logger.error(msg)
-            self.eod.print_support(True, msg)
-            sys.exit(1)
+        self.eod.check_error(coll_dict)
 
         print("\n(For more information on the following prompts, please refer"
               " to the README file.)")
