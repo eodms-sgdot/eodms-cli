@@ -154,10 +154,11 @@ class CollFields:
 
 
 class EodFieldMapper:
-    def __init__(self, rapi):
+    def __init__(self, eod, rapi):
 
         self.mapping = {}
         self.rapi = rapi
+        self.eod = eod
         self.map_fields()
 
     def map_fields(self):
@@ -166,6 +167,8 @@ class EodFieldMapper:
         """
 
         collections = self.rapi.get_collections(True)
+
+        self.eod.check_error(collections)
 
         for coll_id in collections:
             fields = self.rapi.get_available_fields(coll_id, ui_fields=True)

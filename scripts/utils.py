@@ -39,6 +39,7 @@ import logging
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
+from eodms_rapi import QueryError
 
 try:
     import dateparser
@@ -242,6 +243,8 @@ class EodmsUtils:
             return ['WorldView-3']
         elif sat.lower() == 'worldview-4':
             return ['WorldView-4']
+        elif sat.lower().find('alos-2') > -1:
+            return ['ALOS-2']
 
     def _parse_dates(self, in_dates):
         """
@@ -422,6 +425,7 @@ class EodmsUtils:
 
         # Group by satellite
         for rec in csv_res:
+
             # Get the collection ID for the image
             satellite = rec.get('satellite')
 
@@ -447,7 +451,7 @@ class EodmsUtils:
                 counter += 1
 
                 # If no satellite given, the record is an aerial image
-                if sat is None:
+                if sat is None or sat == '':
                     if 'photo number' in rec.keys():
                         sat = 'NAPL'
                     elif 'photo name' in rec.keys():
@@ -728,6 +732,39 @@ class EodmsUtils:
 
         return final_orders
 
+    def check_error(self, item):
+
+        if item is None:
+            if self.eodms_rapi.auth_err:
+                msg = "\nAn authentication error has occurred while " \
+                      "trying to access the EODMS RAPI. Please ensure " \
+                      "your account login is in good standing on the actual " \
+                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                      "index-en.html. Once your account is ready, you can " \
+                      "run 'python eodms_cli.py --configure credentials' to " \
+                      "add your new credentials to the configuration file."
+            else:
+                msg = f"Failed to retrieve a list of available collections."
+            self.logger.error(msg)
+            self.print_support(True)
+            sys.exit(1)
+
+        # if 'get_msgs' in dir(coll_lst):
+        if isinstance(item, QueryError):
+            err_msg = item.get_msgs(True)
+            if err_msg.find('401 Client Error') > -1:
+                msg = "An authentication error has occurred while " \
+                      "trying to access the EODMS RAPI.\n\nPlease ensure " \
+                      "your account login is in good standing on the actual " \
+                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                      "index-en.html."
+            else:
+                msg = f"Failed to retrieve a list of available collections. " \
+                      f"{item.get_msgs(True)}"
+            self.logger.error(msg)
+            self.print_support(True, msg)
+            sys.exit(1)
+
     def cleanup_folders(self):
         """
         Clean-ups the results and downloads folder.
@@ -812,7 +849,7 @@ class EodmsUtils:
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
 
-        self.field_mapper = field.EodFieldMapper(self.eodms_rapi)
+        self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
 
         if self.rapi_domain is not None:
             self.eodms_rapi.set_root_url(self.rapi_domain)
@@ -1584,7 +1621,7 @@ class EodmsProcess(EodmsUtils):
             self.export_results()
             print("Exiting process.")
             self.print_support()
-            sys.exit()
+            sys.exit(0)
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if
@@ -2079,7 +2116,7 @@ class EodmsProcess(EodmsUtils):
             for id in item_ids:
                 item = self.eodms_rapi.get_order_item(id)
                 if item is not None and \
-                    not isinstance(item, rapi.QueryError):
+                    not isinstance(item, QueryError):
                     orders += item['items']
         elif self.max_downloads is not None and not self.max_downloads == '':
             orders = self.eodms_rapi.get_orders(max_orders=self.max_downloads,

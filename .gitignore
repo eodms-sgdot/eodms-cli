@@ -41,3 +41,8 @@ ENV/
 env.bak/
 venv.bak/
 _wiki_changes.txt
+
+# Tests
+test/files/*_output.geojson
+test/*.bat
+test/*backup.py

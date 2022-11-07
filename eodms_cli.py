@@ -31,7 +31,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.1.1'
+__version__ = '3.2.1'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -52,8 +52,9 @@ import binascii
 import logging
 import logging.handlers as handlers
 import pathlib
-from distutils.version import LooseVersion
-from distutils.version import StrictVersion
+# from distutils.version import LooseVersion
+# from distutils.version import StrictVersion
+from packaging import version as pack_v
 # import unicodedata
 import eodms_rapi
 
@@ -284,8 +285,8 @@ class Prompter:
             # coll_lst.sort()
             for idx, c in enumerate(coll_lst):
                 msg = f"{idx + 1}. {c['title']} ({c['id']})"
-                if c['id'] == 'NAPL':
-                    msg += ' (open data only)'
+                # if c['id'] == 'NAPL':
+                #     msg += ' (open data only)'
                 print(msg)
 
             # Prompted user for number(s) from list
@@ -569,6 +570,9 @@ class Prompter:
         :type  maximum: str
         :param max_type: The type of maximum to set ('order' or 'download').
         :type  max_type: str
+        :param no_order: Determines whether the maximum is for searching or
+        ordering.
+        :type  no_order: boolean
         
         :return: If max_type is 'order', the maximum number of order items
         and/or number of items per order, separated by ':'. If max_type is
@@ -576,16 +580,30 @@ class Prompter:
         :rtype: str
         """
 
+        # Get the no_order value
+        no_order = self.params.get('no_order')
+
         if maximum is None or maximum == '':
 
             if not self.eod.silent:
+                if no_order:
+                    print("\n--------------Enter Maximum Search Results------"
+                              "------")
+                    msg = "Enter the maximum number of images you would " \
+                          "like to search for (leave blank to search for all " \
+                          "images)"
+
+                    maximum = self.get_input(msg, required=False)
+
+                    return maximum
+
                 if max_type == 'download':
-                    print("\n--------------Enter Maximum Downloads------------"
-                          "--")
+                    print("\n--------------Enter Maximum for Downloads--------"
+                          "------")
                     msg = "Enter the number of images with status " \
-                          "AVAILABLE_FOR_DOWNLOAD you would like to download " \
-                          "(leave blank to download all images with this " \
-                          "status)"
+                          "AVAILABLE_FOR_DOWNLOAD you would like to " \
+                          "download (leave blank to download all images " \
+                          "with this status)"
 
                     maximum = self.get_input(msg, required=False)
 
@@ -593,7 +611,8 @@ class Prompter:
                 else:
                     if not self.process == 'order_csv':
 
-                        print("\n--------------Enter Maximums--------------")
+                        print("\n--------------Enter Maximums for Ordering------------"
+                              "--")
 
                         msg = "Enter the total number of images you'd " \
                               "like to order (leave blank for no limit)"
@@ -609,8 +628,9 @@ class Prompter:
                         else:
                             total_records = self.eod.validate_int(total_records)
                             if not total_records:
-                                self.eod.print_msg("WARNING: Total number of "
-                                                   "images value not valid. "
+                                self.eod.print_msg("WARNING: Total "
+                                                   "number of images "
+                                                   "value not valid. "
                                                    "Excluding it.",
                                                    indent=False)
                                 total_records = None
@@ -620,17 +640,20 @@ class Prompter:
                         total_records = None
 
                     msg = "If you'd like a limit of images per order, " \
-                          "enter a value (EODMS sets a maximum limit of 100)"
+                          "enter a value (EODMS sets a maximum limit of " \
+                          "100)"
 
                     order_limit = self.get_input(msg, required=False)
 
                     if order_limit == '':
                         order_limit = None
                     else:
-                        order_limit = self.eod.validate_int(order_limit, 100)
+                        order_limit = self.eod.validate_int(order_limit,
+                                                            100)
                         if not order_limit:
-                            self.eod.print_msg("WARNING: Order limit value not "
-                                               "valid. Excluding it.",
+                            self.eod.print_msg("WARNING: Order limit "
+                                               "value not valid. "
+                                               "Excluding it.",
                                                indent=False)
                             order_limit = None
                         else:
@@ -1017,9 +1040,12 @@ class Prompter:
         if username is None or password is None:
             print("\n--------------Enter EODMS Credentials--------------")
 
-        if username is None:
+        if username is None or username == '':
 
             username = self.config_util.get('Credentials', 'username')
+
+            # print(f"username: {username}")
+
             if username == '':
                 msg = "Enter the username for authentication"
                 err_msg = "A username is required to order images."
@@ -1028,7 +1054,7 @@ class Prompter:
             else:
                 print("\nUsing the username set in the 'config.ini' file...")
 
-        if password is None:
+        if password is None or password == '':
 
             password = self.config_util.get('Credentials', 'password')
 
@@ -1083,36 +1109,7 @@ class Prompter:
         # print(f"coll_lst type: {type(coll_lst).__name__}")
         # print(f"{'get_msgs' in dir(coll_lst)}")
 
-        if coll_dict is None:
-            if self.eod.eodms_rapi.auth_err:
-                msg = "\nAn authentication error has occurred while " \
-                      "trying to access the EODMS RAPI. Please ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html. Once your account is ready, you can " \
-                      "run 'python eodms_cli.py --configure credentials' to " \
-                      "add your new credentials to the configuration file."
-            else:
-                msg = f"Failed to retrieve a list of available collections."
-            self.logger.error(msg)
-            self.eod.print_support(True)
-            sys.exit(1)
-
-        # if 'get_msgs' in dir(coll_lst):
-        if isinstance(coll_dict, eodms_rapi.QueryError):
-            err_msg = coll_dict.get_msgs(True)
-            if err_msg.find('401 Client Error') > -1:
-                msg = "An authentication error has occurred while " \
-                      "trying to access the EODMS RAPI.\n\nPlease ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html."
-            else:
-                msg = f"Failed to retrieve a list of available collections. " \
-                      f"{coll_dict.get_msgs(True)}"
-            self.logger.error(msg)
-            self.eod.print_support(True, msg)
-            sys.exit(1)
+        self.eod.check_error(coll_dict)
 
         print("\n(For more information on the following prompts, please refer"
               " to the README file.)")
@@ -1191,11 +1188,11 @@ class Prompter:
             no_order = self.ask_order(no_order)
             self.params['no_order'] = no_order
 
-            if not no_order:
-                # Get the maximum(s)
-                maximum = self.ask_maximum(maximum)
-                self.params['maximum'] = maximum
+            # Get the maximum(s)
+            maximum = self.ask_maximum(maximum)
+            self.params['maximum'] = maximum
 
+            if not no_order:
                 # Get the priority
                 priority = self.ask_priority(priority)
                 self.params['priority'] = priority
@@ -1231,11 +1228,11 @@ class Prompter:
             no_order = self.ask_order(no_order)
             self.params['no_order'] = no_order
 
-            if not no_order:
-                # Get the maximum(s)
-                maximum = self.ask_maximum(maximum)
-                self.params['maximum'] = maximum
+            # Get the maximum(s)
+            maximum = self.ask_maximum(maximum)
+            self.params['maximum'] = maximum
 
+            if not no_order:
                 # Get the priority
                 priority = self.ask_priority(priority)
                 self.params['priority'] = priority
@@ -1500,9 +1497,11 @@ def print_support(err_str=None):
 @click.option('--maximum', '-max', '-m', default=None,
               help='For Process 1 & 2, the maximum number of images to order '
                    'and download and the maximum number of images per order, '
-                   'separated by a colon. For Process 4, a single value '
-                   'to specify the maximum number of images with status '
-                   'AVAILABLE_FOR_DOWNLOAD to download.')
+                   'separated by a colon. If no_order is set to True, this '
+                   'parameter will set the maximum images for which to search. '
+                   'For Process 4, a single value to specify the maximum '
+                   'number of images with status AVAILABLE_FOR_DOWNLOAD '
+                   'to download.')
 @click.option('--priority', '-pri', '-l', default=None,
               help='The priority level of the order.\nOne of "Low", '
                    '"Medium", "High" or "Urgent" (default "Medium").')
@@ -1541,7 +1540,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
     python_version_cur = ".".join([str(sys.version_info.major),
                                    str(sys.version_info.minor),
                                    str(sys.version_info.micro)])
-    if StrictVersion(python_version_cur) < StrictVersion('3.6'):
+    # if StrictVersion(python_version_cur) < StrictVersion('3.6'):
+    if pack_v.Version(python_version_cur) < pack_v.Version('3.6'):
         raise Exception("Must be using Python 3.6 or higher")
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
@@ -1562,7 +1562,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
     print("############################################################"
           "#####################")
 
-    if LooseVersion(eodms_rapi.__version__) < LooseVersion(eodmsrapi_recent):
+    if pack_v.Version(eodms_rapi.__version__) < \
+            pack_v.Version(eodmsrapi_recent):
         err_msg = "The py-eodms-rapi currently installed is an older " \
                   "version. Please install the latest version using " \
                   "'pip install py-eodms-rapi -U'."
