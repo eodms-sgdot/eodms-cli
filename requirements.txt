@@ -7,3 +7,4 @@ shapely>=1.8.1
 python-dateutil>=2.8.1
 tqdm>=4.59.0
 numpy
+packaging

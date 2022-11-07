@@ -598,7 +598,7 @@ class Prompter:
                     return maximum
 
                 if max_type == 'download':
-                    print("\n--------------Enter Maximum Downloads--------"
+                    print("\n--------------Enter Maximum for Downloads--------"
                           "------")
                     msg = "Enter the number of images with status " \
                           "AVAILABLE_FOR_DOWNLOAD you would like to " \
@@ -611,7 +611,7 @@ class Prompter:
                 else:
                     if not self.process == 'order_csv':
 
-                        print("\n--------------Enter Maximums------------"
+                        print("\n--------------Enter Maximums for Ordering------------"
                               "--")
 
                         msg = "Enter the total number of images you'd " \
