@@ -46,3 +46,4 @@ _wiki_changes.txt
 test/files/*_output.geojson
 test/*.bat
 test/*backup.py
+*.geojson
