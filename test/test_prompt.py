@@ -2,7 +2,7 @@
 # MIT License
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2022.
+# represented by the Minister of Natural Resources, 2023.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -27,7 +27,7 @@
 __title__ = 'EODMS-CLI Prompt Tester'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = '# Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2022.'
+                'as represented by the Minister of Natural Resources, 2023.'
 __license__ = 'MIT License'
 __description__ = 'Performs various prompt tests of the EODMS-CLI.'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'

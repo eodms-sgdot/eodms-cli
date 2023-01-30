@@ -11,10 +11,10 @@ class ConfigUtils:
     def __init__(self):
         # Set the configuration filepath
         old_config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-                                      'config.ini')
+                                      'eodmscli_config.ini')
 
         self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-                                      'eodmscli_config.ini')
+                                      'config.ini')
 
         if os.path.exists(old_config_fn):
             os.rename(old_config_fn, self.config_fn)
@@ -203,6 +203,9 @@ class ConfigUtils:
 
         :return: n/a
         """
+
+        if dict_sect not in self.config_dict.keys():
+            self.config_dict[dict_sect] = {}
 
         if isinstance(sections, str):
             sections = [sections]
@@ -443,6 +446,11 @@ Options:
         self._set_dict('RAPI', sr, 'timeout_order')
         self._set_dict('RAPI', 'RAPI', 'order_check_date')
         self._set_dict('RAPI', 'RAPI', 'download_attempts')
+
+        # If any hidden parameters exist in the current config file, keep it
+        if self.config_info.has_section('Debug'):
+            if self.config_info.has_option('Debug', 'rapi_url'):
+                self._set_dict('Debug', 'Debug', 'rapi_url')
 
     def write(self):
         """
