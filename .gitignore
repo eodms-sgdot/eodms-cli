@@ -9,6 +9,8 @@ _commit_changes.bat
 # Distribution / packaging
 .Python
 build/
+_backup/
+_batch/
 develop-eggs/
 dist/
 downloads/
@@ -28,6 +30,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 *.bak
+setup
+setup.bat
 
 # Sphinx documentation
 docs/_build/
@@ -46,4 +50,13 @@ _wiki_changes.txt
 test/files/*_output.geojson
 test/*.bat
 test/*backup.py
+test/*.bak
+
+# user specific overrides
+docs/
+_update_repository.bat
+_changes.md
+*.ini
+_copyright_check.txt
 *.geojson
+v3_ideas.md

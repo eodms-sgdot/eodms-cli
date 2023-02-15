@@ -2,7 +2,7 @@
 # MIT License
 # 
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2022
+# represented by the Minister of Natural Resources, 2023
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
 # copy of this software and associated documentation files (the "Software"), 
@@ -27,11 +27,11 @@
 __title__ = 'EODMS-CLI'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2022'
+                'as represented by the Minister of Natural Resources, 2023'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.2.1'
+__version__ = '3.2.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -263,8 +263,6 @@ class Prompter:
 
             if coll_lst is None:
                 coll_lst = self.eod.eodms_rapi.get_collections(True, opt='both')
-
-            # print(f"coll_lst: {coll_lst}")
 
             if self.eod.silent:
                 err_msg = "No collection specified. Exiting process."
@@ -554,7 +552,9 @@ class Prompter:
             input_fn = self.get_input(msg, err_msg)
 
         if not os.path.exists(input_fn):
-            err_msg = "Not a valid CSV file. Please enter a valid CSV file."
+            # err_msg = "Not a valid CSV file. Please enter a valid CSV file."
+            err_msg = "The specified CSV file does not exist. Please enter a " \
+                      "valid CSV file."
             self.eod.print_support(True, err_msg)
             self.logger.error(err_msg)
             sys.exit(1)
@@ -1089,6 +1089,15 @@ class Prompter:
 
                 self.config_util.write()
 
+        # Set the RAPI URL from the config file (only for development of
+        #   EODMS-CLI)
+        rapi_url = self.config_util.get('Debug', 'rapi_url')
+        # print(f"rapi_url: {rapi_url}")
+        if rapi_url:
+            if rapi_url.find('staging'):
+                print("\n**** RUNNING IN STAGING ENVIRONMENT ****\n")
+            self.eod.rapi_domain = rapi_url
+
         # Get number of attempts when querying the RAPI
         self.eod.set_attempts(self.config_util.get('RAPI', 'access_attempts'))
 
@@ -1219,6 +1228,13 @@ class Prompter:
             # fields = self.eod.get_input_fields(inputs)
             # csv_fields = self.ask_fields(csv_fields, fields)
             # self.params['csv_fields'] = csv_fields
+
+            # If Radarsat-1, ask user if they want to download from AWS
+            if os.path.exists(inputs):
+                lines = open(inputs, 'r').read()
+                if lines.lower().find('radarsat-1') > -1:
+                    aws = self.ask_aws(aws)
+                    self.params['aws'] = aws
 
             # Get the output geospatial filename
             output = self.ask_output(output)

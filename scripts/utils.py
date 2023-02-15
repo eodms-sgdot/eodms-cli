@@ -2,7 +2,7 @@
 # MIT License
 # 
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2022.
+# represented by the Minister of Natural Resources, 2023.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a 
 # copy of this software and associated documentation files (the "Software"), 
@@ -849,10 +849,11 @@ class EodmsUtils:
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
 
-        self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
-
         if self.rapi_domain is not None:
+            print(f"Changing root url to {self.rapi_domain}\n")
             self.eodms_rapi.set_root_url(self.rapi_domain)
+
+        self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
 
     def download_aws(self, aws_imgs):
         """
@@ -863,6 +864,10 @@ class EodmsUtils:
         """
 
         self.print_msg("Downloading AWS images first...")
+
+        requests.packages.urllib3.disable_warnings(requests.packages.
+                                                   urllib3.exceptions.
+                                                   InsecureRequestWarning)
 
         res = []
         for img in aws_imgs.get_images():
@@ -1717,6 +1722,7 @@ class EodmsProcess(EodmsUtils):
         maximum = params.get('maximum')
         priority = params.get('priority')
         self.output = params.get('output')
+        aws_download = params.get('aws')
         no_order = params.get('no_order')
 
         # Log the parameters
@@ -1781,13 +1787,20 @@ class EodmsProcess(EodmsUtils):
         # print(f"query_imgs: {query_imgs.count()}")
 
         # Remove collections that don't allow ordering
-        filt_imgs = self._filter_for_order(query_imgs)
+        # filt_imgs = self._filter_for_order(query_imgs)
+
+        # Parse out AWS
+        if aws_download:
+            eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
+        else:
+            eodms_imgs = query_imgs
+            aws_imgs = None
 
         # print(f"filt_imgs: {filt_imgs.count()}")
 
         orders = image.OrderList(self)
-        if filt_imgs.count() > 0:
-            orders = self._submit_orders(filt_imgs, priority)
+        if eodms_imgs.count() > 0:
+            orders = self._submit_orders(eodms_imgs, priority)
 
         #############################################
         # Download Images
@@ -1796,6 +1809,11 @@ class EodmsProcess(EodmsUtils):
         # Make the download folder if it doesn't exist
         if not os.path.exists(self.download_path):
             os.mkdir(self.download_path)
+
+        # Download all AWS images first
+        aws_downloads = None
+        if aws_imgs:
+            aws_downloads = self.download_aws(aws_imgs)
 
         # Get a list of order items in JSON format for the EODMSRAPI
         if orders.count() > 0:
@@ -1808,13 +1826,16 @@ class EodmsProcess(EodmsUtils):
                                           max_attempts=self.download_attempts)
 
             # Update images
-            query_imgs.update_downloads(download_items)
+            eodms_imgs.update_downloads(download_items)
+
+        if aws_downloads:
+            eodms_imgs.add_images(aws_downloads)
 
         # Export polygons of images
-        self.eodms_geo.export_results(query_imgs, self.output)
+        self.eodms_geo.export_results(eodms_imgs, self.output)
 
         # Update the self.cur_res for output results
-        self.cur_res = query_imgs
+        self.cur_res = eodms_imgs
         self.export_results()
 
         end_time = datetime.datetime.now()
