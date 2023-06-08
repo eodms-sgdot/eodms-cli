@@ -423,11 +423,13 @@ class Prompter:
                         for f in coll_fields.get_eod_fieldnames():
                             print(f"  {f}")
 
-                        print("NOTE: Filters must be entered in the format "
-                              "of <field_id>=<value>|<value>|... (field "
-                              "IDs are not case sensitive); separate each "
-                              "filter with a comma. To see a list "
-                              "of field choices, enter '? <field_id>'.")
+                        print("\nFilters must be entered in the format "
+                              "of [field_id]=[value]|[value]|... " 
+                              "(field IDs are not case sensitive); " 
+                              "separate each filter with a comma. To see " 
+                              "a list of field choices, enter '? [field_id]'."
+                              "\n\nExample: BEAM_MNEMONIC=16M4|16M7," 
+                              "PIXEL_SPACING<=20")
 
                         msg = "Enter the filters you would like to apply " \
                               "to the search"

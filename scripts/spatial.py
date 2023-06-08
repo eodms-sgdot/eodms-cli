@@ -91,9 +91,7 @@ class Geo:
         coords = np.append(nc, [[nc[0][0]]], axis=1)
         gjson['coordinates'] = coords.tolist()
 
-        out_wkt = wkt.dumps(gjson)
-
-        return out_wkt
+        return wkt.dumps(gjson)
 
     def convert_image_geom(self, coords, output='array'):
         """
@@ -167,6 +165,7 @@ class Geo:
     #     return out_poly
 
     def export_results(self, img_lst, out_fn='results.geojson'):
+        # sourcery skip: extract-method, low-code-quality, merge-comparisons
         """
         Exports the results of the query to a GeoJSON.
         
@@ -179,10 +178,7 @@ class Geo:
         if out_fn is None or out_fn == '':
             return None
 
-        if out_fn.lower() == 'geojson' or \
-                out_fn.lower() == 'kml' or \
-                out_fn.lower() == 'gml' or \
-                out_fn.lower() == 'shp':
+        if out_fn.lower() in ['geojson', 'kml', 'gml', 'shp']:
             fn = self.eod.fn_str
             out_fn = f'{fn}_outlines.{out_fn.lower()}'
 
@@ -199,14 +195,14 @@ class Geo:
                 ogr_driver = 'GML'
             elif ext == '.kml':
                 ogr_driver = 'KML'
-            elif ext == '.json' or ext == '.geojson':
+            elif ext in ['.json', '.geojson']:
                 ogr_driver = 'GeoJSON'
             elif ext == '.shp':
                 ogr_driver = 'ESRI Shapefile'
             else:
                 warn_msg = "The format type for the output geospatial file " \
-                           "could not be determined. No geospatial output " \
-                           "will be created."
+                                   "could not be determined. No geospatial output " \
+                                   "will be created."
                 print(f"\n{warn_msg}")
                 return None
 
@@ -260,9 +256,9 @@ class Geo:
             if ext == '.gml' or ext == '.kml' or ext == '.shp':
                 ext_str = ext.replace('.', '').upper()
                 warn_msg = f"GDAL Python package is not installed. " \
-                           f"Cannot export geospatial results in " \
-                           f"'{ext_str}' format. Exporting results as a " \
-                           f"GeoJSON."
+                                   f"Cannot export geospatial results in " \
+                                   f"'{ext_str}' format. Exporting results as a " \
+                                   f"GeoJSON."
 
                 print(f"\n{warn_msg}")
                 self.logger.warning(warn_msg)
@@ -290,14 +286,15 @@ class Geo:
         rapi_geo = EODMSGeo(self.eod.eodms_rapi)
 
         img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
-        aoi_wkts = rapi_geo.convert_to_wkt(aoi, 'file')
-
-        # print("\nimg_wkt: %s" % img_wkt)
-        # print("aoi_wkts: %s" % aoi_wkts)
+        aoi_wkts = [aoi] if self.is_wkt(aoi) else rapi_geo.convert_to_wkt(aoi, 
+                    'file')
 
         img_geom = shapely.wkt.loads(img_wkt)
-        aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
-
+        if aoi_wkts[0].find('MULTIPOLYGON') > -1:
+            aoi_polys = shapely.wkt.loads(aoi_wkts[0])
+        else:
+            aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
+            
         img_area = img_geom.area
         aoi_area = aoi_polys.area
         overlap_area = img_geom.intersection(aoi_polys).area
