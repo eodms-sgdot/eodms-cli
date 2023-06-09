@@ -317,7 +317,7 @@ class EodmsUtils:
 
             filt = filt.upper()
 
-            if not any(x in filt for x in self.operators):
+            if all(x not in filt for x in self.operators):
                 print(f"Filter '{filt}' entered incorrectly.")
                 continue
 
@@ -338,12 +338,20 @@ class EodmsUtils:
 
             if key not in coll_fields.get_eod_fieldnames():
                 err = f"Filter '{key}' is not available for Collection " \
-                      f"'{coll_id}'."
+                          f"'{coll_id}'."
                 self.print_msg(f"WARNING: {err}")
                 self.logger.warning(err)
                 continue
 
             fld = coll_fields.get_field(key).get_rapi_id()
+
+            # Modified operator if maximum or minimum
+            if key.lower().find('maximum') > -1 and \
+                fld.lower().find('maximum') == -1:
+                op = "<="
+            elif key.lower().find('minimum') > -1 and \
+                fld.lower().find('minimum') == -1:
+                op = ">="
 
             val = filt_split[1].strip()
             val = val.replace('"', '').replace("'", '')
@@ -1262,8 +1270,8 @@ class EodmsUtils:
             # Parse filters
             if filters:
 
-                # print(f"self.coll_id: {self.coll_id}")
-                # print(f"filters.keys(): {filters.keys()}")
+                print(f"self.coll_id: {self.coll_id}")
+                print(f"filters.keys(): {filters.keys()}")
 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
@@ -1286,10 +1294,8 @@ class EodmsUtils:
                 if av_fields is None:
                     return None
 
-                for k in filt_parse.keys():
-                    if k in av_fields['results']:
-                        result_fields.append(k)
-
+                result_fields.extend(k for k in filt_parse.keys() 
+                    if k in av_fields['results'])
             # Send a query to the EODMSRAPI object
             print(f"\nSending query to EODMSRAPI with the following "
                   f"parameters:")
