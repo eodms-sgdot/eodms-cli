@@ -99,18 +99,21 @@ class TestEodmsCli(unittest.TestCase):
         timeout_order = config_params['timeout_order']
         keep_results = config_params['keep_results']
         keep_downloads = config_params['keep_downloads']
+        colourize = config_params['colourize']
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
         download_attempts = config_params['download_attempts']
         rapi_url = config_params['rapi_url']
 
-        eod = eod_util.EodmsProcess(download=download_path,
+        eod = eod_util.EodmsProcess(version=eodms_cli.__version__, 
+                                    download=download_path,
                                     results=res_path, log=log_path,
                                     timeout_order=timeout_order,
                                     timeout_query=timeout_query,
                                     max_res=max_results,
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
+                                    colourize=colourize,
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
                                     rapi_url=rapi_url)
