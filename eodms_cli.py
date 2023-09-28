@@ -31,14 +31,14 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.3.1'
+__version__ = '3.4.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
 import sys
 import os
 import re
-# import requests
+import requests
 # import argparse
 import click
 import traceback
@@ -52,6 +52,7 @@ import binascii
 import logging
 import logging.handlers as handlers
 import pathlib
+from colorama import Fore, Back, Style
 # from distutils.version import LooseVersion
 # from distutils.version import StrictVersion
 from packaging import version as pack_v
@@ -96,7 +97,7 @@ proc_choices = {'full': {
                 }
             }
 
-eodmsrapi_recent = '1.4.5'
+min_rapi_version = '1.5.0'
 
 class Prompter:
     """
@@ -116,6 +117,7 @@ class Prompter:
         """
 
         self.eod = eod
+        self.reset_col = eod.get_colour(reset=True)
         self.config_util = config_util
         self.config_info = config_util.get_info()
         self.params = params
@@ -151,13 +153,15 @@ class Prompter:
             #     sys.exit(1)
 
             if not self.eod.silent:
-                print(
-                    "\n--------------Enter Input Geospatial File or Feature----"
-                    "----------")
+                self.print_header("Enter Input Geospatial File or Feature")
 
-                msg = "Enter the full path name of a GML, KML, Shapefile or " \
-                      "GeoJSON containing an AOI or a WKT feature to " \
-                      "restrict the search to a specific location\n"
+                msg = f"Enter the full path name of a " \
+                    f"{self.eod.var_colour}.gml{self.eod.reset_colour}, " \
+                    f"{self.eod.var_colour}.kml{self.eod.reset_colour}, " \
+                    f"{self.eod.var_colour}.shp{self.eod.reset_colour} or " \
+                    f"{self.eod.var_colour}.geojson{self.eod.reset_colour} " \
+                    f" containing an AOI or a WKT feature to " \
+                    f"restrict the search to a specific location\n"
                 err_msg = "No AOI or feature specified. Please enter a WKT " \
                           "feature or a valid GML, KML, Shapefile or GeoJSON " \
                           "file"
@@ -228,7 +232,7 @@ class Prompter:
         if not aws:
 
             if not self.eod.silent:
-                print("\n--------------Download from AWS?--------------")
+                self.print_header("Download from AWS?")
 
                 print("\nSome Radarsat-1 images contain direct download "
                       "links to GeoTIFF files in an Open Data AWS "
@@ -266,15 +270,16 @@ class Prompter:
 
             if self.eod.silent:
                 err_msg = "No collection specified. Exiting process."
-                self.eod.print_support(True, err_msg)
+                # self.eod.print_support(True, err_msg)
+                self.eod.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.eod.exit_cli(1)
 
             # print(dir(coll_lst))
 
             # print("coll_lst: %s" % coll_lst)
 
-            print("\n--------------Enter Collection--------------")
+            self.print_header("Enter Collection")
 
             # List available collections for this user
             print("\nAvailable Collections:\n")
@@ -282,7 +287,8 @@ class Prompter:
             coll_lst = sorted(coll_lst, key=lambda x: x['title'])
             # coll_lst.sort()
             for idx, c in enumerate(coll_lst):
-                msg = f"{idx + 1}. {c['title']} ({c['id']})"
+                msg = f"{self.eod.var_colour}{idx + 1}{self.eod.reset_colour}" \
+                    f". {c['title']} ({c['id']})"
                 # if c['id'] == 'NAPL':
                 #     msg += ' (open data only)'
                 print(msg)
@@ -305,9 +311,10 @@ class Prompter:
             if not check:
                 err_msg = "A valid Collection must be specified. " \
                           "Exiting process."
-                self.eod.print_support(True, err_msg)
+                # self.eod.print_support(True, err_msg)
+                self.eod.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.eod.exit_cli(1)
 
             coll = [coll_lst[int(i) - 1]['id'] for i in coll_vals
                     if i.isdigit()]
@@ -321,9 +328,10 @@ class Prompter:
             check = self.eod.validate_collection(c)
             if not check:
                 err_msg = f"Collection '{c}'' is not valid."
-                self.eod.print_support(True, err_msg)
+                # self.eod.print_support(True, err_msg)
+                self.eod.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.eod.exit_cli(1)
 
         return coll
 
@@ -342,11 +350,13 @@ class Prompter:
         if dates is None:
 
             if not self.eod.silent:
-                print("\n--------------Enter Date Range--------------")
+                self.print_header("Enter Date Range")
 
-                msg = "Enter a date range (ex: 20200525-20200630T200950) " \
-                      "or a previous time-frame (24 hours) " \
-                      "(leave blank to search all years)\n"
+                msg = f"Enter a date range (ex: " \
+                    f"{self.eod.var_colour}20200525-20200630T200950" \
+                    f"{self.eod.reset_colour}) or a previous time-frame " \
+                    f"({self.eod.var_colour}24 hours{self.eod.reset_colour}) " \
+                    f"(leave blank to search all years)\n"
                 dates = self.get_input(msg, required=False)
 
         # -------------------------------
@@ -357,9 +367,10 @@ class Prompter:
 
             if not dates:
                 err_msg = "The dates entered are invalid. "
-                self.eod.print_support(True, err_msg)
+                # self.eod.print_support(True, err_msg)
+                self.eod.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.eod.exit_cli(1)
 
         return dates
 
@@ -377,7 +388,7 @@ class Prompter:
             return srch_fields
 
         if not self.eod.silent:
-            print("\n--------------Enter CSV Unique Fields--------------")
+            self.print_header("Enter CSV Unique Fields")
 
             print("\nAvailable fields in the CSV file:")
             for f in fields:
@@ -408,13 +419,14 @@ class Prompter:
 
             if not self.eod.silent:
 
-                print("\n--------------Enter Filters--------------")
+                self.print_header("Enter Filters")
 
                 # Ask for the filters for the given collection(s)
                 for coll in self.params['collections']:
                     coll_id = self.eod.get_full_collid(coll)
 
                     coll_fields = self.eod.field_mapper.get_fields(coll_id)
+                    # coll_fields = self.eod.get_filters(coll_id)
 
                     if coll_id in self.eod.field_mapper.get_colls():
                         # field_map = self.eod.get_fieldMap()[coll_id]
@@ -423,13 +435,16 @@ class Prompter:
                         for f in coll_fields.get_eod_fieldnames():
                             print(f"  {f}")
 
-                        print("\nFilters must be entered in the format "
-                              "of [field_id]=[value]|[value]|... " 
-                              "(field IDs are not case sensitive); " 
-                              "separate each filter with a comma. To see " 
-                              "a list of field choices, enter '? [field_id]'."
-                              "\n\nExample: BEAM_MNEMONIC=16M4|16M7," 
-                              "PIXEL_SPACING<=20")
+                        print(f"\nFilters must be entered in the format "
+                              f"of {self.eod.var_colour}[field_id]=[value]" \
+                              f"|[value]|{self.eod.reset_colour}... " 
+                              f"(field IDs are not case sensitive); " 
+                              f"separate each filter with a comma.\nTo see " 
+                              f"a list of field choices, enter '" \
+                              f"{self.eod.var_colour}? [field_id]" \
+                              f"{self.eod.reset_colour}'."
+                              f"\n\nExample: BEAM_MNEMONIC=16M4|16M7," 
+                              f"PIXEL_SPACING<=20")
 
                         msg = "Enter the filters you would like to apply " \
                               "to the search"
@@ -437,20 +452,21 @@ class Prompter:
                         filt_items = '?'
 
                         while filt_items.find('?') > -1:
-                            filt_items = input(f"\n->> {msg}:\n")
+                            filt_items = input(f"\n{self.add_arrow()} " \
+                                               f"{msg}:\n")
 
                             if filt_items.find('?') > -1:
                                 field_val = filt_items.replace('?', '').strip()
 
                                 field_obj = coll_fields.get_field(field_val)
-                                field_title = field_obj.get_rapi_field_title()
+                                field_title = field_obj.get_rapi_title()
 
                                 if field_title is None:
                                     print("Not a valid field.")
                                     continue
 
                                 field_choices = self.eod.eodms_rapi. \
-                                    get_fieldChoices(coll_id, field_title)
+                                    get_field_choices(coll_id, field_title)
 
                                 if isinstance(field_choices, dict):
                                     field_choices = f'any %s value' % \
@@ -472,7 +488,7 @@ class Prompter:
                                                                    coll_id)
 
                             if not filt_items:
-                                sys.exit(1)
+                                self.eod.exit_cli(1)
 
                             filt_items = filt_items.split(',')
                             # In case the user put collections in filters
@@ -507,7 +523,7 @@ class Prompter:
                         filt_items = self.eod.validate_filters(filt_items,
                                                                coll)
                         if not filt_items:
-                            sys.exit(1)
+                            self.eod.exit_cli(1)
                         coll_id = self.eod.get_full_collid(coll)
                         if coll_id in filt_dict.keys():
                             coll_filters = filt_dict.get(coll_id)
@@ -544,11 +560,12 @@ class Prompter:
 
             if self.eod.silent:
                 err_msg = "No CSV file specified. Exiting process."
-                self.eod.print_support(True, err_msg)
+                self.eod.print_msg(err_msg, heading='error')
+                # self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.eod.exit_cli(1)
 
-            print("\n--------------Enter Input CSV File--------------")
+            self.print_header("Enter Input CSV File")
 
             err_msg = "No CSV specified. Please enter a valid CSV file"
             input_fn = self.get_input(msg, err_msg)
@@ -557,9 +574,10 @@ class Prompter:
             # err_msg = "Not a valid CSV file. Please enter a valid CSV file."
             err_msg = "The specified CSV file does not exist. Please enter a " \
                       "valid CSV file."
-            self.eod.print_support(True, err_msg)
+            # self.eod.print_support(True, err_msg)
+            self.eod.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
-            sys.exit(1)
+            self.eod.exit_cli(1)
 
         return input_fn
 
@@ -589,8 +607,7 @@ class Prompter:
 
             if not self.eod.silent:
                 if no_order:
-                    print("\n--------------Enter Maximum Search Results------"
-                              "------")
+                    self.print_header("Enter Maximum Search Results")
                     msg = "Enter the maximum number of images you would " \
                           "like to search for (leave blank to search for all " \
                           "images)"
@@ -600,8 +617,7 @@ class Prompter:
                     return maximum
 
                 if max_type == 'download':
-                    print("\n--------------Enter Maximum for Downloads--------"
-                          "------")
+                    self.print_header("Enter Maximum for Downloads")
                     msg = "Enter the number of images with status " \
                           "AVAILABLE_FOR_DOWNLOAD you would like to " \
                           "download (leave blank to download all images " \
@@ -613,8 +629,7 @@ class Prompter:
                 else:
                     if not self.process == 'order_csv':
 
-                        print("\n--------------Enter Maximums for Ordering------------"
-                              "--")
+                        self.print_header("Enter Maximums for Ordering")
 
                         msg = "Enter the total number of images you'd " \
                               "like to order (leave blank for no limit)"
@@ -630,11 +645,11 @@ class Prompter:
                         else:
                             total_records = self.eod.validate_int(total_records)
                             if not total_records:
-                                self.eod.print_msg("WARNING: Total "
-                                                   "number of images "
+                                self.eod.print_msg("Total number of images "
                                                    "value not valid. "
                                                    "Excluding it.",
-                                                   indent=False)
+                                                   indent=False, 
+                                                   heading='warning')
                                 total_records = None
                             else:
                                 total_records = str(total_records)
@@ -653,10 +668,10 @@ class Prompter:
                         order_limit = self.eod.validate_int(order_limit,
                                                             100)
                         if not order_limit:
-                            self.eod.print_msg("WARNING: Order limit "
+                            self.eod.print_msg("Order limit "
                                                "value not valid. "
                                                "Excluding it.",
-                                               indent=False)
+                                               indent=False, heading='warning')
                             order_limit = None
                         else:
                             order_limit = str(order_limit)
@@ -669,8 +684,7 @@ class Prompter:
             if max_type == 'order':
                 if self.process == 'order_csv':
 
-                    print("\n--------------Enter Images per Order------------"
-                          "--")
+                    self.print_header("Enter Images per Order")
 
                     if maximum.find(':') > -1:
                         total_records, order_limit = maximum.split(':')
@@ -693,7 +707,7 @@ class Prompter:
 
         if orderitems is None:
             if not self.eod.silent:
-                print("\n--------------Order/Order Item IDs--------------")
+                self.print_header("Order/Order Item IDs")
 
                 msg = "\nEnter a list of Order IDs and/or Order Item IDs, " \
                       "separating each ID with a comma and separating Order " \
@@ -715,11 +729,11 @@ class Prompter:
 
         if no_order is None:
             if not self.eod.silent:
-                print("\n--------------Suppress Ordering--------------")
+                self.print_header("Suppress Ordering")
 
                 msg = "\nWould you like to only search and not order?\n"
                 no_order = self.get_input(msg, required=False,
-                                          options=['yes', 'no'], default='n')
+                                          options=['Yes', 'No'], default='n')
 
                 if no_order.lower().find('y') > -1:
                     no_order = True
@@ -742,12 +756,15 @@ class Prompter:
         if output is None:
 
             if not self.eod.silent:
-                print("\n--------------Enter Output Geospatial File-------"
-                      "-------")
+                self.print_header("Enter Output Geospatial File")
 
-                msg = "\nEnter the path of the output geospatial file " \
-                      "(can also be GeoJSON, KML, GML or Shapefile) " \
-                      "(default is no output file)\n"
+                msg = f"\nEnter the full path of the output geospatial file " \
+                      f"(can also be " \
+                      f"{self.eod.var_colour}.geojson{self.eod.reset_colour}," \
+                      f" {self.eod.var_colour}.kml{self.eod.reset_colour}, " \
+                      f"{self.eod.var_colour}.gml{self.eod.reset_colour}, or" \
+                      f" {self.eod.var_colour}.shp{self.eod.reset_colour}) " \
+                      f"(default is no output file)\n"
                 output = self.get_input(msg, required=False)
 
         return output
@@ -757,8 +774,7 @@ class Prompter:
         if overlap is None:
 
             if not self.eod.silent:
-                print("\n--------------Enter Minimum Overlap Percentage----"
-                      "----------")
+                self.print_header("Enter Minimum Overlap Percentage")
 
                 msg = "\nEnter the minimum percentage of overlap between " \
                       "images and the AOI\n"
@@ -781,7 +797,7 @@ class Prompter:
 
         if priority is None:
             if not self.eod.silent:
-                print("\n--------------Enter Priority--------------")
+                self.print_header("Enter Priority")
 
                 msg = "Enter the priority level for the order"
 
@@ -791,8 +807,9 @@ class Prompter:
         if priority is None or priority == '':
             priority = 'Medium'
         elif priority.lower() not in priorities:
-            self.eod.print_msg("WARNING: Not a valid 'priority' entry. "
-                               "Setting priority to 'Medium'.", indent=False)
+            self.eod.print_msg("Not a valid 'priority' entry. "
+                               "Setting priority to 'Medium'.", indent=False, 
+                               heading='warning')
             priority = 'Medium'
 
         return priority
@@ -808,16 +825,19 @@ class Prompter:
         if self.eod.silent:
             process = 'full'
         else:
-            print("\n--------------Choose Process Option--------------")
+            self.print_header("Choose Process Option")
             choice_strs = []
             # print(f"proc_choices.items(): {proc_choices.items()}")
             for idx, v in enumerate(proc_choices.items()):
                 desc_str = re.sub(r'\s+', ' ', v[1]['desc'].replace('\n', ''))
-                choice_strs.append(f"  {idx + 1}: ({v[0]}) {desc_str}")
+                choice_strs.append(f"  {self.eod.var_colour}{idx + 1}" \
+                                    f"{self.eod.reset_colour}: ({v[0]}) " \
+                                    f"{desc_str}")
             choices = '\n'.join(choice_strs)
 
             print(f"\nWhat would you like to do?\n\n{choices}\n")
-            process = input("->> Please choose the type of process [1]: ")
+            process = input(f"{self.add_arrow()} " \
+                            f"Please choose the type of process [1]: ")
 
             if self.testing:
                 print(f"FOR TESTING - Process entered: {process}")
@@ -832,16 +852,18 @@ class Prompter:
                 if not process:
                     err_msg = "Invalid value entered for the 'process' " \
                               "parameter."
-                    self.eod.print_support(True, err_msg)
+                    # self.eod.print_support(True, err_msg)
+                    self.eod.print_msg(err_msg, heading='error')
                     self.logger.error(err_msg)
-                    sys.exit(1)
+                    self.eod.exit_cli(1)
 
                 if process > len(proc_choices.keys()):
                     err_msg = "Invalid value entered for the 'process' " \
                               "parameter."
-                    self.eod.print_support(True, err_msg)
+                    # self.eod.print_support(True, err_msg)
+                    self.eod.print_msg(err_msg, heading='error')
                     self.logger.error(err_msg)
-                    sys.exit(1)
+                    self.eod.exit_cli(1)
                 else:
                     process = list(proc_choices.keys())[int(process) - 1]
 
@@ -858,7 +880,7 @@ class Prompter:
         if ids is None or ids == '':
 
             if not self.eod.silent:
-                print("\n--------------Enter Record ID(s)--------------")
+                self.print_header("Enter Record ID(s)")
 
                 msg = "\nEnter a single or set of Record IDs. Include the " \
                       "Collection ID next to each ID separated by a " \
@@ -962,31 +984,34 @@ class Prompter:
 
         if password:
             # If the argument is for password entry, hide entry
-            in_val = getpass.getpass(prompt=f'->> {msg}: ')
+            in_val = getpass.getpass(prompt=f'{self.add_arrow()} {msg}: ')
         else:
             opt_str = ''
             if options is not None:
-                opt_str = ' (%s)' % '/'.join(options)
+                opt_join = '/'.join(options)
+                opt_str = f" ({self.eod.var_colour}{opt_join}" \
+                        f"{self.eod.reset_colour})"
 
             def_str = ''
             if default is not None:
                 def_str = f' [{default}]'
 
-            output = f"\n->> {msg}{opt_str}{def_str}: "
+            output = f"\n{self.add_arrow()} {msg}{opt_str}{def_str}: "
             if msg.endswith('\n'):
                 msg_strp = msg.strip('\n')
-                output = f"\n->> {msg_strp}{opt_str}{def_str}:\n"
+                output = f"\n{self.add_arrow()} {msg_strp}{opt_str}{def_str}:\n"
             try:
                 in_val = input(output)
             except EOFError as error:
                 # Output expected EOFErrors.
                 self.logger.error(error)
-                sys.exit(1)
+                eod_util.EodmsProcess().exit_cli(1)
 
         if required and in_val == '':
-            eod_util.EodmsProcess().print_support(True, err_msg)
+            # eod_util.EodmsProcess().print_support(True, err_msg)
+            eod_util.EodmsProcess().print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
-            sys.exit(1)
+            eod_util.EodmsProcess().exit_cli(1)
 
         if in_val == '' and default is not None and not default == '':
             in_val = default
@@ -995,6 +1020,25 @@ class Prompter:
             print(f"FOR TESTING - Value entered: {in_val}")
 
         return in_val
+    
+    def add_arrow(self):
+        """
+        Adds an arrow (->>) to the output
+
+        :return: A string containing a coloured arrow.
+        :rtype: str
+        """
+        arrow = f"{self.eod.arrow_colour}->>{self.eod.reset_colour}"
+
+        return arrow
+    
+    def print_header(self, header):
+        """
+        Prints the header for input
+        """
+
+        print(f"{self.eod.head_colour}\n--------------{header}--------------" \
+              f"{self.eod.reset_colour}")
 
     def print_syntax(self):
         """
@@ -1003,7 +1047,7 @@ class Prompter:
 
         print("\nUse this command-line syntax to run the same parameters:")
         cli_syntax = self.build_syntax()
-        print(cli_syntax)
+        print(f"{self.eod.path_colour}{cli_syntax}{self.eod.reset_colour}")
         self.logger.info(f"Command-line Syntax: {cli_syntax}")
 
     def prompt(self):
@@ -1032,7 +1076,7 @@ class Prompter:
 
         if version:
             print(f"{__title__}: Version {__version__}")
-            sys.exit()
+            self.eod.exit_cli()
 
         self.eod.set_silence(silent)
 
@@ -1040,7 +1084,7 @@ class Prompter:
         new_pass = False
 
         if username is None or password is None:
-            print("\n--------------Enter EODMS Credentials--------------")
+            self.print_header("Enter EODMS Credentials")
 
         if username is None or username == '':
 
@@ -1054,7 +1098,9 @@ class Prompter:
                 username = self.get_input(msg, err_msg)
                 new_user = True
             else:
-                print("\nUsing the username set in the 'config.ini' file...")
+                print(f"\nUsing the username set in the " 
+                      f"'{self.eod.path_colour}config.ini" 
+                      f"{self.eod.reset_colour}' file...")
 
         if password is None or password == '':
 
@@ -1071,7 +1117,9 @@ class Prompter:
                 except binascii.Error as err:
                     password = base64.b64decode(password +
                                                 "========").decode("utf-8")
-                print("Using the password set in the 'config.ini' file...")
+                print(f"Using the password set in the " 
+                      f"'{self.eod.path_colour}config.ini" 
+                      f"{self.eod.reset_colour}' file...")
 
         if new_user or new_pass:
             suggestion = ''
@@ -1079,7 +1127,7 @@ class Prompter:
                 suggestion = " (it is best to store the credentials if " \
                              "you'd like to run the script in silent mode)"
 
-            answer = input(f"\n->> Would you like to store the credentials "
+            answer = input(f"\n{self.add_arrow()} Would you like to store the credentials "
                            f"for a future session{suggestion}? (y/n):")
             if answer.lower().find('y') > -1:
                 # self.config_info.set('Credentials', 'username', username)
@@ -1112,6 +1160,7 @@ class Prompter:
                        'process': process,
                        'downloads': downloads}
 
+        # colour = self.eod.get_colour(fore='GREEN')
         print()
         coll_dict = self.eod.eodms_rapi.get_collections(True, opt='both')
 
@@ -1134,29 +1183,31 @@ class Prompter:
         else:
             self.process = process
 
-        proc_num = list(proc_choices.keys()).index(self.process) + 1
-        print("\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-        print(f" Running Process "
-              f"{proc_num}: "
-              f"{proc_choices[self.process]['name']}")
-        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n")
-
         if self.process == 'search_only':
-            msg = "\nNOTE: The 'search_only' process is no longer available. " \
+            msg = "The 'search_only' process is no longer available. " \
                   "In future, please use the flags '--no_order' or '-nord' " \
-                  "to suppress ordering and downloading.\nScript will " \
+                  "to suppress ordering and downloading. Script will " \
                   "perform a search without ordering or downloading."
-            # self.eod.print_support(msg)
+            self.eod.print_msg(msg, heading='note')
             self.logger.warning(msg)
             self.process = 'full'
             no_order = True
 
+        proc_num = list(proc_choices.keys()).index(self.process) + 1
+        print(self.eod.title_colour)
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        print(f" Running Process "
+              f"{proc_num}: "
+              f"{proc_choices[self.process]['name']}")
+        print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        print(self.eod.reset_colour)
+
         self.params['process'] = self.process
 
         if self.process == 'download_only':
-            print("\nNOTE: The process 'download_only' is now named "
+            self.eod.print_msg("The process 'download_only' is now named "
                   "'download_results'. Please update any command-line "
-                  "syntaxes.")
+                  "syntaxes.", heading='note')
             self.process = 'download_results'
 
         if self.process == 'full':
@@ -1380,10 +1431,12 @@ class Prompter:
             self.eod.order_ids(self.params)
 
         else:
-            self.eod.print_support("That is not a valid process type.")
+            # self.eod.print_support("That is not a valid process type.")
+            self.eod.print_msg("That is not a valid process type.", 
+                               heading='error')
             self.logger.error("An invalid parameter was entered during "
                               "the prompt.")
-            sys.exit(1)
+            self.eod.exit_cli(1)
 
 #------------------------------------------------------------------------------
 
@@ -1457,6 +1510,7 @@ def get_configuration_values(config_util, download_path):
     config_params['keep_results'] = config_util.get('Script', 'keep_results')
     config_params['keep_downloads'] = config_util.get('Script',
                                                       'keep_downloads')
+    config_params['colourize'] = config_util.get('Script', 'colourize')
 
     # Get the total number of results per query
     config_params['max_results'] = config_util.get('RAPI', 'max_results')
@@ -1481,8 +1535,17 @@ def print_support(err_str=None):
     :type  err_str: str
     """
 
-    eod_util.EodmsProcess().print_support(True, err_str)
+    # eod_util.EodmsProcess().print_support(True, err_str)
+    eod_util.EodmsProcess().print_msg(err_str, heading='error')
 
+def get_latest_version():
+    package = 'py-eodms-rapi'  # replace with the package you want to check
+    response = requests.get(f'https://pypi.org/pypi/{package}/json')
+    latest_version = response.json()['info']['version']
+
+    return latest_version
+
+eodmsrapi_recent = get_latest_version()
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
 @click.option('--configure', default=None,
@@ -1564,29 +1627,63 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
     if '-v' in sys.argv or '--v' in sys.argv or '--version' in sys.argv:
         print(f"\n  {__title__}, version {__version__}\n")
-        sys.exit()
+        eod_util.EodmsProcess().exit_cli()
 
     conf_util = config_util.ConfigUtils()
 
     if configure:
         conf_util.ask_user(configure)
         # print("You've entered configuration mode.")
-        sys.exit()
+        eod_util.EodmsProcess().exit_cli()
+        
+    # Set all the parameters from the config.ini file
+    # config_info = get_config()
+    conf_util.import_config()
 
-    print("\n##########################################################"
+    config_params = get_configuration_values(conf_util, downloads)
+    download_path = config_params['download_path']
+    res_path = config_params['res_path']
+    log_path = config_params['log_path']
+    timeout_query = config_params['timeout_query']
+    timeout_order = config_params['timeout_order']
+    keep_results = config_params['keep_results']
+    keep_downloads = config_params['keep_downloads']
+    colourize = config_params['colourize']
+    max_results = config_params['max_results']
+    order_check_date = config_params['order_check_date']
+    download_attempts = config_params['download_attempts']
+    rapi_url = config_params['rapi_url']
+
+    print(eod_util.EodmsProcess(colourize=colourize).title_colour)
+    print("##########################################################"
           "#######################")
     print(f"#                              {__title__} v{__version__}         "
           f"                        #")
     print("############################################################"
           "#####################")
+    print(eod_util.EodmsProcess(colourize=colourize).reset_colour)
 
-    if pack_v.Version(eodms_rapi.__version__) < \
+    rapi_installed_ver = eodms_rapi.__version__
+
+    if pack_v.Version(rapi_installed_ver) < pack_v.Version(min_rapi_version):
+        err_msg = f"The py-eodms-rapi currently installed is an older " \
+                    f"version (v{rapi_installed_ver}) than the minimum " \
+                    f"required version (v{min_rapi_version}). Please " \
+                    f"install it using: 'pip install py-eodms-rapi -U'."
+        # eod_util.EodmsProcess().print_support(True, err_msg)
+        eod_util.EodmsProcess().print_msg(err_msg, heading='error')
+        eod_util.EodmsProcess().exit_cli(1)
+
+    elif pack_v.Version(rapi_installed_ver) < \
             pack_v.Version(eodmsrapi_recent):
-        err_msg = "The py-eodms-rapi currently installed is an older " \
-                  "version. Please install the latest version using " \
-                  "'pip install py-eodms-rapi -U'."
-        eod_util.EodmsProcess().print_support(True, err_msg)
-        sys.exit(1)
+        msg = ""
+        msg = f"The py-eodms-rapi currently installed " \
+                f"(v{rapi_installed_ver}) is not the latest "\
+                f"version (v{eodmsrapi_recent}). It is recommended to use "\
+                f"the latest version of the package. Please install it " \
+                f"using: 'pip install py-eodms-rapi -U'."
+        eod_util.EodmsProcess().print_msg(msg, heading="warning")
+        # logger.warning(msg)
 
 
     # Create info folder, if it doesn't exist, to store CSV files
@@ -1617,57 +1714,46 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'silent': silent,
                   'version': version}
 
-        # Set all the parameters from the config.ini file
-        # config_info = get_config()
-        conf_util.import_config()
-
-        config_params = get_configuration_values(conf_util, downloads)
-        download_path = config_params['download_path']
-        res_path = config_params['res_path']
-        log_path = config_params['log_path']
-        timeout_query = config_params['timeout_query']
-        timeout_order = config_params['timeout_order']
-        keep_results = config_params['keep_results']
-        keep_downloads = config_params['keep_downloads']
-        max_results = config_params['max_results']
-        order_check_date = config_params['order_check_date']
-        download_attempts = config_params['download_attempts']
-        rapi_url = config_params['rapi_url']
-
-        print(f"\nImages will be downloaded to '{download_path}'.")
-
-        # Setup logging
-        logger = logging.getLogger('EODMSRAPI')
-
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
-                                      '%(message)s',
-                                      datefmt='%Y-%m-%d %I:%M:%S %p')
+        # color = eod_util.EodmsProcess().get_colour('BLACK', style_col='BRIGHT')
+        fn_col = eod_util.EodmsProcess(colourize=colourize).path_colour
+        reset = eod_util.EodmsProcess(colourize=colourize).reset_colour
+        print(f"\nImages will be downloaded to " \
+            f"'{fn_col}{download_path}{reset}'.")
 
         if not os.path.exists(os.path.dirname(log_path)):
             pathlib.Path(os.path.dirname(log_path)).mkdir(
                 parents=True, exist_ok=True)
+            
+        # Setup logging
+        logger = logging.getLogger('EODMSRAPI')
 
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
+                                        '%(message)s',
+                                        datefmt='%Y-%m-%d %I:%M:%S %p')
         log_handler = handlers.RotatingFileHandler(log_path,
-                                                   maxBytes=500000,
-                                                   backupCount=2)
+                                                    maxBytes=500000,
+                                                    backupCount=2)
         log_handler.setLevel(logging.DEBUG)
         log_handler.setFormatter(formatter)
         logger.addHandler(log_handler)
 
         logger.info(f"Script start time: {start_str}")
 
-        eod = eod_util.EodmsProcess(download=download_path,
+        eod = eod_util.EodmsProcess(version=__version__, 
+                                    download=download_path,
                                     results=res_path, log=log_path,
                                     timeout_order=timeout_order,
                                     timeout_query=timeout_query,
                                     max_res=max_results,
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
+                                    colourize=colourize, 
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
                                     rapi_url=rapi_url)
 
-        print(f"\nCSV Results will be placed in '{eod.results_path}'.")
+        print(f"\nCSV Results will be placed in '{fn_col}{eod.results_path}" \
+                f"{reset}'.")
 
         eod.cleanup_folders()
 
@@ -1679,31 +1765,39 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         prmpt.prompt()
 
+        eod.eodms_rapi.close_session()
+
         print("\nProcess complete.")
 
         eod.print_support()
+
+        eod.exit_cli()
 
     except KeyboardInterrupt:
         msg = "Process ended by user."
         print(f"\n{msg}")
 
-        if 'eod' in vars() or 'eod' in globals():
-            eod.print_support()
-            eod.export_results()
-        else:
-            eod_util.EodmsProcess().print_support()
         logger.info(msg)
-        sys.exit(1)
+
+        if 'eod' in vars() or 'eod' in globals():
+            eod.export_results()
+            eod.exit_cli(1)
+        else:
+            eod_util.EodmsProcess().exit_cli(1)
     except Exception:
         trc_back = f"\n{traceback.format_exc()}"
         # print(f"trc_back: {trc_back}")
-        if 'eod' in vars() or 'eod' in globals():
-            eod.print_support(True, trc_back)
-            eod.export_results()
-        else:
-            eod_util.EodmsProcess().print_support(True, trc_back)
         logger.error(traceback.format_exc())
-
+        if 'eod' in vars() or 'eod' in globals():
+            # eod.print_support(True, trc_back)
+            eod.print_msg(trc_back, heading='error')
+            eod.export_results()
+            eod.exit_cli(0)
+        else:
+            # eod_util.EodmsProcess().print_support(True, trc_back)
+            eod_util.EodmsProcess().print_msg(trc_back, heading='error')
+            eod_util.EodmsProcess().exit_cli(0)
 
 if __name__ == '__main__':
-    sys.exit(cli())
+    # sys.exit(cli())
+    cli()

@@ -201,8 +201,8 @@ class Geo:
                 ogr_driver = 'ESRI Shapefile'
             else:
                 warn_msg = "The format type for the output geospatial file " \
-                                   "could not be determined. No geospatial output " \
-                                   "will be created."
+                                   "could not be determined. No geospatial " \
+                                   "output will be created."
                 print(f"\n{warn_msg}")
                 return None
 
@@ -256,9 +256,9 @@ class Geo:
             if ext == '.gml' or ext == '.kml' or ext == '.shp':
                 ext_str = ext.replace('.', '').upper()
                 warn_msg = f"GDAL Python package is not installed. " \
-                                   f"Cannot export geospatial results in " \
-                                   f"'{ext_str}' format. Exporting results as a " \
-                                   f"GeoJSON."
+                            f"Cannot export geospatial results in " \
+                            f"'{ext_str}' format. Exporting results as a " \
+                            f"GeoJSON."
 
                 print(f"\n{warn_msg}")
                 self.logger.warning(warn_msg)
@@ -282,7 +282,7 @@ class Geo:
                 json.dump(json_out, f)
 
     def get_overlap(self, img, aoi):
-
+        
         rapi_geo = EODMSGeo(self.eod.eodms_rapi)
 
         img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
@@ -294,7 +294,7 @@ class Geo:
             aoi_polys = shapely.wkt.loads(aoi_wkts[0])
         else:
             aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
-            
+        
         img_area = img_geom.area
         aoi_area = aoi_polys.area
         overlap_area = img_geom.intersection(aoi_polys).area

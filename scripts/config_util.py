@@ -50,7 +50,10 @@ class ConfigUtils:
                                  "# The minimum date the download files will "
                                  "be kept; all files prior to this date will "
                                  "be deleted (format = yyyy-mm-dd)": None,
-                                 "keep_downloads": ''},
+                                 "keep_downloads": '', 
+                                 "# Determines whether to use colours in the "
+                                 "CLI output": None, 
+                                 "colourize": 'True'},
                             "Credentials":
                                 {"# Username of the eodms account used to "
                                  "access the rapi": None,
@@ -212,8 +215,10 @@ class ConfigUtils:
 
         for sec in sections:
             if self.config_info.has_option(sec, option):
-                self.config_dict[dict_sect][option] = self.config_info.get(
-                    sec, option)
+                val = self.config_info.get(sec, option)
+                if val.lower() == 'true' or val.lower() == 'false':
+                    val = eval(val)
+                self.config_dict[dict_sect][option] = val
 
     def _ask_input(self, section, in_opts):
 
@@ -434,6 +439,7 @@ Options:
 
         self._set_dict('Script', 'Script', 'keep_results')
         self._set_dict('Script', 'Script', 'keep_downloads')
+        self._set_dict('Script', 'Script', 'colourize')
 
         cr = ['Credentials', 'RAPI']  # For backwards compatibility
         self._set_dict('Credentials', cr, 'username')

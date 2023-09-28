@@ -28,6 +28,8 @@ import sys
 import os
 import requests
 import re
+import textwrap
+from colorama import Fore, Back, Style
 from tqdm.auto import tqdm
 import datetime
 import dateutil.parser as util_parser
@@ -54,7 +56,6 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
-
 
 class EodmsUtils:
 
@@ -92,6 +93,9 @@ class EodmsUtils:
 
         self.logger = logging.getLogger('eodms')
 
+        if kwargs.get('version') is not None:
+            self.version = str(kwargs.get('version'))
+
         self.download_path = "downloads"
         if kwargs.get('download') is not None:
             self.download_path = str(kwargs.get('download'))
@@ -124,12 +128,16 @@ class EodmsUtils:
         if kwargs.get('keep_downloads') is not None:
             self.keep_downloads = str(kwargs.get('keep_downloads'))
 
+        self.colourize = True
+        if kwargs.get('colourize') is not None:
+            self.colourize = bool(kwargs.get('colourize'))
+
         self.silent = False
         if kwargs.get('silent') is not None:
             self.silent = bool(kwargs.get('silent'))
 
         if self.username is not None and self.password is not None:
-            self.eodms_rapi = EODMSRAPI(self.username, self.password)
+            self.create_session(self.username, self.password)
 
         self.order_check_date = "3 days"
         if kwargs.get('order_check_date') is not None:
@@ -153,7 +161,7 @@ class EodmsUtils:
                     msg = "'download_attempts' parameter in the configuration" \
                           " file is not a valid number. 'download_attempts' " \
                           "will be set to None."
-                    self.print_msg(f"WARNING: {msg}")
+                    self.print_msg(msg, heading='warning')
                     self.logger.warning(msg)
                     self.download_attempts = None
 
@@ -198,6 +206,30 @@ class EodmsUtils:
         self.attempts = None
         self.output = None
         self.fn_str = None
+
+        # Set colours
+        self.reset_colour = self.get_colour(reset=True)
+        self.warn_colour = self.get_colour(fore='YELLOW', style='BRIGHT')
+        self.err_colour = self.get_colour(fore='RED', style='BRIGHT')
+        self.note_colour = self.get_colour(fore='CYAN', style='BRIGHT')
+        self.path_colour = self.get_colour(fore='GREEN', style='BRIGHT') \
+                            if self.colourize else ''
+        self.var_colour = self.get_colour(fore='CYAN') \
+                            if self.colourize else ''
+        self.head_colour = self.get_colour(fore='YELLOW') \
+                            if self.colourize else ''
+        self.title_colour = self.get_colour(fore='YELLOW', style='BRIGHT') \
+                            if self.colourize else ''
+        self.arrow_colour = self.get_colour(fore='YELLOW', style='BRIGHT', 
+                                            back='BLUE') \
+                            if self.colourize else ''
+
+        self.color_map = {
+            'error': self.err_colour, 
+            'warning': self.warn_colour, 
+            'note': self.note_colour
+        }
+            
 
     def _get_collection(self, sat):
 
@@ -339,7 +371,7 @@ class EodmsUtils:
             if key not in coll_fields.get_eod_fieldnames():
                 err = f"Filter '{key}' is not available for Collection " \
                           f"'{coll_id}'."
-                self.print_msg(f"WARNING: {err}")
+                self.print_msg(err, heading='warning')
                 self.logger.warning(err)
                 continue
 
@@ -358,7 +390,7 @@ class EodmsUtils:
 
             if val is None or val == '':
                 err = f"No value specified for Filter ID '{key}'."
-                self.print_msg(f"WARNING: {err}")
+                self.print_msg(err, heading='warning')
                 self.logger.warning(err)
                 continue
 
@@ -428,7 +460,7 @@ class EodmsUtils:
         # Group all records into different collections
         sat_recs = {}
 
-        if max_images is not None and not max_images == '':
+        if max_images is not None and max_images != '':
             csv_res = csv_res[:max_images]
 
         # Group by satellite
@@ -438,7 +470,7 @@ class EodmsUtils:
             satellite = rec.get('satellite')
 
             rec_lst = []
-            if satellite in sat_recs.keys():
+            if satellite in sat_recs:
                 rec_lst = sat_recs[satellite]
 
             rec_lst.append(rec)
@@ -484,8 +516,8 @@ class EodmsUtils:
 
                 else:
                     msg = "Could not determine a unique field from the " \
-                              "CSV results."
-                    self.print_msg(msg)
+                                      "CSV results."
+                    self.print_msg(msg, heading='warning')
                     self.logger.warning(msg)
                     self.results = image.ImageList(self)
                     return self.results
@@ -533,13 +565,12 @@ class EodmsUtils:
         failed_orders = []
 
         for img in images.get_images():
-            if img.get_metadata('status') == 'AVAILABLE_FOR_DOWNLOAD' or \
-                    img.get_metadata('status') == 'SUCCESS':
+            if img.get_metadata('status') in ['AVAILABLE_FOR_DOWNLOAD', 'SUCCESS']:
                 success_orders.append(img)
             else:
                 failed_orders.append(img)
 
-        if len(success_orders) > 0:
+        if success_orders:
             # Print information for all successful orders
             #   including the download location
             msg = "The following images have been downloaded:\n"
@@ -561,7 +592,7 @@ class EodmsUtils:
             self.print_footer('Successful Downloads', msg)
             self.logger.info(f"Successful Downloads: {msg}")
 
-        if len(failed_orders) > 0:
+        if failed_orders:
             msg = "The following images did not download:\n"
             for img in failed_orders:
                 rec_id = img.get_record_id()
@@ -588,7 +619,8 @@ class EodmsUtils:
                                f"(You can change the value by runnning "
                                f"'python eodms_cli.py --configure RAPI' "
                                f"and go through the parameters until you "
-                               f"reach the 'download_attempts').")
+                               f"reach the 'download_attempts').", 
+                               heading='note')
 
     def _parse_aws(self, query_imgs):
         """
@@ -647,7 +679,7 @@ class EodmsUtils:
                     # If not already, inform the user
                     self.print_msg(f"\nCollection {coll_id} cannot be ordered. "
                                    f"Images from this collection will be "
-                                   f"removed for ordering.")
+                                   f"removed for ordering.", heading='note')
                     already_mentioned.append(coll_id)
             if coll_id in cli_order_disabled:
                 # If the collection for this image is NAPL, remove it
@@ -657,7 +689,7 @@ class EodmsUtils:
                     self.print_msg(f"\nCollection {coll_id} cannot be order "
                                    f"using the EODMS-CLI or RAPI at this time. "
                                    f"Images from this collection will be "
-                                   f"removed for ordering.")
+                                   f"removed for ordering.", heading='note')
                     already_mentioned.append(coll_id)
 
         return filt_imgs
@@ -723,9 +755,10 @@ class EodmsUtils:
                 # If no orders could be found
                 self.export_results()
                 err_msg = "No orders were submitted successfully."
-                self.print_support(True, err_msg)
+                # self.print_support(True, err_msg)
+                self.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
-                sys.exit(1)
+                self.exit_cli(1)
 
         else:
             self.print_msg("No new images to order. Using existing order "
@@ -745,33 +778,32 @@ class EodmsUtils:
         if item is None:
             if self.eodms_rapi.auth_err:
                 msg = "\nAn authentication error has occurred while " \
-                      "trying to access the EODMS RAPI. Please ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html. Once your account is ready, you can " \
-                      "run 'python eodms_cli.py --configure credentials' to " \
-                      "add your new credentials to the configuration file."
+                    "trying to access the EODMS RAPI. Please ensure " \
+                    "your account login is in good standing on the actual " \
+                    "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                    "index-en.html. Once your account is ready, you can " \
+                    "run 'python eodms_cli.py --configure credentials' to " \
+                    "add your new credentials to the configuration file."
             else:
-                msg = f"Failed to retrieve a list of available collections."
+                msg = "Failed to retrieve a list of available collections."
             self.logger.error(msg)
-            self.print_support(True)
-            sys.exit(1)
+            self.exit_cli(1)
 
         # if 'get_msgs' in dir(coll_lst):
         if isinstance(item, QueryError):
             err_msg = item.get_msgs(True)
             if err_msg.find('401 Client Error') > -1:
                 msg = "An authentication error has occurred while " \
-                      "trying to access the EODMS RAPI.\n\nPlease ensure " \
-                      "your account login is in good standing on the actual " \
-                      "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
-                      "index-en.html."
+                    "trying to access the EODMS RAPI.\n\nPlease ensure " \
+                    "your account login is in good standing on the actual " \
+                    "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
+                    "index-en.html."
             else:
                 msg = f"Failed to retrieve a list of available collections. " \
-                      f"{item.get_msgs(True)}"
+                          f"{item.get_msgs(True)}"
             self.logger.error(msg)
-            self.print_support(True, msg)
-            sys.exit(1)
+            self.print_msg(msg, heading='error')
+            self.exit_cli(1)
 
     def cleanup_folders(self):
         """
@@ -857,6 +889,12 @@ class EodmsUtils:
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
 
+        # Add CLI version info to User-Agent in header
+        if 'rapi_session' in dir(self.eodms_rapi):
+            self.eodms_rapi.rapi_session.add_header('User-Agent', 
+                                                f"EODMSCLI/{self.version}", 
+                                                True)
+
         if self.rapi_domain is not None:
             print(f"Changing root url to {self.rapi_domain}\n")
             self.eodms_rapi.set_root_url(self.rapi_domain)
@@ -927,6 +965,28 @@ class EodmsUtils:
             res.append(img)
 
         return res
+    
+    def exit_cli(self, exit_code=0):
+        """
+        Properly exits the EODMS-CLI
+
+        :param exit_code: The exit code, either 0 for OK or 1 for error.
+        :type  exit_code: int
+        """
+
+        if 'eodms_rapi' in dir(self):
+            if 'close_session' in dir(self.eodms_rapi):
+                # If statement for backward compatibility
+                self.eodms_rapi.close_session()
+
+        if exit_code == 0:
+            print("\nProcess complete.")
+            self.print_support()
+        else:
+            print("\nExiting process.")
+            self.print_support(True)
+        
+        sys.exit(exit_code)
 
     def export_results(self):
         """
@@ -942,7 +1002,8 @@ class EodmsUtils:
 
         res_csv.export_results(self.cur_res)
 
-        msg = f"Results exported to '{res_fn}'."
+        msg = f"Results exported to '{self.path_colour}{res_fn}" \
+            f"{self.reset_colour}'."
         self.print_msg(msg, indent=False)
 
     def export_records(self, csv_f, header, records):
@@ -963,7 +1024,7 @@ class EodmsUtils:
             for h in header:
                 if h in rec.keys():
                     val = str(rec[h])
-                    if val.find(',') > -1:
+                    if ',' in val:
                         val = f'"{val}"'
                     out_vals.append(val)
                 else:
@@ -992,6 +1053,50 @@ class EodmsUtils:
                 return k
 
         return self.get_full_collid(in_title)
+
+    def get_rapi(self):
+        """
+        Returns the eodms_rapi object.
+        """
+
+        return self.eodms_rapi
+
+    def get_colour(self, **kwargs): 
+        """
+        Gets a colour value for colorama
+        """
+
+        reset = kwargs.get('reset')
+        if reset is None:
+            reset = False
+        
+        fore_str = ''
+        fore_col = kwargs.get('fore')
+        if fore_col is not None:
+            fore_str = eval(f'Fore.{fore_col}')
+
+        back_str = ''
+        back_col = kwargs.get('back')
+        if back_col is not None:
+            back_str = eval(f'Back.{back_col}')
+
+        style_str = ''
+        style_col = kwargs.get('style')
+        if style_col is not None:
+            style_str = eval(f'Style.{style_col}')
+        
+        if reset:
+            fore_str = Fore.RESET
+            back_str = Back.RESET
+            style_str = Style.RESET_ALL
+
+        colour = ''
+        if self.colourize:
+            colour = fore_str + back_str + style_str
+            
+        # print(f"colour: {colour}")
+
+        return colour
 
     def get_full_collid(self, coll_id):
         """
@@ -1023,15 +1128,27 @@ class EodmsUtils:
 
         if in_csv.find('.csv') == -1:
             err_msg = "The provided input file is not a CSV file. " \
-                      "Exiting process."
-            self.print_support(True, err_msg)
+                          "Exiting process."
+            # self.print_support(True, err_msg)
+            self.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
-            sys.exit(1)
+            self.exit_cli(1)
 
         eod_csv = csv_util.EODMS_CSV(self, in_csv)
-        fields = eod_csv.import_csv(True)
+        
+        return eod_csv.import_csv(True)
 
-        return fields
+    # def get_filters(self, coll_id):
+    #     """
+
+    #     """
+
+    #     all_fields = self.eodms_rapi.get_available_fields(coll_id)['search']
+
+    #     display_fields = {k: v for k, v in all_fields.items() 
+    #                         if v.get('displayed')}
+
+    #     return displayed_fields
 
     def retrieve_orders(self, query_imgs):
         """
@@ -1069,9 +1186,8 @@ class EodmsUtils:
                     self.eodms_geo.export_results(query_imgs, self.output)
 
                     self.export_results()
-                    self.print_support()
                     self.logger.info("Process ended by user.")
-                    sys.exit()
+                    self.exit_cli()
 
             order_res = self.eodms_rapi.order(json_res)
             orders.ingest_results(order_res)
@@ -1153,7 +1269,7 @@ class EodmsUtils:
 
         return max_images, max_items
 
-    def print_msg(self, msg, nl=True, indent=True):
+    def print_msg(self, msg, nl=True, indent=False, heading=None):
         """
         Prints a message to the command prompt.
         
@@ -1165,15 +1281,35 @@ class EodmsUtils:
         :type  indent: boolean
         """
 
-        indent_str = ''
+        # tabsize = 0
+        initial_indent = ''
+        subsequent_indent = ''
         if indent:
-            indent_str = ' ' * self.indent
+            # tabsize = 4
+            initial_indent = ' ' * self.indent
+            subsequent_indent = ' ' * self.indent
+
+        msg = textwrap.fill(msg, width=80, break_long_words=False, 
+                            replace_whitespace=False, 
+                            initial_indent=initial_indent, 
+                            subsequent_indent=subsequent_indent, 
+                            break_on_hyphens=False)
+        
+        color = ''
+        if heading:
+            color = self.color_map.get(heading)
+            msg = f"{initial_indent}**** {heading.upper()} ****\n" \
+                f"{msg}\n{initial_indent}*****************\n"
+
         if nl:
-            msg = f"\n{indent_str}{msg}"
-        else:
-            msg = f"{indent_str}{msg}"
+            msg = color + f"\n{msg}"
 
         print(msg)
+        print(Fore.RESET)
+
+        if heading == 'error':
+            print("\nExiting process.")
+            self.print_support(True)
 
     def print_footer(self, title, msg):
         """
@@ -1187,12 +1323,12 @@ class EodmsUtils:
 
         indent_str = ' ' * self.indent
         dash_str = (59 - len(title)) * '-'
-        print(f"\n{indent_str}-----{title}{dash_str}")
+        print(f"\n{self.note_colour}{indent_str}-----{title}{dash_str}")
         msg = msg.strip('\n')
         for m in msg.split('\n'):
             print(f"{indent_str}| {m}")
         print(f"{indent_str}------------------------------------------------"
-              f"----------------")
+              f"----------------{self.reset_colour}")
 
     def print_heading(self, msg):
         """
@@ -1208,22 +1344,49 @@ class EodmsUtils:
         print("************************************************************"
               "**************")
 
-    def print_support(self, err=False, err_str=None):
+    # def print_support(self, err=False, err_str=None):
+    #     """
+    #     Prints the 2 different support message depending if an error occurred.
+
+    #     :param err: Determines if the output should be for an error.
+    #     :type  err: bool
+    #     :param err_str: The error string to print along with support.
+    #     :type  err_str: str
+    #     """
+
+    #     if err:
+    #         if err_str:
+    #             err_str = textwrap.fill(err_str, width=80, 
+    #                                     break_long_words=False, 
+    #                                     replace_whitespace=False, 
+    #                                     break_on_hyphens=False)
+    #             # wrapper = textwrap.TextWrapper(width=80,
+    #             #                                break_long_words=False,
+    #             #                                replace_whitespace=False, 
+    #             #                                break_on_hyphens=False)
+    #             # err_str = wrapper.fill(text=err_str)
+    #             color = color_map.get('error')
+    #             style = Style.BRIGHT
+    #             print(style + color + f"\nERROR:\n{err_str}")
+
+    #         print(Fore.RESET + "\nExiting process.")
+
+    #         print(f"\nFor help, please contact the EODMS Support Team at "
+    #               f"{self.email}")
+    #     else:
+    #         print(f"\nIf you have any questions or require support, "
+    #               f"please contact the EODMS Support Team at "
+    #               f"{self.email}")
+
+    def print_support(self, err=False):
         """
         Prints the 2 different support message depending if an error occurred.
 
         :param err: Determines if the output should be for an error.
         :type  err: bool
-        :param err_str: The error string to print along with support.
-        :type  err_str: str
         """
 
         if err:
-            if err_str:
-                print(f"\nERROR: {err_str}")
-
-            print("\nExiting process.")
-
             print(f"\nFor help, please contact the EODMS Support Team at "
                   f"{self.email}")
         else:
@@ -1270,8 +1433,8 @@ class EodmsUtils:
             # Parse filters
             if filters:
 
-                print(f"self.coll_id: {self.coll_id}")
-                print(f"filters.keys(): {filters.keys()}")
+                # print(f"self.coll_id: {self.coll_id}")
+                # print(f"filters.keys(): {filters.keys()}")
 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
@@ -1426,27 +1589,24 @@ class EodmsUtils:
             if isinstance(val, list):
                 if limit is not None:
                     if any(int(v) > limit for v in val):
-                        err_msg = "WARNING: One of the values entered is " \
-                                  "invalid."
-                        self.print_msg(err_msg, indent=False)
+                        err_msg = "One of the values entered is invalid."
+                        self.print_msg(err_msg, indent=False, heading='warning')
                         self.logger.warning(err_msg)
                         return False
-                out_val = [int(v) for v in val]
+                return [int(v) for v in val]
             else:
                 if limit is not None:
                     if int(val) > limit:
-                        err_msg = "WARNING: The values entered are invalid."
-                        self.print_msg(err_msg, indent=False)
+                        err_msg = "The values entered are invalid."
+                        self.print_msg(err_msg, indent=False, heading='warning')
                         self.logger.warning(err_msg)
                         return False
 
-                out_val = int(val)
-
-            return out_val
+                return int(val)
 
         except ValueError:
-            err_msg = "WARNING: Not a valid entry."
-            self.print_msg(err_msg, indent=False)
+            err_msg = "Not a valid entry."
+            self.print_msg(err_msg, indent=False, heading='warning')
             self.logger.warning(err_msg)
             return False
 
@@ -1467,17 +1627,19 @@ class EodmsUtils:
         abs_path = os.path.abspath(in_fn)
 
         if aoi:
-            if not any(s in in_fn for s in self.aoi_extensions):
+            if all(s in in_fn for s in self.aoi_extensions):
                 err_msg = "The AOI file is not a valid file. Please make " \
                           "sure the file is either a GML, KML, GeoJSON " \
                           "or Shapefile."
-                self.print_support(True, err_msg)
+                # self.print_support(True, err_msg)
+                self.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
                 return False
 
             if not os.path.exists(abs_path):
                 err_msg = "The AOI file does not exist."
-                self.print_support(True, err_msg)
+                # self.print_support(True, err_msg)
+                self.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
                 return False
 
@@ -1502,12 +1664,13 @@ class EodmsUtils:
         """
 
         # Check if filter has proper operators
-        if not any(x in filt_items.upper() for x in self.operators):
+        if all(x in filt_items.upper() for x in self.operators):
             err_msg = "Filter(s) entered incorrectly. Make sure each " \
                       "filter is in the format of <filter_id><operator>" \
                       "<value>[|<value>] and each filter is separated by " \
                       "a comma."
-            self.print_support(True, err_msg)
+            # self.print_support(True, err_msg)
+            self.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
             return False
 
@@ -1521,7 +1684,8 @@ class EodmsUtils:
                        for x in coll_fields.get_eod_fieldnames()):
                 err_msg = f"Filter '{f}' is not available for collection " \
                           f"'{coll_id}'."
-                self.print_support(True, err_msg)
+                # self.print_support(True, err_msg)
+                self.print_msg(err_msg, heading='error')
                 self.logger.error(err_msg)
                 return False
 
@@ -1614,10 +1778,8 @@ class EodmsProcess(EodmsUtils):
         if query_imgs.count() == 0:
             msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
-            self.print_msg("Exiting process.")
-            self.print_support()
             self.logger.warning(msg)
-            sys.exit()
+            self.exit_cli()
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1630,9 +1792,7 @@ class EodmsProcess(EodmsUtils):
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
             self.export_results()
-            print("Exiting process.")
-            self.print_support()
-            sys.exit(0)
+            self.exit_cli()
 
         if max_images is None or max_images == '':
             # Inform the user of the total number of found images and ask if
@@ -1643,10 +1803,8 @@ class EodmsProcess(EodmsUtils):
                                f"ordering? (y/n): ")
                 if answer.lower().find('n') > -1:
                     self.export_results()
-                    print("Exiting process.")
-                    self.print_support()
                     self.logger.info("Process stopped by user.")
-                    sys.exit()
+                    self.exit_cli()
         else:
             # If the user specified a maximum number of orders,
             #   trim the results
@@ -1737,9 +1895,10 @@ class EodmsProcess(EodmsUtils):
         if csv_fn.find('.csv') == -1:
             err_msg = "The provided input file is not a CSV file. " \
                       "Exiting process."
-            self.print_support(err_msg)
+            # self.print_support(err_msg)
+            self.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
-            sys.exit(1)
+            self.exit_cli(1)
 
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -1769,10 +1928,8 @@ class EodmsProcess(EodmsUtils):
                 msg = f"Sorry, no images found using these CSV fields: " \
                       f"{fields_str}"
             self.print_msg(msg)
-            self.print_msg("Exiting process.")
-            self.print_support()
             self.logger.warning(msg)
-            sys.exit(1)
+            self.exit_cli(1)
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -1782,9 +1939,7 @@ class EodmsProcess(EodmsUtils):
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
             self.export_results()
-            print("Exiting process.")
-            self.print_support()
-            sys.exit()
+            self.exit_cli()
 
         #############################################
         # Order Images
@@ -1892,8 +2047,9 @@ class EodmsProcess(EodmsUtils):
                     err_msg = f"Image with Record ID {rec_id} could not be " \
                               f"found in Collection {coll}."
                     self.logger.error(err_msg)
-                    self.print_support(err_msg)
-                    sys.exit(1)
+                    # self.print_support(err_msg)
+                    self.print_msg(err_msg, heading='error')
+                    self.exit_cli(1)
 
             all_res.append(res)
 
@@ -1996,17 +2152,14 @@ class EodmsProcess(EodmsUtils):
                 aoi_check = self.validate_file(aoi, True)
                 if not aoi_check:
                     err_msg = "The provided input file is not a valid AOI " \
-                              "file. Exiting process."
+                              "file."
                     self.logger.error(err_msg)
-                    self.print_support()
-                    sys.exit(1)
+                    self.exit_cli(1)
             else:
                 if not self.eodms_geo.is_wkt(aoi):
-                    err_msg = "The provided WKT feature is not valid. " \
-                              "Exiting process."
+                    err_msg = "The provided WKT feature is not valid."
                     self.logger.error(err_msg)
-                    self.print_support()
-                    sys.exit(1)
+                    self.exit_cli(1)
 
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()
@@ -2044,10 +2197,8 @@ class EodmsProcess(EodmsUtils):
         if query_imgs.count() == 0:
             msg = "Sorry, no results found for given AOI or filters."
             self.print_msg(msg)
-            self.print_msg("Exiting process.")
             self.logger.warning(msg)
-            self.print_support()
-            sys.exit(1)
+            self.exit_cli(1)
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -2160,8 +2311,9 @@ class EodmsProcess(EodmsUtils):
         if orders is None or len(orders) == 0:
             msg = "No orders were returned."
             self.logger.error(msg)
-            self.print_support(msg)
-            sys.exit(1)
+            # self.print_support(msg)
+            self.print_msg(msg, heading='error')
+            self.exit_cli(1)
 
         msg = f"Number of order items with status " \
               f"AVAILABLE_FOR_DOWNLOAD: {len(orders)}"
@@ -2217,11 +2369,11 @@ class EodmsProcess(EodmsUtils):
         self.output = params.get('output')
 
         if csv_fn.find('.csv') == -1:
-            msg = "The provided input file is not a CSV file. " \
-                  "Exiting process."
+            msg = "The provided input file is not a CSV file."
             self.logger.error(msg)
-            self.print_support(msg)
-            sys.exit(1)
+            # self.print_support(msg)
+            self.print_msg(msg, heading='error')
+            self.exit_cli(1)
 
         # Create info folder, if it doesn't exist, to store CSV files
         start_time = datetime.datetime.now()

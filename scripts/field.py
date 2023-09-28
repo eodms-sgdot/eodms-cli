@@ -94,8 +94,7 @@ class CollFields:
 
         self.fields.append(Field(eod_name=kwargs.get('eod_name'),
                                  rapi_id=kwargs.get('rapi_id'),
-                                 rapi_title=kwargs.get('rapi_'
-                                                       'field_title'),
+                                 rapi_title=kwargs.get('rapi_title'),
                                  ui_label=kwargs.get('ui_label')))
 
     # def add_general_fields(self):
@@ -171,20 +170,21 @@ class EodFieldMapper:
         self.eod.check_error(collections)
 
         for coll_id in collections:
-            fields = self.rapi.get_available_fields(coll_id, ui_fields=True)
+            fields = self.rapi.get_available_fields(coll_id) #, ui_fields=True)
             fields = fields['search']
 
             coll_fields = CollFields(coll_id)
             for key, vals in fields.items():
+
+                if not vals.get('displayed'): continue
+
                 rapi_id = vals['id']
                 rapi_title = key
                 ui_label = rapi_title
 
                 if rapi_id.find('ORBIT_ABS') > -1:
-                    if coll_id == 'COSMO-SkyMed1':
-                        ui_label = 'Orbit Direction'
-                    else:
-                        ui_label = 'Orbit'
+                    ui_label = 'Orbit Direction' \
+                        if coll_id == 'COSMO-SkyMed1' else 'Orbit'
                 elif rapi_id.find('Look Direction') > -1:
                     if coll_id == 'ALOS-2':
                         ui_label = 'Orbit Direction'
@@ -195,11 +195,13 @@ class EodFieldMapper:
                 elif rapi_id.find('SBEAM') > -1:
                     if coll_id == 'NAPL':
                         ui_label = 'Colour'
-                    elif coll_id == 'Radarsat1' \
-                            or coll_id == 'Radarsat1RawProducts' \
-                            or coll_id == 'Radarsat2' \
-                            or coll_id == 'Radarsat2RawProducts' \
-                            or coll_id == 'RCMScienceData':
+                    elif coll_id in [
+                        'Radarsat1',
+                        'Radarsat1RawProducts',
+                        'Radarsat2',
+                        'Radarsat2RawProducts',
+                        'RCMScienceData',
+                    ]:
                         ui_label = 'Beam Mode'
                     elif coll_id == 'RCMImageProducts':
                         ui_label = 'Beam Mode Type'
