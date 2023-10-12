@@ -1,3 +1,15 @@
+##############################################################################
+#
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2023
+# 
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
+# 
+##############################################################################
+
 import re
 
 class Field:

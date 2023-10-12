@@ -1,26 +1,12 @@
 ##############################################################################
-# MIT License
-# 
+#
 # Copyright (c) His Majesty the King in Right of Canada, as
 # represented by the Minister of Natural Resources, 2023
 # 
-# Permission is hereby granted, free of charge, to any person obtaining a 
-# copy of this software and associated documentation files (the "Software"), 
-# to deal in the Software without restriction, including without limitation 
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
-# Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
-# all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-# DEALINGS IN THE SOFTWARE.
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
 # 
 ##############################################################################
 
@@ -44,6 +30,7 @@ import click
 import traceback
 import getpass
 import datetime
+import textwrap
 # from geomet import wkt
 # import json
 # import configparser
@@ -161,11 +148,13 @@ class Prompter:
                     f"{self.eod.var_colour}.shp{self.eod.reset_colour} or " \
                     f"{self.eod.var_colour}.geojson{self.eod.reset_colour} " \
                     f" containing an AOI or a WKT feature to " \
-                    f"restrict the search to a specific location\n"
+                    f"restrict the search to a specific location"
                 err_msg = "No AOI or feature specified. Please enter a WKT " \
                           "feature or a valid GML, KML, Shapefile or GeoJSON " \
                           "file"
-                input_fn = self.get_input(msg, err_msg, required=False)
+                def_msg = "leave blank to exclude spatial filtering"
+                input_fn = self.get_input(msg, err_msg, required=False, 
+                                          def_msg=def_msg)
 
         if input_fn is None or input_fn == '':
             return None
@@ -240,8 +229,9 @@ class Prompter:
 
                 msg = "For images that have an AWS link, would you like to " \
                       "download the GeoTIFFs from the repository instead of " \
-                      "submitting an order to the EODMS?\n"
-                aws = self.get_input(msg, required=False, options=['Yes', 'No'])
+                      "submitting an order to the EODMS?"
+                aws = self.get_input(msg, required=False, default='y', 
+                                     options=['Yes', 'No'])
 
                 if aws.lower().find('y') > -1:
                     aws = True
@@ -291,7 +281,7 @@ class Prompter:
                     f". {c['title']} ({c['id']})"
                 # if c['id'] == 'NAPL':
                 #     msg += ' (open data only)'
-                print(msg)
+                print(self.wrap_text(msg))
 
             # Prompted user for number(s) from list
             msg = "Enter the number of a collection from the list " \
@@ -355,9 +345,9 @@ class Prompter:
                 msg = f"Enter a date range (ex: " \
                     f"{self.eod.var_colour}20200525-20200630T200950" \
                     f"{self.eod.reset_colour}) or a previous time-frame " \
-                    f"({self.eod.var_colour}24 hours{self.eod.reset_colour}) " \
-                    f"(leave blank to search all years)\n"
-                dates = self.get_input(msg, required=False)
+                    f"({self.eod.var_colour}24 hours{self.eod.reset_colour})"
+                def_msg = "leave blank to search all years"
+                dates = self.get_input(msg, required=False, def_msg=def_msg)
 
         # -------------------------------
         # Check validity of filter input
@@ -435,16 +425,17 @@ class Prompter:
                         for f in coll_fields.get_eod_fieldnames():
                             print(f"  {f}")
 
-                        print(f"\nFilters must be entered in the format "
-                              f"of {self.eod.var_colour}[field_id]=[value]" \
-                              f"|[value]|{self.eod.reset_colour}... " 
+                        print(self.wrap_text(f"\nFilters must be entered in " \
+                              f"the format of {self.eod.var_colour}" \
+                              f"[field_id]=[value]|[value]|" \
+                              f"{self.eod.reset_colour}... " 
                               f"(field IDs are not case sensitive); " 
                               f"separate each filter with a comma.\nTo see " 
                               f"a list of field choices, enter '" \
                               f"{self.eod.var_colour}? [field_id]" \
                               f"{self.eod.reset_colour}'."
                               f"\n\nExample: BEAM_MNEMONIC=16M4|16M7," 
-                              f"PIXEL_SPACING<=20")
+                              f"PIXEL_SPACING<=20"))
 
                         msg = "Enter the filters you would like to apply " \
                               "to the search"
@@ -452,8 +443,13 @@ class Prompter:
                         filt_items = '?'
 
                         while filt_items.find('?') > -1:
-                            filt_items = input(f"\n{self.add_arrow()} " \
-                                               f"{msg}:\n")
+                            # print(f"\n{msg}:\n")
+                            # filt_items = input(f"{self.add_arrow()} ")
+                            def_msg = "leave blank for no fields"
+                            filt_items = self.get_input(msg, required=False, 
+                                                        def_msg=def_msg)
+                            # filt_items = input(f"\n{self.add_arrow()} " \
+                            #                    f"{msg}:\n")
 
                             if filt_items.find('?') > -1:
                                 field_val = filt_items.replace('?', '').strip()
@@ -609,10 +605,11 @@ class Prompter:
                 if no_order:
                     self.print_header("Enter Maximum Search Results")
                     msg = "Enter the maximum number of images you would " \
-                          "like to search for (leave blank to search for all " \
-                          "images)"
+                          "like to search for"
+                    def_msg = "leave blank to search for all images"
 
-                    maximum = self.get_input(msg, required=False)
+                    maximum = self.get_input(msg, required=False, 
+                                             def_msg=def_msg)
 
                     return maximum
 
@@ -620,10 +617,12 @@ class Prompter:
                     self.print_header("Enter Maximum for Downloads")
                     msg = "Enter the number of images with status " \
                           "AVAILABLE_FOR_DOWNLOAD you would like to " \
-                          "download (leave blank to download all images " \
-                          "with this status)"
+                          "download"
+                    def_msg = "leave blank to download all images with " \
+                        "this status"
 
-                    maximum = self.get_input(msg, required=False)
+                    maximum = self.get_input(msg, required=False, 
+                                             def_msg=def_msg)
 
                     return maximum
                 else:
@@ -632,9 +631,10 @@ class Prompter:
                         self.print_header("Enter Maximums for Ordering")
 
                         msg = "Enter the total number of images you'd " \
-                              "like to order (leave blank for no limit)"
-
-                        total_records = self.get_input(msg, required=False)
+                              "like to order"
+                        def_msg = "leave blank for no limit"
+                        total_records = self.get_input(msg, required=False, 
+                                                       def_msg=def_msg)
 
                         # ------------------------------------------
                         # Check validity of the total_records entry
@@ -659,8 +659,10 @@ class Prompter:
                     msg = "If you'd like a limit of images per order, " \
                           "enter a value (EODMS sets a maximum limit of " \
                           "100)"
-
-                    order_limit = self.get_input(msg, required=False)
+                    def_msg = "leave blank to order all images in one order " \
+                        "(up to 100)"
+                    order_limit = self.get_input(msg, required=False, 
+                                                 def_msg=def_msg)
 
                     if order_limit == '':
                         order_limit = None
@@ -713,9 +715,10 @@ class Prompter:
                       "separating each ID with a comma and separating Order " \
                       "IDs and Order Items with a vertical line " \
                       "(ex: 'orders:<order_id>,<order_id>|items:" \
-                      "<order_item_id>,...') (leave blank to skip)\n"
-
-                orderitems = self.get_input(msg, required=False)
+                      "<order_item_id>,...')"
+                def_msg = "leave blank to skip"
+                orderitems = self.get_input(msg, required=False, 
+                                            def_msg=def_msg)
 
         return orderitems
 
@@ -731,7 +734,7 @@ class Prompter:
             if not self.eod.silent:
                 self.print_header("Suppress Ordering")
 
-                msg = "\nWould you like to only search and not order?\n"
+                msg = "Would you like to only search and not order?"
                 no_order = self.get_input(msg, required=False,
                                           options=['Yes', 'No'], default='n')
 
@@ -763,9 +766,10 @@ class Prompter:
                       f"{self.eod.var_colour}.geojson{self.eod.reset_colour}," \
                       f" {self.eod.var_colour}.kml{self.eod.reset_colour}, " \
                       f"{self.eod.var_colour}.gml{self.eod.reset_colour}, or" \
-                      f" {self.eod.var_colour}.shp{self.eod.reset_colour}) " \
-                      f"(default is no output file)\n"
-                output = self.get_input(msg, required=False)
+                      f" {self.eod.var_colour}.shp{self.eod.reset_colour})"
+                def_msg = "default is no output file"
+                output = self.get_input(msg, required=False, 
+                                        def_msg=def_msg)
 
         return output
 
@@ -777,8 +781,9 @@ class Prompter:
                 self.print_header("Enter Minimum Overlap Percentage")
 
                 msg = "\nEnter the minimum percentage of overlap between " \
-                      "images and the AOI\n"
-                overlap = self.get_input(msg, required=False)
+                      "images and the AOI"
+                def_msg = "leave blank for no overlap limit"
+                overlap = self.get_input(msg, required=False, def_msg=def_msg)
 
         return overlap
 
@@ -830,14 +835,17 @@ class Prompter:
             # print(f"proc_choices.items(): {proc_choices.items()}")
             for idx, v in enumerate(proc_choices.items()):
                 desc_str = re.sub(r'\s+', ' ', v[1]['desc'].replace('\n', ''))
-                choice_strs.append(f"  {self.eod.var_colour}{idx + 1}" \
+                choice_strs.append(self.wrap_text(f"{self.eod.var_colour}{idx + 1}" \
                                     f"{self.eod.reset_colour}: ({v[0]}) " \
-                                    f"{desc_str}")
+                                    f"{desc_str}", sub_indent='     '))
             choices = '\n'.join(choice_strs)
 
-            print(f"\nWhat would you like to do?\n\n{choices}\n")
-            process = input(f"{self.add_arrow()} " \
-                            f"Please choose the type of process [1]: ")
+            print(f"\nWhat would you like to do?\n\n{choices}")
+            msg = "Please choose the type of process"
+            # process = input(f"{self.add_arrow()} ")
+            process = self.get_input(msg, required=False, default='1')
+            # process = input(f"{self.add_arrow()} " \
+            #                 f"Please choose the type of process [1]: ")
 
             if self.testing:
                 print(f"FOR TESTING - Process entered: {process}")
@@ -960,7 +968,7 @@ class Prompter:
         return out_syntax
 
     def get_input(self, msg, err_msg=None, required=True, options=None,
-                  default=None, password=False):
+                  default=None, def_msg=None, password=False):
         """
         Gets an input from the user for an argument.
         
@@ -975,6 +983,9 @@ class Prompter:
         :type  options: list
         :param default: The default value if the user just hits enter.
         :type  default: str
+        :param def_msg: If the default is None or an empty string, this 
+                        variable will tell the user what happens with no answer.
+        :type  def_msg: str
         :param password: Determines if the argument is for password entry.
         :type  password: boolean
         
@@ -984,7 +995,8 @@ class Prompter:
 
         if password:
             # If the argument is for password entry, hide entry
-            in_val = getpass.getpass(prompt=f'{self.add_arrow()} {msg}: ')
+            print(f"{msg}:")
+            in_val = getpass.getpass(prompt=f'{self.add_arrow()} ')
         else:
             opt_str = ''
             if options is not None:
@@ -994,14 +1006,22 @@ class Prompter:
 
             def_str = ''
             if default is not None:
-                def_str = f' [{default}]'
+                def_str = f" {self.eod.def_colour}[{default}]" \
+                    f"{self.eod.reset_colour}"
+            elif def_msg is not None:
+                def_str = f" {self.eod.def_colour}[{def_msg}]" \
+                    f"{self.eod.reset_colour}"
 
-            output = f"\n{self.add_arrow()} {msg}{opt_str}{def_str}: "
+            # output = f"\n{self.add_arrow()} {msg}{opt_str}{def_str}: "
+            output = f"\n{msg}{opt_str}{def_str}: "
             if msg.endswith('\n'):
                 msg_strp = msg.strip('\n')
-                output = f"\n{self.add_arrow()} {msg_strp}{opt_str}{def_str}:\n"
+                # output = f"\n{self.add_arrow()} {msg_strp}{opt_str}{def_str}:\n"
+                output = f"\n{msg_strp}{opt_str}{def_str}:\n"
             try:
-                in_val = input(output)
+                # output = self.wrap_text(output)
+                print(self.wrap_text(output))
+                in_val = input(f"\n{self.add_arrow()} ")
             except EOFError as error:
                 # Output expected EOFErrors.
                 self.logger.error(error)
@@ -1009,6 +1029,8 @@ class Prompter:
 
         if required and in_val == '':
             # eod_util.EodmsProcess().print_support(True, err_msg)
+            if err_msg is None:
+                err_msg = "Parameter is required."
             eod_util.EodmsProcess().print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
             eod_util.EodmsProcess().exit_cli(1)
@@ -1031,6 +1053,24 @@ class Prompter:
         arrow = f"{self.eod.arrow_colour}->>{self.eod.reset_colour}"
 
         return arrow
+    
+    def wrap_text(self, in_str, width=105, sub_indent='  '):
+        """
+        Wraps a given text to a certain width.
+
+        :param in_str: The input string to wrap.
+        :type  in_str: str
+        :param width: The width of the text.
+        :type  width: int
+
+        :return: The input string now wrapped.
+        :rtype: str
+        """
+
+        out_str = textwrap.fill(in_str, width=width, 
+                                replace_whitespace=False, 
+                                subsequent_indent=sub_indent)
+        return out_str
     
     def print_header(self, header):
         """
@@ -1099,7 +1139,8 @@ class Prompter:
                 new_user = True
             else:
                 print(f"\nUsing the username set in the " 
-                      f"'{self.eod.path_colour}config.ini" 
+                      f"'{self.eod.path_colour}"
+                      f"{self.config_util.get_filename()}" 
                       f"{self.eod.reset_colour}' file...")
 
         if password is None or password == '':
@@ -1118,17 +1159,23 @@ class Prompter:
                     password = base64.b64decode(password +
                                                 "========").decode("utf-8")
                 print(f"Using the password set in the " 
-                      f"'{self.eod.path_colour}config.ini" 
-                      f"{self.eod.reset_colour}' file...")
+                      f"'{self.eod.path_colour}"
+                      f"{self.config_util.get_filename()}" 
+                      f"{self.eod.reset_colour}' file...\n")
 
         if new_user or new_pass:
             suggestion = ''
             if self.eod.silent:
                 suggestion = " (it is best to store the credentials if " \
                              "you'd like to run the script in silent mode)"
-
-            answer = input(f"\n{self.add_arrow()} Would you like to store the credentials "
-                           f"for a future session{suggestion}? (y/n):")
+            # print(f"\nWould you like to store the credentials for a future " \
+            #     f"session{suggestion}? (y/n):")
+            msg = f"Would you like to store the credentials for a future " \
+                f"session{suggestion}? (y/n)"
+            # answer = input(f"\n{self.add_arrow()} Would you like to store the credentials "
+            #                f"for a future session{suggestion}? (y/n):")
+            # answer = input(f"{self.add_arrow} ")
+            answer = self.get_input(msg, required=False, default='n')
             if answer.lower().find('y') > -1:
                 # self.config_info.set('Credentials', 'username', username)
                 self.config_util.set('Credentials', 'username', username)
@@ -1665,11 +1712,14 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
     rapi_installed_ver = eodms_rapi.__version__
 
+    path_colour = eod_util.EodmsProcess(colourize=colourize).path_colour
+    warn_colour = eod_util.EodmsProcess(colourize=colourize).warn_colour
     if pack_v.Version(rapi_installed_ver) < pack_v.Version(min_rapi_version):
         err_msg = f"The py-eodms-rapi currently installed is an older " \
                     f"version (v{rapi_installed_ver}) than the minimum " \
                     f"required version (v{min_rapi_version}). Please " \
-                    f"install it using: 'pip install py-eodms-rapi -U'."
+                    f"install it using: '{path_colour}pip install " \
+                    f"py-eodms-rapi -U{warn_colour}'."
         # eod_util.EodmsProcess().print_support(True, err_msg)
         eod_util.EodmsProcess().print_msg(err_msg, heading='error')
         eod_util.EodmsProcess().exit_cli(1)
@@ -1681,7 +1731,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
                 f"(v{rapi_installed_ver}) is not the latest "\
                 f"version (v{eodmsrapi_recent}). It is recommended to use "\
                 f"the latest version of the package. Please install it " \
-                f"using: 'pip install py-eodms-rapi -U'."
+                f"using: '{path_colour}pip install py-eodms-rapi -U" \
+                f"{warn_colour}'."
         eod_util.EodmsProcess().print_msg(msg, heading="warning")
         # logger.warning(msg)
 

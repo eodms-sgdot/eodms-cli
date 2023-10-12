@@ -1,26 +1,12 @@
 ##############################################################################
-# MIT License
-# 
+#
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023.
+# represented by the Minister of Natural Resources, 2023
 # 
-# Permission is hereby granted, free of charge, to any person obtaining a 
-# copy of this software and associated documentation files (the "Software"), 
-# to deal in the Software without restriction, including without limitation 
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
-# Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
-# all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-# DEALINGS IN THE SOFTWARE.
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
 # 
 ##############################################################################
 
@@ -93,6 +79,7 @@ class EodmsUtils:
 
         self.logger = logging.getLogger('eodms')
 
+        self.version = ''
         if kwargs.get('version') is not None:
             self.version = str(kwargs.get('version'))
 
@@ -214,7 +201,7 @@ class EodmsUtils:
         self.note_colour = self.get_colour(fore='CYAN', style='BRIGHT')
         self.path_colour = self.get_colour(fore='GREEN', style='BRIGHT') \
                             if self.colourize else ''
-        self.var_colour = self.get_colour(fore='CYAN') \
+        self.var_colour = self.get_colour(fore='CYAN', style='BRIGHT') \
                             if self.colourize else ''
         self.head_colour = self.get_colour(fore='YELLOW') \
                             if self.colourize else ''
@@ -223,6 +210,7 @@ class EodmsUtils:
         self.arrow_colour = self.get_colour(fore='YELLOW', style='BRIGHT', 
                                             back='BLUE') \
                             if self.colourize else ''
+        self.def_colour = self.get_colour(fore='CYAN')
 
         self.color_map = {
             'error': self.err_colour, 
