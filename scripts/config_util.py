@@ -1,3 +1,15 @@
+##############################################################################
+#
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2023
+# 
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
+# 
+##############################################################################
+
 import configparser
 import os
 import shutil
@@ -50,7 +62,10 @@ class ConfigUtils:
                                  "# The minimum date the download files will "
                                  "be kept; all files prior to this date will "
                                  "be deleted (format = yyyy-mm-dd)": None,
-                                 "keep_downloads": ''},
+                                 "keep_downloads": '', 
+                                 "# Determines whether to use colours in the "
+                                 "CLI output": None, 
+                                 "colourize": 'True'},
                             "Credentials":
                                 {"# Username of the eodms account used to "
                                  "access the rapi": None,
@@ -83,113 +98,6 @@ class ConfigUtils:
                                  }
                             }
 
-        # # The contents of the configuration file
-        # self.config_contents = {'Paths':
-        #         [
-        #             {
-        #                 'name': 'downloads',
-        #                 'desc': 'Path of the image files downloaded from the '
-        #                         'RAPI; if blank, files will be saved in the '
-        #                         'script folder under "downloads"',
-        #                 'default': '',
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'results',
-        #                 'desc': 'Path of the results CSV files from the '
-        #                         'script; if blank, files will be saved in the '
-        #                         'script folder under "results"',
-        #                 'default': '',
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'log',
-        #                 'desc': 'Path of the log files; if blank, log files '
-        #                         'will be saved in the script folder under '
-        #                         '"log"',
-        #                 'default': '',
-        #                 'value': None
-        #             }
-        #         ],
-        #     'Script':
-        #     [
-        #
-        #         {
-        #             'name': 'keep_results',
-        #             'desc': 'The minimum date the CSV result files will be '
-        #                     'kept; all files prior to this date will be '
-        #                     'deleted (format: yyyy-mm-dd)',
-        #             'default': '',
-        #             'value': None
-        #         },
-        #         {
-        #             'name': 'keep_downloads',
-        #             'desc': 'The minimum date the download files will be kept; '
-        #                     'all files prior to this date will be deleted '
-        #                     '(format: yyyy-mm-dd)',
-        #             'default': '',
-        #             'value': None
-        #         }
-        #     ],
-        #     'Credentials':
-        #         [
-        #             {
-        #                 'name': 'username',
-        #                 'desc': 'Username of the EODMS account used to access '
-        #                         'the RAPI',
-        #                 'default': '',
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'password',
-        #                 'desc': 'Password of the EODMS account used to access '
-        #                         'the RAPI',
-        #                 'default': '',
-        #                 'value': None
-        #             },
-        #         ],
-        #     'RAPI':
-        #         [
-        #             {
-        #                 'name': 'access_attempts',
-        #                 'desc': 'Number of attempts made to the rapi when a '
-        #                         'timeout occurs',
-        #                 'default': 4,
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'max_results',
-        #                 'desc': 'Maximum number of results to return from the '
-        #                         'RAPI',
-        #                 'default': 1000,
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'timeout_query',
-        #                 'desc': 'Number of seconds before a timeout occurs '
-        #                         'when querying the RAPI',
-        #                 'default': 120.0,
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'timeout_order',
-        #                 'desc': 'Number of seconds before a timeout occurs '
-        #                         'when ordering using the RAPI',
-        #                 'default': 180.0,
-        #                 'value': None
-        #             },
-        #             {
-        #                 'name': 'order_check_date',
-        #                 'desc': 'When checking for AVAILABLE_FOR_DOWNLOAD '
-        #                         'orders, this date is the earliest they '
-        #                         'will be checked. Can be hours, days, '
-        #                         'months or years',
-        #                 'default': '3 days',
-        #                 'value': None
-        #             },
-        #         ]
-        # }
-
     def _set_dict(self, dict_sect, sections, option):
         """
         Sets a value in the config_dict based on an option from the config_info
@@ -212,8 +120,10 @@ class ConfigUtils:
 
         for sec in sections:
             if self.config_info.has_option(sec, option):
-                self.config_dict[dict_sect][option] = self.config_info.get(
-                    sec, option)
+                val = self.config_info.get(sec, option)
+                if val.lower() == 'true' or val.lower() == 'false':
+                    val = eval(val)
+                self.config_dict[dict_sect][option] = val
 
     def _ask_input(self, section, in_opts):
 
@@ -282,7 +192,7 @@ Options:
                 if sect_title not in self.config_dict.keys():
                     err = f"The section '{sect_title}' does not exist in the " \
                           f"configuration file."
-                    print(f"WARNING: {err}")
+                    self.eod.print_msg(err, heading="warning")
                     self.logger.warning(err)
                     return None
 
@@ -304,7 +214,7 @@ Options:
                 if sect_opts is None:
                     err = f"The section '{in_sect}' does not exist in the " \
                           f"configuration file."
-                    print(f"WARNING: {err}")
+                    self.eod.print_msg(err, heading="warning")
                     self.logger.warning(err)
                     return None
 
@@ -368,6 +278,16 @@ Options:
     #         out_str += '\n'
     #
     #     return out_str
+
+    def get_filename(self):
+        """
+        Gets the filename and path of the configuration file being used.
+
+        :return: The path of the configuration file.
+        :rtype: str
+        """
+
+        return self.config_fn
 
     def get_info(self):
         """
@@ -434,6 +354,7 @@ Options:
 
         self._set_dict('Script', 'Script', 'keep_results')
         self._set_dict('Script', 'Script', 'keep_downloads')
+        self._set_dict('Script', 'Script', 'colourize')
 
         cr = ['Credentials', 'RAPI']  # For backwards compatibility
         self._set_dict('Credentials', cr, 'username')

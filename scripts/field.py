@@ -1,3 +1,15 @@
+##############################################################################
+#
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2023
+# 
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
+# 
+##############################################################################
+
 import re
 
 class Field:
@@ -10,6 +22,9 @@ class Field:
     - rapi_id: The field ID used in the RAPI (ex: RSAT2.IMAGE_ID)
     - rapi_title: The English title of the field in the RAPI.
     - ui_label: The label of the field used on the EODMS UI.
+    - choices: The list of available choices for the field.
+    - datatype: The data type of the field.
+    - description: The description (or English title) of the field.
     """
 
     def __init__(self, **kwargs):
@@ -26,11 +41,20 @@ class Field:
               The field name in the RAPI.
             * *ui_label* (``str``) --
               The field name found on the EODMS UI.
+            * *choices* (``list`` or None) --
+              The list of available choices for the field.
+            * *datatype* (``str``) --
+              The data type of the field.
+            * *description* (``str``) --
+              The description (or English title) of the field.
         """
         self.eod_name = kwargs.get('eod_name')
         self.rapi_id = kwargs.get('rapi_id')
         self.rapi_title = kwargs.get('rapi_title')
         self.ui_label = kwargs.get('ui_label')
+        self.choices = kwargs.get('choices')
+        self.datatype = kwargs.get('datatype')
+        self.description = kwargs.get('description')
 
     def get_eod_name(self):
         """
@@ -67,6 +91,54 @@ class Field:
         :rtype:  str
         """
         return self.ui_label
+    
+    def get_choices(self, values_only=False):
+        """
+        Gets the available choices for the field.
+
+        :return: A list of choices.
+        :rtype:  list or None
+        """
+        if values_only:
+            return [c.get('value') for c in self.choices]
+        
+        return self.choices
+    
+    def get_datatype(self):
+        """
+        Gets the data type for the field.
+
+        :return: A list of choices.
+        :rtype:  str
+        """
+        return self.datatype
+    
+    def get_description(self):
+        """
+        Gets the description for the field.
+
+        :return: A list of choices.
+        :rtype:  str
+        """
+        return self.description
+    
+    def verify_choices(self, in_val):
+        """
+        Verifies a value based on the field's choices.
+
+        :param in_val: The value to check against the choices.
+        :type  in_val: str
+
+        :return: Either the proper choice or None.
+        :rtype:  str or None
+        """
+
+        choices_lw = [c.lower() for c in self.get_choices(True)]
+        try:
+            idx = choices_lw.index(in_val.lower())
+            return self.get_choices(True)[idx]
+        except ValueError:
+            return None
 
 
 class CollFields:
@@ -90,13 +162,20 @@ class CollFields:
               The field name in the RAPI.
             * *ui_label* (``str``) --
               The field name found on the EODMS UI.
+            * *choices* (``list`` or None) --
+              The list of available choices for the field.
+            * *datatype* (``str``) --
+              The data type of the field.
+            * *description* (``str``) --
+              The description (or English title) of the field.
         """
 
-        self.fields.append(Field(eod_name=kwargs.get('eod_name'),
-                                 rapi_id=kwargs.get('rapi_id'),
-                                 rapi_title=kwargs.get('rapi_'
-                                                       'field_title'),
-                                 ui_label=kwargs.get('ui_label')))
+        # self.fields.append(Field(eod_name=kwargs.get('eod_name'),
+        #                          rapi_id=kwargs.get('rapi_id'),
+        #                          rapi_title=kwargs.get('rapi_title'),
+        #                          ui_label=kwargs.get('ui_label'), 
+        #                          choices=kwargs.get('choices')))
+        self.fields.append(Field(**kwargs))
 
     # def add_general_fields(self):
     #     """
@@ -128,14 +207,18 @@ class CollFields:
     #                        rapi_title='Spatial Resolution',
     #                        ui_label='Pixel Spacing (Metres)')
 
-    def get_eod_fieldnames(self):
+    def get_eod_fieldnames(self, sort=False):
         """
         Gets the list of EOD fieldnames.
 
         :return: A list of EOD filenames.
         :rtype: list
         """
-        return [f.get_eod_name() for f in self.fields]
+
+        if sort:
+            return sorted([f.get_eod_name() for f in self.fields])
+        else:
+            return [f.get_eod_name() for f in self.fields]
 
     def get_field(self, eod_name):
         """
@@ -171,20 +254,25 @@ class EodFieldMapper:
         self.eod.check_error(collections)
 
         for coll_id in collections:
-            fields = self.rapi.get_available_fields(coll_id, ui_fields=True)
+            fields = self.rapi.get_available_fields(coll_id) #, ui_fields=True)
             fields = fields['search']
 
             coll_fields = CollFields(coll_id)
             for key, vals in fields.items():
+
+                if not vals.get('displayed'): continue
+
+                choices = vals.get('choices')
+                datatype = vals.get('datatype')
+                description = vals.get('description')
+
                 rapi_id = vals['id']
                 rapi_title = key
                 ui_label = rapi_title
 
                 if rapi_id.find('ORBIT_ABS') > -1:
-                    if coll_id == 'COSMO-SkyMed1':
-                        ui_label = 'Orbit Direction'
-                    else:
-                        ui_label = 'Orbit'
+                    ui_label = 'Orbit Direction' \
+                        if coll_id == 'COSMO-SkyMed1' else 'Orbit'
                 elif rapi_id.find('Look Direction') > -1:
                     if coll_id == 'ALOS-2':
                         ui_label = 'Orbit Direction'
@@ -195,11 +283,13 @@ class EodFieldMapper:
                 elif rapi_id.find('SBEAM') > -1:
                     if coll_id == 'NAPL':
                         ui_label = 'Colour'
-                    elif coll_id == 'Radarsat1' \
-                            or coll_id == 'Radarsat1RawProducts' \
-                            or coll_id == 'Radarsat2' \
-                            or coll_id == 'Radarsat2RawProducts' \
-                            or coll_id == 'RCMScienceData':
+                    elif coll_id in [
+                        'Radarsat1',
+                        'Radarsat1RawProducts',
+                        'Radarsat2',
+                        'Radarsat2RawProducts',
+                        'RCMScienceData',
+                    ]:
                         ui_label = 'Beam Mode'
                     elif coll_id == 'RCMImageProducts':
                         ui_label = 'Beam Mode Type'
@@ -227,7 +317,9 @@ class EodFieldMapper:
                 eod_name = eod_name.strip().upper().replace(' ', '_')
 
                 coll_fields.add_field(eod_name=eod_name, rapi_id=rapi_id,
-                                      rapi_title=rapi_title, ui_label=ui_label)
+                                      rapi_title=rapi_title, ui_label=ui_label, 
+                                      choices=choices, datatype=datatype, 
+                                      description=description)
 
                 if coll_id == 'Radarsat1':
                     for key in ['Radarsat1', 'R1', 'RS1']:

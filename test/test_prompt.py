@@ -1,32 +1,18 @@
 ##############################################################################
-# MIT License
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-#
+# represented by the Minister of Natural Resources, 2023
+# 
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
+# 
 ##############################################################################
 
 __title__ = 'EODMS-CLI Prompt Tester'
 __author__ = 'Kevin Ballantyne'
-__copyright__ = '# Copyright (c) His Majesty the King in Right of Canada, ' \
+__copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
                 'as represented by the Minister of Natural Resources, 2023.'
 __license__ = 'MIT License'
 __description__ = 'Performs various prompt tests of the EODMS-CLI.'
@@ -99,18 +85,21 @@ class TestEodmsCli(unittest.TestCase):
         timeout_order = config_params['timeout_order']
         keep_results = config_params['keep_results']
         keep_downloads = config_params['keep_downloads']
+        colourize = config_params['colourize']
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
         download_attempts = config_params['download_attempts']
         rapi_url = config_params['rapi_url']
 
-        eod = eod_util.EodmsProcess(download=download_path,
+        eod = eod_util.EodmsProcess(version=eodms_cli.__version__, 
+                                    download=download_path,
                                     results=res_path, log=log_path,
                                     timeout_order=timeout_order,
                                     timeout_query=timeout_query,
                                     max_res=max_results,
                                     keep_results=keep_results,
                                     keep_downloads=keep_downloads,
+                                    colourize=colourize,
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
                                     rapi_url=rapi_url)

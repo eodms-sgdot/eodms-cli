@@ -1,26 +1,12 @@
 ##############################################################################
-# MIT License
-# 
+#
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023.
+# represented by the Minister of Natural Resources, 2023
 # 
-# Permission is hereby granted, free of charge, to any person obtaining a 
-# copy of this software and associated documentation files (the "Software"), 
-# to deal in the Software without restriction, including without limitation 
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
-# Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
-# all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-# DEALINGS IN THE SOFTWARE.
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
 # 
 ##############################################################################
 
@@ -79,7 +65,8 @@ class Geo:
         if ogr.__doc__ is not None and \
                 ogr.__doc__.find("Module providing one api for multiple git "
                                  "services") > -1:
-            print("Another package named 'ogr' is installed.")
+            self.eod.print_msg("Another package named 'ogr' is installed.", 
+                               heading='warning')
             return False
 
         return True
@@ -201,9 +188,9 @@ class Geo:
                 ogr_driver = 'ESRI Shapefile'
             else:
                 warn_msg = "The format type for the output geospatial file " \
-                                   "could not be determined. No geospatial output " \
-                                   "will be created."
-                print(f"\n{warn_msg}")
+                                   "could not be determined. No geospatial " \
+                                   "output will be created."
+                self.eod.print_msg(warn_msg, heading='warning')
                 return None
 
             # Create the output Driver
@@ -256,11 +243,12 @@ class Geo:
             if ext == '.gml' or ext == '.kml' or ext == '.shp':
                 ext_str = ext.replace('.', '').upper()
                 warn_msg = f"GDAL Python package is not installed. " \
-                                   f"Cannot export geospatial results in " \
-                                   f"'{ext_str}' format. Exporting results as a " \
-                                   f"GeoJSON."
+                            f"Cannot export geospatial results in " \
+                            f"'{ext_str}' format. Exporting results as a " \
+                            f"GeoJSON."
 
-                print(f"\n{warn_msg}")
+                # print(f"\n{warn_msg}")
+                self.eod.print_msg(warn_msg, heading='warning')
                 self.logger.warning(warn_msg)
 
                 out_fn = out_fn.replace(ext, '.geojson')
@@ -282,7 +270,7 @@ class Geo:
                 json.dump(json_out, f)
 
     def get_overlap(self, img, aoi):
-
+        
         rapi_geo = EODMSGeo(self.eod.eodms_rapi)
 
         img_wkt = self._close_wkt_polygon(img.get_geometry('wkt'))
@@ -294,7 +282,7 @@ class Geo:
             aoi_polys = shapely.wkt.loads(aoi_wkts[0])
         else:
             aoi_polys = MultiPolygon(map(shapely.wkt.loads, aoi_wkts))
-            
+        
         img_area = img_geom.area
         aoi_area = aoi_polys.area
         overlap_area = img_geom.intersection(aoi_polys).area
