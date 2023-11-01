@@ -335,7 +335,7 @@ class EodmsUtils:
 
         for filt in filters:
 
-            filt = filt.upper()
+            # filt = filt.upper()
 
             if all(x not in filt for x in self.operators):
                 print(f"Filter '{filt}' entered incorrectly.")
@@ -363,14 +363,15 @@ class EodmsUtils:
                 self.logger.warning(err)
                 continue
 
-            fld = coll_fields.get_field(key).get_rapi_id()
+            fld = coll_fields.get_field(key)
+            fld_id = fld.get_rapi_id()
 
             # Modified operator if maximum or minimum
             if key.lower().find('maximum') > -1 and \
-                fld.lower().find('maximum') == -1:
+                fld_id.lower().find('maximum') == -1:
                 op = "<="
             elif key.lower().find('minimum') > -1 and \
-                fld.lower().find('minimum') == -1:
+                fld_id.lower().find('minimum') == -1:
                 op = ">="
 
             val = filt_split[1].strip()
@@ -382,7 +383,28 @@ class EodmsUtils:
                 self.logger.warning(err)
                 continue
 
-            out_filters[fld] = (op, val.split('|'))
+            # Check if val is a valid entry for the filter
+            vals = val.split('|')
+            choices = fld.get_choices(True)
+            
+            if choices is not None:
+                rep_vals = []
+                for v_str in vals:
+                    new_val = fld.verify_choices(v_str)
+                    if new_val is None:
+                        choices_str = ', '.join(list(filter(None, choices)))
+                        err = f"{v_str} is not a valid choice for filter " \
+                                f"'{key}'. Valid choices are: {choices_str}"
+                        self.print_msg(err, heading='warning')
+                        self.logger.warning(err)
+                        continue
+                    rep_vals.append(new_val)
+                vals = rep_vals
+
+            if len(vals) == 0:
+                continue
+
+            out_filters[fld_id] = (op, vals)
 
         return out_filters
 
@@ -1553,6 +1575,22 @@ class EodmsUtils:
             return dates
         except Exception:
             return False
+        
+    def validate_record_ids(self, ids):
+        """
+        Validates the user input for the Record Id search
+
+        :param ids: The Id(s) entry from the user
+        :type  ids: str
+        """
+
+        try:
+            ids_lst = ids.split(',')
+            for i in ids_lst:
+                coll, rec_id = i.split(':')
+            return ids
+        except Exception:
+            return False
 
     def validate_int(self, val, limit=None):
         """
@@ -1717,11 +1755,13 @@ class EodmsProcess(EodmsUtils):
                 aoi_check = self.validate_file(aoi, True)
                 if not aoi_check:
                     msg = "The provided input file is not a valid AOI file."
+                    self.print_msg(msg, heading="warning")
                     self.logger.warning(msg)
                     aoi = None
             else:
                 if not self.eodms_geo.is_wkt(aoi):
                     msg = "The provided WKT feature is not valid."
+                    self.print_msg(msg, heading="warning")
                     self.logger.warning(msg)
                     aoi = None
 
@@ -1765,7 +1805,7 @@ class EodmsProcess(EodmsUtils):
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
             msg = "Sorry, no results found for given AOI or filters."
-            self.print_msg(msg)
+            self.print_msg(msg, heading="warning")
             self.logger.warning(msg)
             self.exit_cli()
 
@@ -1915,7 +1955,7 @@ class EodmsProcess(EodmsUtils):
                 fields_str = ', '.join(csv_fields)
                 msg = f"Sorry, no images found using these CSV fields: " \
                       f"{fields_str}"
-            self.print_msg(msg)
+            self.print_msg(msg, heading="warning")
             self.logger.warning(msg)
             self.exit_cli(1)
 
@@ -2184,7 +2224,7 @@ class EodmsProcess(EodmsUtils):
         # If no results were found, inform user and end process
         if query_imgs.count() == 0:
             msg = "Sorry, no results found for given AOI or filters."
-            self.print_msg(msg)
+            self.print_msg(msg, heading="warning")
             self.logger.warning(msg)
             self.exit_cli(1)
 

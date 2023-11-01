@@ -65,7 +65,8 @@ class Geo:
         if ogr.__doc__ is not None and \
                 ogr.__doc__.find("Module providing one api for multiple git "
                                  "services") > -1:
-            print("Another package named 'ogr' is installed.")
+            self.eod.print_msg("Another package named 'ogr' is installed.", 
+                               heading='warning')
             return False
 
         return True
@@ -189,7 +190,7 @@ class Geo:
                 warn_msg = "The format type for the output geospatial file " \
                                    "could not be determined. No geospatial " \
                                    "output will be created."
-                print(f"\n{warn_msg}")
+                self.eod.print_msg(warn_msg, heading='warning')
                 return None
 
             # Create the output Driver
@@ -246,7 +247,8 @@ class Geo:
                             f"'{ext_str}' format. Exporting results as a " \
                             f"GeoJSON."
 
-                print(f"\n{warn_msg}")
+                # print(f"\n{warn_msg}")
+                self.eod.print_msg(warn_msg, heading='warning')
                 self.logger.warning(warn_msg)
 
                 out_fn = out_fn.replace(ext, '.geojson')

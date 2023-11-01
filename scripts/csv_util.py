@@ -84,7 +84,7 @@ class EODMS_CSV:
                     self.coll_id = self.eod.get_collid_by_name(satellite)
                     msg = f"The satellite/collection '{self.coll_id}'' is " \
                           f"not supported with this script at this time."
-                    print(f"\n{msg}")
+                    self.eod.print_msg(msg, heading="warning")
                     self.logger.warning(msg)
                     return None
 

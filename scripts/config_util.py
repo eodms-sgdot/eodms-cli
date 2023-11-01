@@ -192,7 +192,7 @@ Options:
                 if sect_title not in self.config_dict.keys():
                     err = f"The section '{sect_title}' does not exist in the " \
                           f"configuration file."
-                    print(f"WARNING: {err}")
+                    self.eod.print_msg(err, heading="warning")
                     self.logger.warning(err)
                     return None
 
@@ -214,7 +214,7 @@ Options:
                 if sect_opts is None:
                     err = f"The section '{in_sect}' does not exist in the " \
                           f"configuration file."
-                    print(f"WARNING: {err}")
+                    self.eod.print_msg(err, heading="warning")
                     self.logger.warning(err)
                     return None
 

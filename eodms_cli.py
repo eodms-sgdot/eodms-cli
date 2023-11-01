@@ -174,6 +174,7 @@ class Prompter:
                         err_msg = "Cannot open a Shapefile without GDAL. " \
                                   "Please install the GDAL Python package if " \
                                   "you'd like to use a Shapefile for your AOI."
+                        self.eod.print_msg(err_msg, heading='warning')
                         self.logger.warning(err_msg)
                         return None
 
@@ -193,6 +194,7 @@ class Prompter:
         elif any(s in input_fn for s in self.eod.aoi_extensions):
             err_msg = f"Input file {os.path.abspath(input_fn)} does not exist."
             # self.eod.print_support(err_msg)
+            self.eod.print_msg(err_msg, heading="warning")
             self.logger.warning(err_msg)
             return None
 
@@ -200,6 +202,7 @@ class Prompter:
             if not self.eod.eodms_geo.is_wkt(input_fn):
                 err_msg = "Input feature is not a valid WKT."
                 # self.eod.print_support(err_msg)
+                self.eod.print_msg(err_msg, heading="warning")
                 self.logger.warning(err_msg)
                 return None
 
@@ -422,8 +425,11 @@ class Prompter:
                         # field_map = self.eod.get_fieldMap()[coll_id]
 
                         print(f"\nAvailable fields for '{coll}':")
-                        for f in coll_fields.get_eod_fieldnames():
-                            print(f"  {f}")
+                        # for f in coll_fields.get_eod_fieldnames():
+                        #     print(f"  {f}")
+                        avail_fields = coll_fields.get_eod_fieldnames(True)
+                        fields_str = ', '.join(avail_fields)
+                        print(self.wrap_text(fields_str, init_indent='  '))
 
                         print(self.wrap_text(f"\nFilters must be entered in " \
                               f"the format of {self.eod.var_colour}" \
@@ -536,6 +542,8 @@ class Prompter:
                             coll_filters = []
                         coll_filters.append(f)
                         filt_dict[coll_id] = coll_filters
+
+        # print(f"filt_dict: {filt_dict}")
 
         return filt_dict
 
@@ -888,13 +896,23 @@ class Prompter:
         if ids is None or ids == '':
 
             if not self.eod.silent:
-                self.print_header("Enter Record ID(s)")
+                self.print_header("Enter Record Id(s)")
 
                 msg = "\nEnter a single or set of Record IDs. Include the " \
                       "Collection ID next to each ID separated by a " \
                       "colon. Separate each ID with a comma. " \
-                      "(Ex: RCMImageProducts:7625368,NAPL:3736869)\n"
+                      f"(Ex: {self.eod.var_colour}RCMImageProducts:7625368" \
+                      f",NAPL:3736869{self.eod.reset_colour})\n"
                 ids = self.get_input(msg, required=False)
+
+                process = self.eod.validate_record_ids(ids)
+
+                if not process:
+                    err_msg = "Invalid entry for the Record Ids."
+                    # self.eod.print_support(True, err_msg)
+                    self.eod.print_msg(err_msg, heading='error')
+                    self.logger.error(err_msg)
+                    self.eod.exit_cli(1)
 
         return ids
 
@@ -1054,7 +1072,7 @@ class Prompter:
 
         return arrow
     
-    def wrap_text(self, in_str, width=105, sub_indent='  '):
+    def wrap_text(self, in_str, width=105, sub_indent='  ', init_indent=''):
         """
         Wraps a given text to a certain width.
 
@@ -1069,6 +1087,7 @@ class Prompter:
 
         out_str = textwrap.fill(in_str, width=width, 
                                 replace_whitespace=False, 
+                                initial_indent=init_indent,
                                 subsequent_indent=sub_indent)
         return out_str
     
