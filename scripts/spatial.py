@@ -162,12 +162,16 @@ class Geo:
         :type  out_fn: str
         """
 
+        fn = self.eod.fn_str
+
         if out_fn is None or out_fn == '':
             return None
 
         if out_fn.lower() in ['geojson', 'kml', 'gml', 'shp']:
-            fn = self.eod.fn_str
             out_fn = f'{fn}_outlines.{out_fn.lower()}'
+
+        if os.path.isdir(out_fn):
+            out_fn = os.path.join(os.sep, out_fn, f"{fn}_outlines.geojson")
 
         # If the output GeoJSON exists, remove it
         if os.path.exists(out_fn):
