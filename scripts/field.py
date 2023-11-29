@@ -99,7 +99,10 @@ class Field:
         :return: A list of choices.
         :rtype:  list or None
         """
-        if values_only:
+
+        # print(f"self.choices: {self.choices}")
+
+        if values_only and self.choices:
             return [c.get('value') for c in self.choices]
         
         return self.choices
