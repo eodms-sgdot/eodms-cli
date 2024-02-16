@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
+# represented by the Minister of Natural Resources, 2024
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -13,11 +13,11 @@
 __title__ = 'EODMS-CLI'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2023'
+                'as represented by the Minister of Natural Resources, 2024'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.4.2'
+__version__ = '3.4.3'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -1695,7 +1695,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         print(f"\n  {__title__}, version {__version__}\n")
         eod_util.EodmsProcess().exit_cli()
 
-    conf_util = config_util.ConfigUtils()
+    conf_util = config_util.ConfigUtils(eod_util.EodmsProcess())
 
     if configure:
         conf_util.ask_user(configure)

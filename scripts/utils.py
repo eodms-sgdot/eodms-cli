@@ -1450,14 +1450,18 @@ class EodmsUtils:
                     coll_filts = filters[self.coll_id]
                     filt_parse = self._parse_filters(coll_filts)
                     if isinstance(filt_parse, str):
-                        filt_parse = None
+                        filt_parse = {}
                 else:
-                    filt_parse = None
+                    filt_parse = {}
             else:
-                filt_parse = None
+                filt_parse = {}
 
-            if self.coll_id == 'NAPL':
-                filt_parse = {'Price': ('=', True)}
+            # print(f"filt_parse: {filt_parse}")
+
+            # if self.coll_id == 'NAPL':
+            #     filt_parse['Price'] = ('=', True)
+
+            # print(f"filt_parse: {filt_parse}")
 
             result_fields = []
             if filt_parse is not None:
