@@ -150,8 +150,6 @@ class TestEodmsCli(unittest.TestCase):
 
         prmpt = self._setup_prompt()
 
-        print(f"prmpt: {prmpt}")
-
         self.assertEqual(prmpt.prompt(), None)
 
     @patch('builtins.input', side_effect=inputs['test3'])

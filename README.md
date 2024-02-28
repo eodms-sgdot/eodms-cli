@@ -68,7 +68,7 @@ For more in-depth information on the configuration file, visit [Config File](htt
 
 ### Update py-eodms-rapi
 
-If you receive one of these messages when running the eodms-cli, follow the instructions and run `pip install py-eodms-rapi -U`.
+If you receive one of these messages when running the eodms-cli, follow the instructions (run `pip install py-eodms-rapi -U`).
 
 ```bash
 **** WARNING ****
