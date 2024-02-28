@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.4.3'
+__version__ = '3.5.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -84,7 +84,7 @@ proc_choices = {'full': {
                 }
             }
 
-min_rapi_version = '1.5.0'
+min_rapi_version = '1.7.0'
 
 class Prompter:
     """
@@ -104,6 +104,7 @@ class Prompter:
         """
 
         self.eod = eod
+        self.eod.set_prompter(self)
         self.reset_col = eod.get_colour(reset=True)
         self.config_util = config_util
         self.config_info = config_util.get_info()
@@ -1105,9 +1106,9 @@ class Prompter:
         """
 
         print("\nUse this command-line syntax to run the same parameters:")
-        cli_syntax = self.build_syntax()
-        print(f"{self.eod.path_colour}{cli_syntax}{self.eod.reset_colour}")
-        self.logger.info(f"Command-line Syntax: {cli_syntax}")
+        self.cli_syntax = self.build_syntax()
+        print(f"{self.eod.path_colour}{self.cli_syntax}{self.eod.reset_colour}")
+        self.logger.info(f"Command-line Syntax: {self.cli_syntax}")
 
     def prompt(self):
         """

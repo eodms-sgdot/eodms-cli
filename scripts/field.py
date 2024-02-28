@@ -210,7 +210,7 @@ class CollFields:
     #                        rapi_title='Spatial Resolution',
     #                        ui_label='Pixel Spacing (Metres)')
 
-    def get_eod_fieldnames(self, sort=False):
+    def get_eod_fieldnames(self, sort=False, lowered=False):
         """
         Gets the list of EOD fieldnames.
 
@@ -219,9 +219,15 @@ class CollFields:
         """
 
         if sort:
-            return sorted([f.get_eod_name() for f in self.fields])
+            if lowered:
+                return sorted([f.get_eod_name().lower() for f in self.fields])
+            else:
+                return sorted([f.get_eod_name() for f in self.fields])
         else:
-            return [f.get_eod_name() for f in self.fields]
+            if lowered:
+                return [f.get_eod_name().lower() for f in self.fields]
+            else:
+                return [f.get_eod_name() for f in self.fields]
 
     def get_field(self, eod_name):
         """

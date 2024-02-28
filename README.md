@@ -1,15 +1,15 @@
-EODMS Command-line Interface
+EODMS Command-line Interface (EODMS-CLI)
 ============================
 
 ## Overview
 
-The **eodms_cli.py** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
+The **EODMS-CLI** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
 
 ## Requirements
 
 ### Python
 
-The eodms_cli.py was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
+The EODMS-CLI was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
 
 ### Python Packages
 
@@ -30,26 +30,18 @@ The eodms_cli.py was designed using **Python 3.7** however it has been tested su
 
 1. Clone the repository:
 	
-	```dos
+	```bash
 	> git clone https://github.com/eodms-sgdot/eodms-cli.git
 	```
 	
 2. Install required packages (GDAL not included):
 
-	```dos
+	```bash
 	> cd eodms-cli
 	> pip install -r requirements.txt
 	```
 	
-3. Either
-
-- run the batch file and enter values when prompted:
-	
-	```dos
-	> eodms_cli.bat
-	```
-	
-- run the script using Python
+3. Run the script using Python
 
 	```bash
 	> python eodms_cli.py
@@ -72,6 +64,55 @@ In the config file, you can:
 
 For more in-depth information on the configuration file, visit [Config File](https://github.com/eodms-sgdot/eodms-cli/wiki/Config-File).
 
+## Updating
+
+### Update py-eodms-rapi
+
+If you receive one of these messages when running the eodms-cli, follow the instructions and run `pip install py-eodms-rapi -U`.
+
+```bash
+**** WARNING ****
+The py-eodms-rapi currently installed is not the latest version. 
+It is recommended to use the latest version of the package. Please
+install it using: 'pip install py-eodms-rapi -U'.
+*****************
+```
+
+or
+
+```bash
+**** ERROR ****
+The py-eodms-rapi currently installed is an older version than the
+minimum required version. Please install it using: 'pip
+install py-eodms-rapi -U'.
+*****************
+```
+
+### Update eodms-cli
+
+If you need to update the eodms-cli to a new release, follow these steps:
+
+1. Pull from the most recent Github repository
+
+	```bash
+	> cd eodms-cli  # your eodms-cli repository file location
+	> git pull origin main
+	```
+
+2. Install required packages (GDAL not included):
+
+	```bash
+	> cd eodms-cli
+	> pip install -r requirements.txt
+	> pip install py-eodms-rapi -U  # get the latest py-eodms-rapi for best functionality
+	```
+	
+3. Run the script using Python
+
+	```bash
+	> python eodms_cli.py
+	```
+
 ## User Guide
 
 For the full instructions on using the eodms_orderdownload script, please visit the [Wiki](https://github.com/eodms-sgdot/eodms-cli/wiki).
@@ -85,7 +126,7 @@ If you have any questions or require support, please contact the EODMS Support T
 MIT License
 
 Copyright (c) His Majesty the King in Right of Canada, as 
-represented by the Minister of Natural Resources, 2023
+represented by the Minister of Natural Resources, 2024
 
 Permission is hereby granted, free of charge, to any person obtaining a 
 copy of this software and associated documentation files (the "Software"), 

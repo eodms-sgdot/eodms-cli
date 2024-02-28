@@ -62,3 +62,6 @@ _copyright_check.txt
 v3_ideas.md
 results/
 log/
+*.bat
+*.ps1
+*.code-workspace
