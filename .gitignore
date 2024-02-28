@@ -60,3 +60,8 @@ _changes.md
 _copyright_check.txt
 *.geojson
 v3_ideas.md
+results/
+log/
+*.bat
+*.ps1
+*.code-workspace

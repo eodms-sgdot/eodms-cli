@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
+# represented by the Minister of Natural Resources, 2024
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -13,11 +13,11 @@
 __title__ = 'EODMS-CLI'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2023'
+                'as represented by the Minister of Natural Resources, 2024'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.4.2'
+__version__ = '3.5.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -84,7 +84,7 @@ proc_choices = {'full': {
                 }
             }
 
-min_rapi_version = '1.5.0'
+min_rapi_version = '1.7.0'
 
 class Prompter:
     """
@@ -104,6 +104,7 @@ class Prompter:
         """
 
         self.eod = eod
+        self.eod.set_prompter(self)
         self.reset_col = eod.get_colour(reset=True)
         self.config_util = config_util
         self.config_info = config_util.get_info()
@@ -1105,9 +1106,9 @@ class Prompter:
         """
 
         print("\nUse this command-line syntax to run the same parameters:")
-        cli_syntax = self.build_syntax()
-        print(f"{self.eod.path_colour}{cli_syntax}{self.eod.reset_colour}")
-        self.logger.info(f"Command-line Syntax: {cli_syntax}")
+        self.cli_syntax = self.build_syntax()
+        print(f"{self.eod.path_colour}{self.cli_syntax}{self.eod.reset_colour}")
+        self.logger.info(f"Command-line Syntax: {self.cli_syntax}")
 
     def prompt(self):
         """
@@ -1695,7 +1696,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         print(f"\n  {__title__}, version {__version__}\n")
         eod_util.EodmsProcess().exit_cli()
 
-    conf_util = config_util.ConfigUtils()
+    conf_util = config_util.ConfigUtils(eod_util.EodmsProcess())
 
     if configure:
         conf_util.ask_user(configure)

@@ -79,6 +79,10 @@ class EodmsUtils:
 
         self.logger = logging.getLogger('eodms')
 
+        self.prompter = None
+        if kwargs.get('prompter') is not None:
+            self.prompter = kwargs.get('prompter')
+
         self.version = ''
         if kwargs.get('version') is not None:
             self.version = str(kwargs.get('version'))
@@ -356,7 +360,7 @@ class EodmsUtils:
             key = filt_split[0].strip()
             coll_fields = self.field_mapper.get_fields(coll_id)
 
-            if key not in coll_fields.get_eod_fieldnames():
+            if key.lower() not in coll_fields.get_eod_fieldnames(lowered=True):
                 err = f"Filter '{key}' is not available for Collection " \
                           f"'{coll_id}'."
                 self.print_msg(err, heading='warning')
@@ -782,6 +786,9 @@ class EodmsUtils:
             final_orders.merge_ordlist(exist_orders)
 
         return final_orders
+    
+    def set_prompter(self, prompter):
+        self.prompter = prompter
 
     def check_error(self, item):
 
@@ -814,6 +821,29 @@ class EodmsUtils:
             self.logger.error(msg)
             self.print_msg(msg, heading='error')
             self.exit_cli(1)
+
+    def check_hit_count(self):
+        """
+        Checks the hit count for a specified search
+        """
+
+        filters = self.rapi_search_args.get('filters')
+        features = self.rapi_search_args.get('features')
+        dates = self.rapi_search_args.get('dates')
+        result_fields = self.rapi_search_args.get('resultFields')
+        max_res = self.rapi_search_args.get('maxResults')
+
+        # Get hit count
+        print(f"\nGetting hit count...")
+        hit_count = self.eodms_rapi.search(self.coll_id, filters, features, 
+                                           dates, result_fields, max_res, 
+                                           hit_count=True).get('hitCount')
+        
+        msg = f"Hit Count for Search: {hit_count}"
+        print(f"\n{msg}")
+        self.logger.info(msg)
+        
+        return hit_count
 
     def cleanup_folders(self):
         """
@@ -1279,7 +1309,7 @@ class EodmsUtils:
 
         return max_images, max_items
 
-    def print_msg(self, msg, nl=True, indent=False, heading=None):
+    def print_msg(self, msg, nl=True, indent=False, heading=None, wrap_text=True):
         """
         Prints a message to the command prompt.
         
@@ -1299,11 +1329,12 @@ class EodmsUtils:
             initial_indent = ' ' * self.indent
             subsequent_indent = ' ' * self.indent
 
-        msg = textwrap.fill(msg, width=80, break_long_words=False, 
-                            replace_whitespace=False, 
-                            initial_indent=initial_indent, 
-                            subsequent_indent=subsequent_indent, 
-                            break_on_hyphens=False)
+        if wrap_text:
+            msg = textwrap.fill(msg, width=80, break_long_words=False, 
+                                replace_whitespace=False, 
+                                initial_indent=initial_indent, 
+                                subsequent_indent=subsequent_indent, 
+                                break_on_hyphens=False)
         
         color = ''
         if heading:
@@ -1313,6 +1344,8 @@ class EodmsUtils:
 
         if nl:
             msg = color + f"\n{msg}"
+        else:
+            msg = color + f"{msg}"
 
         print(msg)
         print(Fore.RESET)
@@ -1450,14 +1483,18 @@ class EodmsUtils:
                     coll_filts = filters[self.coll_id]
                     filt_parse = self._parse_filters(coll_filts)
                     if isinstance(filt_parse, str):
-                        filt_parse = None
+                        filt_parse = {}
                 else:
-                    filt_parse = None
+                    filt_parse = {}
             else:
-                filt_parse = None
+                filt_parse = {}
 
-            if self.coll_id == 'NAPL':
-                filt_parse = {'Price': ('=', True)}
+            # print(f"filt_parse: {filt_parse}")
+
+            # if self.coll_id == 'NAPL':
+            #     filt_parse['Price'] = ('=', True)
+
+            # print(f"filt_parse: {filt_parse}")
 
             result_fields = []
             if filt_parse is not None:
@@ -1469,15 +1506,59 @@ class EodmsUtils:
 
                 result_fields.extend(k for k in filt_parse.keys() 
                     if k in av_fields['results'])
+
+            # Create search method arguments dictionary:
+            self.rapi_search_args = {
+                "filters": filt_parse, 
+                "features": feats, 
+                "dates": dates, 
+                "resultFields": result_fields, 
+                "maxResults": max_images
+            }
+
             # Send a query to the EODMSRAPI object
             print(f"\nSending query to EODMSRAPI with the following "
                   f"parameters:")
-            print(f"  collection: {self.coll_id}")
-            print(f"  filters: {filt_parse}")
-            print(f"  features: {feats}")
-            print(f"  dates: {dates}")
-            print(f"  resultFields: {result_fields}")
-            print(f"  maxResults: {max_images}")
+            for k, v in self.rapi_search_args.items():
+                print(f"  {k}: {v}")
+
+            # Check hit count for the search
+            hit_count = self.check_hit_count()
+
+            if hit_count == 0:
+                msg = "Sorry, no results found for given AOI or filters."
+                self.print_msg(msg, heading="warning")
+                self.logger.warning(msg)
+                self.exit_cli()
+
+            if max_images is None or max_images == '' or max_images > hit_count:
+                max_images = hit_count
+
+            if max_images > 1500:
+                msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 
+Please separate your searches into separate commands, narrowing your searches with other filters (such as adding a date range(s)).
+Example:
+{self.prompter.cli_syntax} -d <yymmddThhmmss>-<yymmddThhmmss>"""
+                self.print_msg(msg, indent=False, heading='warning', 
+                               wrap_text=False)
+                # print(msg)
+
+                # answer = input("\nWould you like to continue with the first 1500 results returned from RAPI?: ")
+
+                ask_msg = "Would you like to continue with the 1500 latest " \
+                    "results returned from RAPI?"
+                answer = self.prompter.get_input(ask_msg, required=False, 
+                                                 default='n', 
+                                                 options=['Yes', 'No'])
+
+                if answer.lower().find('n') > -1:
+                    sys.exit()
+                # warn_msg = "The hit count for this search is too high. " \
+                #     "The RAPI will most likely timeout."
+                # self.print_msg(warn_msg, indent=False, heading='error')
+                # self.logger.warning(warn_msg)
+                max_images = 1500
+
             self.eodms_rapi.search(self.coll_id, filt_parse, feats, dates,
                                    result_fields, max_images)
 

@@ -20,13 +20,14 @@ import logging
 
 class ConfigUtils:
 
-    def __init__(self):
+    def __init__(self, eod=None):
         # Set the configuration filepath
         old_config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'eodmscli_config.ini')
 
         self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'config.ini')
+        self.eod = eod
 
         if os.path.exists(old_config_fn):
             os.rename(old_config_fn, self.config_fn)

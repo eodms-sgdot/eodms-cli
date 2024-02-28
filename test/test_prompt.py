@@ -110,7 +110,7 @@ class TestEodmsCli(unittest.TestCase):
 
     inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
                     '', 'files/test1_output.geojson', '', '3', '', 'low'],
-              'test2': ['2', 'files/EODMS_Results.csv',
+              'test2': ['2', 'files/EODMS_Results.csv', 'y', 
                     'files/test2_output.geojson', 'y', ''],
               'test3': ['3', 'RCMImageProducts:13531983,'
                                 'RCMImageProducts:13531917,'
@@ -149,6 +149,8 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 2")
 
         prmpt = self._setup_prompt()
+
+        print(f"prmpt: {prmpt}")
 
         self.assertEqual(prmpt.prompt(), None)
 
