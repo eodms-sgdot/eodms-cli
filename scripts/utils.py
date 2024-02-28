@@ -830,16 +830,18 @@ class EodmsUtils:
         filters = self.rapi_search_args.get('filters')
         features = self.rapi_search_args.get('features')
         dates = self.rapi_search_args.get('dates')
-        resultFields = self.rapi_search_args.get('resultFields')
-        maxResults = self.rapi_search_args.get('maxResults')
+        result_fields = self.rapi_search_args.get('resultFields')
+        max_res = self.rapi_search_args.get('maxResults')
 
         # Get hit count
         print(f"\nGetting hit count...")
         hit_count = self.eodms_rapi.search(self.coll_id, filters, features, 
-                                           dates, resultFields, maxResults, 
-                                           True).get('hitCount')
+                                           dates, result_fields, max_res, 
+                                           hit_count=True).get('hitCount')
         
-        print(f"Hit Count for Search: {hit_count}")
+        msg = f"Hit Count for Search: {hit_count}"
+        print(f"\n{msg}")
+        self.logger.info(msg)
         
         return hit_count
 
@@ -1520,16 +1522,17 @@ class EodmsUtils:
             for k, v in self.rapi_search_args.items():
                 print(f"  {k}: {v}")
 
-            if max_images is None or max_images == '':
-                # Check hit count for the search
-                hit_count = self.check_hit_count()
-                max_images = hit_count
+            # Check hit count for the search
+            hit_count = self.check_hit_count()
 
             if hit_count == 0:
                 msg = "Sorry, no results found for given AOI or filters."
                 self.print_msg(msg, heading="warning")
                 self.logger.warning(msg)
                 self.exit_cli()
+
+            if max_images is None or max_images == '' or max_images > hit_count:
+                max_images = hit_count
 
             if max_images > 1500:
                 msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 

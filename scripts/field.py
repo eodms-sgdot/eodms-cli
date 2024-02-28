@@ -213,11 +213,6 @@ class CollFields:
     def get_eod_fieldnames(self, sort=False, lowered=False):
         """
         Gets the list of EOD fieldnames.
-        
-        :param sort: Determines whether to sort the list of fieldnames alphabetically.
-        :type  sort: boolean
-        :param lowered: Determines whether to return the fieldnames in lowercase.
-        :type  lowered: boolean
 
         :return: A list of EOD filenames.
         :rtype: list
