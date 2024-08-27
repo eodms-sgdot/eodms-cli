@@ -1256,8 +1256,8 @@ class OrderList:
         # First get the image from the ImageList
         record_id = rec['recordId']
         if image is None:
-        if self.img_lst is not None:
-            image = self.img_lst.get_image(record_id)
+            if self.img_lst is not None:
+                image = self.img_lst.get_image(record_id)
         # else:
         #     print(f"image: {image}")
         
