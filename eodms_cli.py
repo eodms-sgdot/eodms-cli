@@ -902,7 +902,8 @@ class Prompter:
                 msg = "\nEnter a single or set of Record IDs. Include the " \
                       "Collection ID next to each ID separated by a " \
                       "colon. Separate each ID with a comma. " \
-                      f"(Ex: {self.eod.var_colour}RCMImageProducts:7625368" \
+                      f"(Ex: {self.eod.var_colour}" \
+                      f"RCMImageProducts:7625368|25654750" \
                       f",NAPL:3736869{self.eod.reset_colour})\n"
                 ids = self.get_input(msg, required=False)
 
@@ -1708,7 +1709,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     conf_util.import_config()
 
     config_params = get_configuration_values(conf_util, downloads)
-    download_path = config_params['download_path']
+    download_path = os.path.abspath(config_params['download_path'])
     res_path = config_params['res_path']
     log_path = config_params['log_path']
     timeout_query = config_params['timeout_query']

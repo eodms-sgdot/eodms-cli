@@ -13,6 +13,7 @@
 import json
 # import traceback
 import os
+import copy
 # import re
 
 # from . import csv_util
@@ -236,7 +237,7 @@ class ImageList:
         accessing the list of objects.
     """
 
-    def __init__(self, eod):
+    def __init__(self, eod, img_lst=None):
         """
         The initializer of the ImageList class.
         
@@ -245,6 +246,9 @@ class ImageList:
         """
         self.eod = eod
         self.img_lst = []
+
+        if img_lst:
+            self.img_lst = copy.deepcopy(img_lst)
 
     def add_image(self, in_image):
         """
@@ -270,6 +274,19 @@ class ImageList:
         """
 
         self.img_lst += in_imgs
+
+    def check_exists(self, record_id):
+        """
+        Checks if an image already exists based on Record Id.
+
+        :param record_id: The Record Id of the image.
+        :type  record_id: str or int
+        
+        :return: True if the image exists.
+        :rtype: boolean
+        """
+
+        return record_id in self.get_ids()
 
     def combine(self, img_list):
         """
@@ -427,6 +444,40 @@ class ImageList:
             self.img_lst.append(image)
             img_ids.append(rec_id)
 
+    def print_images(self, heading=None, as_var=False, tabs=1):
+        """
+        Gets or prints all the Images to the terminal.
+        
+        :param as_var: If True, return the message as a variable, False to
+                print to screen.
+        :type  as_var: boolean
+        :param tabs: The number of tabs to include in the printed statement.
+        :type  tabs: int
+        
+        :return: If as_var is True, returns the printed statement as a variable.
+        :rtype: str
+        """
+
+        out_str = '\nImages:\n'
+        if heading:
+            out_str = f'\n{heading}:\n'
+
+        if len(self.img_lst) == 0:
+            out_str += "N/A"
+
+        for idx, i in enumerate(self.img_lst):
+            img_id = i.get_record_id()
+            img_coll = i.get_coll_id()
+            # item_count = o.count()
+            tab_str = str('\t' * tabs)
+            out_str += f"- Image #{idx + 1}: Record Id: {img_id}; " \
+                        f"Collection Id: {img_coll}\n"
+
+        if as_var:
+            return out_str
+
+        print(out_str)
+
     def remove_image(self, rec_id):
         """
         Removes an image from the image list with a given Record ID.
@@ -482,6 +533,7 @@ class ImageList:
         if download_items is None:
             return None
 
+        order_items = []
         for item in download_items:
             rec_id = item.get('recordId')
             img = self.get_image(rec_id)
@@ -489,24 +541,32 @@ class ImageList:
             if img is None:
                 img = Image()
 
-            order_id = item.get('orderId')
+            # order_id = item.get('orderId')
             item_id = item.get('itemId')
             if item_id is None:
                 item_id = item.get('ParentItemId')
-            img.set_metadata(item_id, 'itemId')
-            img.set_metadata(order_id, 'orderId')
-            img.set_metadata(item.get('dateSubmitted'), 'dateSubmitted')
-            img.set_metadata(item.get('userDisplayName'), 'userDisplayName')
-            img.set_metadata(item.get('status'), 'status')
-            img.set_metadata(item.get('orderStatus'), 'orderStatus')
-            img.set_metadata(item.get('orderMessage'), 'orderMessage')
-            img.set_metadata(item.get('downloaded'), 'downloaded')
-            img.set_metadata(item.get('downloadPaths'), 'downloadPaths')
-            img.set_metadata(item.get('priority'), 'priority')
-            params = item.get('parameters')
-            if params is not None:
-                for k, v in params.items():
-                    img.set_metadata(v, k)
+
+            order_item = item
+            order_item['itemId'] = item_id
+
+            # img.set_metadata(item_id, 'itemId')
+            # img.set_metadata(order_id, 'orderId')
+            # img.set_metadata(item.get('dateSubmitted'), 'dateSubmitted')
+            # img.set_metadata(item.get('userDisplayName'), 'userDisplayName')
+            # img.set_metadata(item.get('status'), 'status')
+            # img.set_metadata(item.get('orderStatus'), 'orderStatus')
+            # img.set_metadata(item.get('orderMessage'), 'orderMessage')
+            # img.set_metadata(item.get('downloaded'), 'downloaded')
+            # img.set_metadata(item.get('downloadPaths'), 'downloadPaths')
+            # img.set_metadata(item.get('priority'), 'priority')
+            # params = item.get('parameters')
+            # if params is not None:
+            #     for k, v in params.items():
+            #         img.set_metadata(v, k)
+
+            order_items.append(order_item)
+
+        img.set_metadata(order_items, 'orderItems')
 
 
 class OrderItem:
@@ -624,6 +684,22 @@ class OrderItem:
             return os.path.relpath(download_path)
         else:
             return download_path
+
+    def get_status(self):
+        """
+        Gets the Status of the Order Item.
+        """
+
+        return self.metadata.get('status')
+    
+    def is_st(self):
+        """
+        Determines if order is a SAR Toolbox Order Item.
+        """
+
+        params = self.metadata.get('parameters')
+        if params is not None:
+            return 'Vap_Request_UUID' in params.keys()
 
     def add_image(self, in_image):
         """
@@ -791,7 +867,10 @@ class Order:
         :rtype: OrderItem
         """
         for item in self.order_items:
-            if item.get_item_id() == item_id:
+            id_val = item.get_item_id()
+            if int(id_val) == int(item_id):
+                # print(f"id_val: {id_val}")
+                # print(f"item_id: {item_id}")
                 return item
 
     def get_item_by_image_id(self, record_id):
@@ -904,12 +983,15 @@ class OrderList:
         self.order_lst = []
         self.img_lst = img_lst
 
-    def add_order(self, json_res):
+    def add_order_item(self, res, img=None):
 
         # print(json.dumps(json_res, indent=4, sort_keys=True))
         # answer = input("Press enter...")
 
-        self.parse_order_item(json_res)
+        if isinstance(res, OrderItem):
+            res = res.get_metadata()
+
+        self.parse_order_item(res, img)
 
     def check_downloaded(self):
         """
@@ -975,12 +1057,41 @@ class OrderList:
         :rtype: list
         """
 
-        images = []
+        images = ImageList(self.eod)
         for order in self.order_lst:
             o_items = order.get_items()
-            images.append(o_items.get_image())
+            if isinstance(o_items, list):
+                for i in o_items:
+                    images.add_image(i.get_image())
+            else:
+               images.add_image(o_items.get_image())
 
         return images
+
+    def get_image(self, rec_id):
+        """
+        Get an image from the OrderList based on Record Id.
+
+        :param rec_id: The Record Id of the image to get.
+        :type  rec_id: int
+        """
+
+        imgs = self.get_images()
+        img = imgs.get_image(rec_id)
+
+        return img
+    
+    def get_item_ids(self):
+        """
+        Returns the Item Ids of all order items
+        """
+
+        ids_lst = []
+        for o in self.order_lst:
+            items = o.get_items()
+            ids_lst += [i.get_item_id() for i in items]
+
+        return ids_lst
 
     def get_latest(self):
         """
@@ -1044,7 +1155,27 @@ class OrderList:
         """
 
         for o in self.order_lst:
-            return o.get_item(item_id)
+            o_item = o.get_item(item_id)
+            if o_item:
+                return o_item
+            
+    def get_item_by_rec_id(self, record_id):
+        """
+        Gets a particular Order Item by the Record Id.
+        
+        :param record_id: The Record Id.
+        :type  record_id: int
+        
+        :return: The OrderItem object with the given Record Id.
+        :rtype: Order
+        """
+
+        for o in self.order_lst:
+            o_items = o.get_items()
+            for i in o_items:
+                img = i.get_image()
+                if img.get_record_id() == record_id:
+                    return i
 
     def get_order_items(self):
         """
@@ -1060,7 +1191,7 @@ class OrderList:
 
         return out_list
 
-    def get_raw(self):
+    def get_raw(self, pretty_print=False):
         """
         Gets the raw metadata of all Order Items.
         
@@ -1072,14 +1203,19 @@ class OrderList:
         for order in self.order_lst:
             out_items += [i.get_metadata() for i in order.get_items()]
 
+        if pretty_print:
+            return json.dumps(out_items, indent=4)
+
         return out_items
 
-    def ingest_results(self, results):
+    def ingest_results(self, results, in_img=None):
         """
         Ingests the order results from the RAPI.
         
         :param results: A list of order results from the RAPI.
         :type  results: list
+        :param in_img: Either an ImageList object or Image object.
+        :type  in_img: image.ImageList or image.Image
         """
 
         if isinstance(results, dict):
@@ -1089,8 +1225,19 @@ class OrderList:
         if results is None:
             return None
 
-        for idx, r in enumerate(results):
-            self.parse_order_item(r)
+        for _, r in enumerate(results):
+            rec_id = r.get('recordId')
+            
+            image = None
+            if in_img:
+                if isinstance(in_img, ImageList):
+                    image = in_img.get_image(rec_id)
+                else:
+                    image = in_img
+                
+            self.parse_order_item(r, image)
+
+        # answer = input("Press enter...")
 
     def merge_ordlist(self, ord_list):
         orders = ord_list.get_orders()
@@ -1098,7 +1245,7 @@ class OrderList:
         for order in orders:
             self.order_lst.append(order)
 
-    def parse_order_item(self, rec):
+    def parse_order_item(self, rec, image=None):
         """
         Parses a single order item into the order list.
 
@@ -1108,15 +1255,16 @@ class OrderList:
 
         # First get the image from the ImageList
         record_id = rec['recordId']
-        image = None
+        if image is None:
         if self.img_lst is not None:
             image = self.img_lst.get_image(record_id)
-            image.set_metadata('Yes', 'orderSubmitted')
+        # else:
+        #     print(f"image: {image}")
+        
+        # image.set_metadata('Yes', 'orderSubmitted')
 
         # Create the OrderItem
         order_item = OrderItem(self.eod)
-        if image is not None:
-            order_item.add_image(image)
         order_item.parse_record(rec)
 
         # Update or create Order
@@ -1131,10 +1279,14 @@ class OrderList:
 
         if image is not None:
             image.set_metadata(order_id, 'orderId')
+            image.set_metadata('Yes', 'orderSubmitted')
             image.set_metadata(rec.get('status'), 'orderStatus')
             image.set_metadata(rec.get('statusMessage'), 'statusMessage')
-            image.set_metadata(rec.get('dateRapiOrdered'),
-                               'dateRapiOrdered')
+            image.set_metadata(rec.get('dateRapiOrdered'), 'dateRapiOrdered')
+
+            order_item.add_image(image)
+
+        return order_item
 
     def print_order_items(self):
         """
@@ -1148,7 +1300,7 @@ class OrderList:
             # item_count = o.count()
             o.print_items()
 
-    def print_orders(self, as_var=False, tabs=1):
+    def print_orders(self, heading=None, as_var=False, tabs=1):
         """
         Gets or prints all the Order Ids to the terminal.
         
@@ -1162,12 +1314,31 @@ class OrderList:
         :rtype: str
         """
 
-        out_str = ''
-        for o in self.order_lst:
+        out_str = '\nOrders:\n'
+        if heading:
+            out_str = f'\n{heading}:\n'
+
+        if len(self.order_lst) == 0:
+            out_str += "N/A"
+        
+        for idx, o in enumerate(self.order_lst):
             ord_id = o.get_order_id()
             # item_count = o.count()
             tab_str = str('\t' * tabs)
-            out_str += f"\n{tab_str}Order Id: {ord_id}\n"
+            out_str += f"\n- Order #{idx + 1}: Order Id: {ord_id}"
+
+            ord_items = o.get_items()
+            for item in ord_items:
+                item_id = item.get_item_id()
+                status = item.get_status()
+                out_str += f"\n{tab_str}- Order Item Id: {item_id}:\n" \
+                            f"{tab_str}{tab_str}- Status: {status}"
+                img = item.get_image()
+                if img:
+                    img_id = img.get_record_id()
+                    img_coll = img.get_coll_id()
+                    out_str += f"\n{tab_str}{tab_str}- Record Id: {img_id}" \
+                               f"\n{tab_str}{tab_str}- Collection Id: {img_coll}\n"
 
         if as_var:
             return out_str
@@ -1241,3 +1412,45 @@ class OrderList:
         new_order = Order(order_id)
         new_order.add_item(order_item)
         self.order_lst.append(new_order)
+
+    def update_downloads(self,download_items):
+
+        # print(f"self.order_lst: {self.get_raw()}")
+        # print(f"download_items: {download_items}")
+
+        # print(f"order item ids: {self.get_item_ids()}")
+
+        for item in download_items:
+            item_id = item.get('itemId')
+
+            # print(f"item_id: {item_id}")
+
+            order_item = self.get_order_item(item_id)
+
+            # print(f"order_item: {order_item}")
+
+            if order_item is None:
+                if 'parameters' in item.keys():
+                    params = item['parameters']
+                    # print(f"params: {params}")
+                    item_id = params.get('ParentItemId')
+                    # print(f"item_id: {item_id}")
+                    order_item = self.get_order_item(item_id)
+                    if order_item is None:
+                        return None
+                else:
+                    return None
+
+            order_item.set_metadata('dateSubmitted', item.get('dateSubmitted'))
+            order_item.set_metadata('userDisplayName',
+                                    item.get('userDisplayName'))
+            order_item.set_metadata('status', item.get('status'))
+            order_item.set_metadata('orderStatus', item.get('orderStatus'))
+            order_item.set_metadata('orderMessage', item.get('orderMessage'))
+            order_item.set_metadata('downloaded', item.get('downloaded'))
+            order_item.set_metadata('downloadPaths', item.get('downloadPaths'))
+            order_item.set_metadata('priority', item.get('priority'))
+            params = item.get('parameters')
+            if params is not None:
+                for k, v in params.items():
+                    order_item.set_metadata(k, v)
