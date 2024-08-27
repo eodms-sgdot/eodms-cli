@@ -2262,12 +2262,12 @@ class EodmsProcess(EodmsUtils):
             coll, rec_ids = i.split(':')
 
             for rec_id in rec_ids.split('|'):
-            res = self.eodms_rapi.get_record(coll, rec_id)
+                res = self.eodms_rapi.get_record(coll, rec_id)
 
             if isinstance(res, dict) and 'errors' in res.keys():
                 if res.get('errors').find('404 Client Error') > -1:
-                        err_msg = f"Image with Record ID {rec_id} could not " \
-                                    f"be found in Collection {coll}."
+                    err_msg = f"Image with Record ID {rec_id} could not " \
+                                f"be found in Collection {coll}."
                     self.logger.error(err_msg)
                     # self.print_support(err_msg)
                     self.print_msg(err_msg, heading='error')
