@@ -2280,6 +2280,8 @@ class EodmsProcess(EodmsUtils):
         query_imgs = image.ImageList(self)
         query_imgs.ingest_results(all_res)
 
+        self.cur_res = query_imgs
+
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
             self.export_results()
