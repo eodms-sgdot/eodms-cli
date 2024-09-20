@@ -40,7 +40,7 @@
                 },
                 {
                     "method_id": 104,
-                    "name": "Complex to Detected",
+                    "name": "Incidence Angle Extraction",
                     "params": [
                         {
                             "param_id": "LabelName",
