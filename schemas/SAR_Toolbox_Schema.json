@@ -469,7 +469,7 @@
                             "data_type": "int",
                             "default": null,
                             "display_order": 2,
-                            "constants_key": "dem_resamplings",
+                            "constants_key": "resampling_methods",
                             "sub_params": null
                         },
                         {
@@ -589,7 +589,7 @@
                             "data_type": "int",
                             "default": null,
                             "display_order": 3,
-                            "constants_key": "dem_resamplings",
+                            "constants_key": "resampling_methods",
                             "sub_params": null
                         },
                         {
