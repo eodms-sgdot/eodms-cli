@@ -1536,7 +1536,7 @@
         },
         {
             "category_id": 700,
-            "name": "Polarimetry",
+            "name": "Interferometry",
             "methods": [
                 {
                     "method_id": 701,
