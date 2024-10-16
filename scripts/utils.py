@@ -282,7 +282,7 @@ class EodmsUtils:
         :return: A list of dictionaries containing keys 'start' and 'end' 
                 with the specific date ranges 
                 (ex: [{'start': '20200105_045034', 'end': '20210105_000000'}])
-        :rtype: list
+        :rtype: list[dict]
         """
 
         if in_dates is None or in_dates == '':
@@ -325,7 +325,7 @@ class EodmsUtils:
         
         :param filters: A list of filters from a user for a specific 
                 collection.
-        :type  filters: list
+        :type  filters: list[str]
         :param coll_id: The Collection ID for the filters.
         :type  coll_id: str
                 
@@ -1100,9 +1100,9 @@ class EodmsUtils:
         :param csv_f: The CSV file to write to.
         :type  csv_f: (file object)
         :param header: A list containing the header for the file.
-        :type  header: list
+        :type  header: list[str]
         :param records: A list of images.
-        :type  records: list
+        :type  records: list[dict]
         """
 
         # Write the values to the output CSV file
@@ -1210,7 +1210,7 @@ class EodmsUtils:
         :type  in_csv: str
 
         :return: A list of fields from the CSV.
-        :rtype: list
+        :rtype: list[str]
         """
 
         if in_csv.find('.csv') == -1:
@@ -1242,7 +1242,10 @@ class EodmsUtils:
         Gets an image from the RAPI based on an order into an image.Image object.
 
         :param order: The results from the RAPI.
-        :type  order: list
+        :type  order: list[dict]
+
+        :return: A list of Images based on the order.
+        :rtype:  image.ImageList
         """
 
         if isinstance(order, list):
@@ -1266,7 +1269,7 @@ class EodmsUtils:
         :param orders: The OrderList object.
         :type  orders: OrderList
         :param download_items: A list of items from the EODMS_RAPI download.
-        :type  download_items: list
+        :type  download_items: list[dict]
         :param imgs: An ImageList object,
         :type  imgs: ImageList
         """
@@ -1358,10 +1361,10 @@ class EodmsUtils:
         Sorts a list of fields to include recordId, collectionId
         
         :param fields: A list of fields from an Image.
-        :type  fields: list
+        :type  fields: list[str]
         
         :return: The sorted list of fields.
-        :rtype: list
+        :rtype: list[str]
         """
 
         field_order = ['recordId', 'collectionId']
@@ -1543,7 +1546,7 @@ class EodmsUtils:
         Sends various image entries to the EODMSRAPI.
         
         :param collections: A list of collections.
-        :type  collections: list
+        :type  collections: list[str]
         :param kwargs: A dictionary of arguments:
         
                 - filters (dict): A dictionary of filters separated by 
@@ -1757,7 +1760,7 @@ Example:
         except Exception:
             return False
         
-    def validate_record_ids(self, ids):
+    def validate_record_ids(self, ids, single_coll=False):
         """
         Validates the user input for the Record Id search
 
@@ -1767,10 +1770,13 @@ Example:
 
         try:
             ids_lst = ids.split(',')
+            if single_coll:
+                coll, rec_ids = ids_lst[0].split(':')
+            else:
             for i in ids_lst:
                 coll, rec_ids = i.split(':')
             return ids
-        except Exception:
+        except Exceptionase:
             return False
 
     def validate_int(self, val, limit=None):
@@ -2280,8 +2286,6 @@ class EodmsProcess(EodmsUtils):
         query_imgs = image.ImageList(self)
         query_imgs.ingest_results(all_res)
 
-        self.cur_res = query_imgs
-
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
             self.export_results()
@@ -2576,3 +2580,64 @@ class EodmsProcess(EodmsUtils):
         self.cur_res = query_imgs
         self._finish_process(orders)
 
+    def order_st(self, sar_toolbox, priority):
+        """
+        Submit a SAR Toolbox order to the RAPI.
+        """
+
+        start_str = self._set_result_fn()
+        self.logger.info(f"Process start time: {start_str}")
+
+        st_json = sar_toolbox.get_request()
+
+        all_items = []
+        for item in st_json.get('items'):
+            coll_id = item.get('collectionId')
+            rec_id = item.get('recordId')
+            res = self.eodms_rapi.get_record(coll_id, rec_id)
+
+            if isinstance(res, dict) and 'errors' in res.keys():
+                if res.get('errors').find('404 Client Error') > -1:
+                    err_msg = f"Image with Record ID {rec_id} could not " \
+                                f"be found in Collection {coll_id}."
+                    self.logger.error(err_msg)
+                    # self.print_support(err_msg)
+                    self.print_msg(err_msg, heading='error')
+                    self.exit_cli(1)
+
+            all_items.append(res)
+
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(all_items)
+
+        # Update the self.cur_res for output results
+        self.cur_res = query_imgs
+
+        print(f"\nSAR Toolbox JSON request POSTED to RAPI:")
+        print(json.dumps(st_json, indent=4))
+
+        orders = image.OrderList(self)
+        # print(type(self.eodms_rapi))
+        order_res = self.eodms_rapi.order_json(st_json, priority)
+        
+        if isinstance(order_res, QueryError):
+            err_msg = order_res.get_msgs(True)
+            self.logger.error(err_msg)
+            self.print_msg(err_msg, heading='error')
+            self.exit_cli(1)
+
+        # Remove other order items in order
+        order_id = order_res[0].get('orderId')
+        available_order = self.eodms_rapi.get_order(order_id)
+
+        orders.ingest_results(available_order)
+
+        # Get a list of order items in JSON format for the EODMSRAPI
+        if orders.count() > 0:
+            self._download_items(orders, query_imgs)
+        else:
+            print("\nNo orders submitted.")
+
+        orders.print_orders("Download results")
+
+        self._finish_process(orders)

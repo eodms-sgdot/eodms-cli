@@ -19,6 +19,8 @@ import logging
 import shapely.wkt
 import numpy as np
 from shapely.geometry import MultiPolygon
+import shapely
+import math
 
 from eodms_rapi import EODMSGeo
 
@@ -79,6 +81,10 @@ class Geo:
         gjson['coordinates'] = coords.tolist()
 
         return wkt.dumps(gjson)
+
+    def get_centroid(self, in_feat):
+        geom = shapely.from_geojson(in_feat)
+        return geom.centroid
 
     def convert_image_geom(self, coords, output='array'):
         """
@@ -326,3 +332,11 @@ class Geo:
         ring = geom.GetGeometryRef(0)
         for i in range(ring.GetPointCount()):
             ring.SetPoint(i, ring.GetY(i), ring.GetX(i))
+
+    def metres_to_degrees(self, metres, lat):
+        deg = float(metres) / (111.32 * 1000 * math.cos(lat * (math.pi / 180)))
+        return deg
+
+    def degrees_to_metres(self, deg, lat):
+        metres = float(deg) * (111.32 * 1000 * math.cos(lat * (math.pi / 180)))
+        return metres

@@ -1224,6 +1224,9 @@ class OrderList:
 
         if results is None:
             return None
+        
+        if not isinstance(results, list):
+            return None
 
         for _, r in enumerate(results):
             rec_id = r.get('recordId')
