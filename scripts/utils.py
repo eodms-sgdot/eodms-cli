@@ -1773,8 +1773,8 @@ Example:
             if single_coll:
                 coll, rec_ids = ids_lst[0].split(':')
             else:
-            for i in ids_lst:
-                coll, rec_ids = i.split(':')
+                for i in ids_lst:
+                    coll, rec_ids = i.split(':')
             return ids
         except Exceptionase:
             return False
