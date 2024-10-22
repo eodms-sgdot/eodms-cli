@@ -80,7 +80,7 @@ jobs:
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -prc st_order -st test/files/sar_toolbox_request.json -o test/test6_auto.geojson -s
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -prc order_st -st test/files/sar_toolbox_request.json -o test/test6_auto.geojson -s
 
       # List files
       - name: List files
