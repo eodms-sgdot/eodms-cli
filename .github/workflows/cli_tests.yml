@@ -59,7 +59,7 @@ jobs:
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i RCMImageProducts:13531983|13531917,Radarsat2:13532412,Radarsat1:5053934 -prc record_id -a  -o test/files/test3_auto.geojson -pri low -s
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i "RCMImageProducts:13531983|13531917,Radarsat2:13532412,Radarsat1:5053934" -prc record_id -a  -o test/files/test3_auto.geojson -pri low -s
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI - Process 4
