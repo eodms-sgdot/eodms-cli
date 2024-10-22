@@ -582,8 +582,8 @@ class Prompter:
 
         if not os.path.exists(input_fn):
             # err_msg = "Not a valid CSV file. Please enter a valid CSV file."
-            err_msg = "The specified CSV file does not exist. Please enter a " \
-                      "valid CSV file."
+            err_msg = f"The specified CSV file ({input_fn}) does not exist. " \
+                      f"Please enter a valid CSV file."
             # self.eod.print_support(True, err_msg)
             self.eod.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
