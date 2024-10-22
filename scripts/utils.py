@@ -636,7 +636,7 @@ class EodmsUtils:
                 # img = item_info.get_image()
 
                 # rec_id = img.get_record_id()
-                # order_id = item_info.get_metadata('orderId')
+                order_id = item_info.get_metadata('orderId')
                 rec_id = item_info.get_record_id()
                 coll_id = item_info.get_metadata('collectionId')
                 orderitem_id = item_info.get_metadata('itemId')
