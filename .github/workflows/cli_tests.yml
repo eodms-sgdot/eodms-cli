@@ -43,7 +43,7 @@ jobs:
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
         run: |
           cd test
-          python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i files\RCMImageProducts_Results.csv -max 4 -prc order_csv -o files\test2_auto.geojson -pri low -s
+          python ../eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i files\RCMImageProducts_Results.csv -max 4 -prc order_csv -o files\test2_auto.geojson -pri low -s
         
       # List files
       - name: List files
