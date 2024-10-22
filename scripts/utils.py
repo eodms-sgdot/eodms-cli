@@ -2623,6 +2623,14 @@ class EodmsProcess(EodmsUtils):
         if isinstance(order_res, QueryError):
             err_msg = order_res.get_msgs(True)
             self.logger.error(err_msg)
+
+            if err_msg.find('500 Server Error') > -1:
+                err_msg += "\n\nSAR Toolbox validation failed." \
+                    "\n\nBefore submitting a new request or contacting the " \
+                    "EODMS Support Team, please check the common " \
+                    "issues/errors at " \
+                    "https://github.com/eodms-sgdot/eodms-cli/wiki/Process-6#validation-errorscommon-issues"
+
             self.print_msg(err_msg, heading='error')
             self.exit_cli(1)
 
