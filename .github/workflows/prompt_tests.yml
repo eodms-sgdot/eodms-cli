@@ -110,6 +110,16 @@ jobs:
         run: |
           cd test
           python -m unittest test_prompt.TestEodmsCli.test_wrongcreds
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI Prompt Test 8 - SAR Toolbox Ordering
+        continue-on-error: true
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: |
+          cd test
+          python -m unittest test_prompt.TestEodmsCli.test_process6
         
       # List files
       - name: List files
