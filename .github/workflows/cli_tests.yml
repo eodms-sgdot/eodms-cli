@@ -41,7 +41,14 @@ jobs:
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i test/files/RCMImageProducts_Results.csv -max 4 -prc order_csv -o test/files/test2_auto.geojson -pri low -s
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i test/files/RCMImageProducts_Results.csv -max 4 -prc order_csv -o test/files/test1_auto.geojson -pri low -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i test/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o test/files/test2_auto.geojson -dn test/downloads -pri low -s
         
       # List files
       - name: List files
