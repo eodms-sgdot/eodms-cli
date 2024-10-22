@@ -1045,7 +1045,7 @@ class Prompter:
         polarization = [labels[int(idx) - 1] for idx in choice_idx]
         param.set_value(polarization)
 
-        cat_names = st.get_cat_names()
+        cat_names = st.get_cat_names(True)
         cat_indices = ask_item("Categories", cat_names, multiple=True, 
                                required=True)
         categories = st.set_category_runs(cat_indices)
@@ -1057,7 +1057,7 @@ class Prompter:
             # Set the method
             ###############################
 
-            methods = category.get_method_names()
+            methods = category.get_method_names(True)
             method_indices = ask_item("Methods", methods, multiple=True, 
                                       required=True)
             methods = category.set_method_runs(method_indices)

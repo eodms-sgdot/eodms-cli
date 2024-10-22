@@ -655,13 +655,17 @@ class Category:
 
         return self.methods
     
-    def get_method_names(self):
+    def get_method_names(self, with_ids=False):
         """
         Gets a list of available Method names for the Category.
 
         :return: A list of available Method names.
         :rtype:  list[str]
         """
+
+        if with_ids:
+            return [f"{m.name} ({m.id})" for m in self.get_methods()]
+
         return [m.name for m in self.get_methods()]
 
     def get_method_runs(self):
@@ -737,13 +741,16 @@ class SARToolbox:
         with open(json_fn) as f:
             self.full_request = json.load(f)
 
-    def get_cat_names(self):
+    def get_cat_names(self, with_ids=False):
         """
         Gets a list of Category names.
 
         :return: A list of SAR Toolbox Category names.
         :rtype:  list[str]
         """
+
+        if with_ids:
+            return [f"{c.name} ({c.id})" for c in self.categories]
 
         return [c.name for c in self.categories]
     

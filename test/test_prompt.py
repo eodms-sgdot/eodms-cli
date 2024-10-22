@@ -124,7 +124,11 @@ class TestEodmsCli(unittest.TestCase):
                         'beam_mnemonic like 16M%,product_type=SLC',
                         'beam_mnemonic like EH%,transmit_polarization=H',
                         '20170101-20220527', 'files/test6_output.geojson',
-                        'y', '']
+                        'y', ''],
+              'test8': ['6', 'RCMImageProducts:8538795|8526252|8502911',
+                        '4,5', '4,1,2,3', '3', '', 'True', '', '2', '', 'True',
+                        '', '1,2', '6', '', '', '', 'True', '', '2', '', '', 
+                        '', '', '5', '', '', '', '', 'True', '', '1', '', 'low']
               }
 
     @patch('builtins.input', side_effect=inputs['test1'])
@@ -209,6 +213,18 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Wrong Credentials")
 
         prmpt = self._setup_prompt(username='fdhsdffsd', password='dfghdfsh')
+
+        self.assertEqual(prmpt.prompt(), None)
+
+    @patch('builtins.input', side_effect=inputs['test8'])
+    def test_process6(self, mock_input):
+        """
+        Runs a test to submit a SAR Toolbox order.
+        """
+
+        self._print_header("Process 6 - SAR Toolbox Order")
+
+        prmpt = self._setup_prompt()
 
         self.assertEqual(prmpt.prompt(), None)
 
