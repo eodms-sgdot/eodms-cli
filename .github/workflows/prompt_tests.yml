@@ -123,7 +123,7 @@ jobs:
         
       # List files
       - name: List files
-        run: ls
+        run: ls -all
 
       # Runs a set of commands using the runners shell
       # - name: Run a multi-line script

@@ -36,16 +36,55 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
+      # Set 'download_attempts' in configuration file
+      - name: Set 'download_attempts' in configuration file
+        run: python eodms_cli.py --configure RAPI.download_attempts=20
+
       # Runs a single command using the runners shell
-      - name: Run EODMS-CLI
+      - name: Run EODMS-CLI - Process 1
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i tests\files\RCMImageProducts_Results.csv -max 4 -prc order_csv -o tests\files\test2_auto.geojson -pri low -s
-        
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i test/files/NCR_AOI.geojson -max 2:1 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o test/files/test1_auto.geojson -dn test/downloads -pri low -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI - Process 2
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i test/files/RCMImageProducts_Results.csv -max 4 -prc order_csv -o test/files/test2_auto.geojson -pri low -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI - Process 3
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i "RCMImageProducts:13531983|13531917,Radarsat2:13532412,Radarsat1:5053934" -prc record_id -a  -o test/files/test3_auto.geojson -pri low -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI - Process 4
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -prc download_available -o test/files/test4_auto.geojson -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI - Process 5
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i test/files/20220530_145625_Results.csv -prc download_results -o test/test5_auto.geojson -s
+
+      # Runs a single command using the runners shell
+      - name: Run EODMS-CLI - Process 6
+        env:
+          EODMS_USER: ${{ secrets.EODMS_USER }}
+          EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -prc order_st -st test/files/sar_toolbox_request.json -o test/test6_auto.geojson -s
+
       # List files
       - name: List files
-        run: ls
+        run: ls -all
 
       # Runs a set of commands using the runners shell
       # - name: Run a multi-line script

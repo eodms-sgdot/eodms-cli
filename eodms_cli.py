@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.5.0'
+__version__ = '3.6.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -51,6 +51,7 @@ import eodms_rapi
 from scripts import utils as eod_util
 from scripts import field
 from scripts import config_util
+from scripts import sar
 
 # from utils import csv_util
 # from utils import image
@@ -81,10 +82,14 @@ proc_choices = {'full': {
                     'desc': 'Download existing orders using a CSV file from '
                             'a previous order/download process (files found '
                             'under "results" folder)'
+                },
+                'order_st': {
+                    'name': 'Submit Order to SAR Toolbox',
+                    'desc': 'Submit order to the SAR Toolbox'
                 }
             }
 
-min_rapi_version = '1.7.0'
+min_rapi_version = '1.9.0'
 
 class Prompter:
     """
@@ -251,10 +256,10 @@ class Prompter:
         :param coll: The collections if already set by the command-line.
         :type  coll: str
         :param coll_lst: A list of collections retrieved from the RAPI.
-        :type  coll_lst: list
+        :type  coll_lst: list[str]
         
         :return: A list of collections entered by the user.
-        :rtype: list
+        :rtype: list[str]
         """
 
         if coll is None:
@@ -577,8 +582,8 @@ class Prompter:
 
         if not os.path.exists(input_fn):
             # err_msg = "Not a valid CSV file. Please enter a valid CSV file."
-            err_msg = "The specified CSV file does not exist. Please enter a " \
-                      "valid CSV file."
+            err_msg = f"The specified CSV file ({input_fn}) does not exist. " \
+                      f"Please enter a valid CSV file."
             # self.eod.print_support(True, err_msg)
             self.eod.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
@@ -886,7 +891,7 @@ class Prompter:
 
         return process
 
-    def ask_record_ids(self, ids):
+    def ask_record_ids(self, ids, single_coll=False):
         """
         Asks the user for a single or set of Record IDs.
         
@@ -900,13 +905,19 @@ class Prompter:
                 self.print_header("Enter Record Id(s)")
 
                 msg = "\nEnter a single or set of Record IDs. Include the " \
-                      "Collection ID next to each ID separated by a " \
-                      "colon. Separate each ID with a comma. " \
-                      f"(Ex: {self.eod.var_colour}RCMImageProducts:7625368" \
+                      "Collection ID at the start of IDs separated by a " \
+                      "pipe. Separate collection's Ids with a comma. " \
+                      f"(Ex: {self.eod.var_colour}" \
+                      f"RCMImageProducts:7625368|25654750" \
                       f",NAPL:3736869{self.eod.reset_colour})\n"
+                if single_coll:
+                    msg = "\nEnter a single or set of Record IDs with the " \
+                        f"(Ex: {self.eod.var_colour}" \
+                        f"RCMImageProducts:7625368|25654750" \
+                        f"{self.eod.reset_colour})\n"
                 ids = self.get_input(msg, required=False)
 
-                process = self.eod.validate_record_ids(ids)
+                process = self.eod.validate_record_ids(ids, single_coll)
 
                 if not process:
                     err_msg = "Invalid entry for the Record Ids."
@@ -916,6 +927,175 @@ class Prompter:
                     self.eod.exit_cli(1)
 
         return ids
+
+    def ask_st(self, record_ids):
+        """
+        Ask user for all SAR Toolbox information
+        """
+
+        def ask_param(param):
+
+            default = param.get_default(as_listidx=True, include_label=True)
+            # print(f"default: {default}")
+            if param.const_vals:
+                default_val = param.get_default(as_listidx=True)
+                default_str = param.get_default(as_listidx=True,
+                                                include_label=True)
+                labels = [c.get('label') for c in param.const_vals 
+                          if c.get('active')]
+                multiple = param.multiple
+                choice_idx = ask_item(param.label, labels, 'param', 
+                                        multiple=multiple,
+                                        default=default_val,
+                                        def_msg=default_str)
+                choice = [labels[int(idx) - 1] for idx in choice_idx]
+            else:
+                msg = f'Enter the "{param.get_label()}"'
+                choice = self.get_input(msg, required=False,
+                                        default=default)
+            
+            param.set_value(choice)
+
+            # if (param.data_type == bool and choice) or ():
+            if param.get_value():
+                sub_params = param.get_sub_param()
+                # print(f"param.get_value(): {param.get_value()}")
+                if param.data_type == bool and not param.get_value():
+                    return None
+                if sub_params:
+                    for s_param in sub_params:
+                        # print(f"s_param: {type(s_param)}")
+                        if param.param_id == 'OutputPixSpacing':
+                            param_val = param.get_value(True)
+                            if param_val.lower() == 'meters' \
+                                    and s_param.param_id == 'OutputPixSpacingMeters':
+                                ask_param(s_param)
+                            elif param_val.lower() == 'degrees' \
+                                    and s_param.param_id == 'OutputPixSpacingDegrees':
+                                ask_param(s_param)
+                        else:
+                            ask_param(s_param)
+
+        def ask_item(item_name, item_list, item_type='runner', multiple=False,
+                     required=False, default=None, def_msg=None):
+            choice_strs = []
+            for idx, v in enumerate(item_list):
+                choice_strs.append(self.wrap_text(
+                                    f"{self.eod.var_colour}{idx + 1}" \
+                                    f"{self.eod.reset_colour}: {v}", 
+                                    sub_indent='     '))
+            choices = '\n'.join(choice_strs)
+
+            info_str = ""
+            if multiple:
+                info_str = " (separate each number with a comma)"
+
+            # default_str = ""
+            # if default:
+            #     default_str = f" {self.eod.def_colour}[{default}]" \
+            #                     f"{self.eod.reset_colour}"
+
+            if item_type == 'runner':
+                msg = f'Which "{item_name}" would you like to run?'
+            elif item_type == 'product':
+                msg = f"Select the Output Layer options"
+            else:
+                msg = f'Available "{item_name}" options'
+            print(f'\n{msg}:\n\n{choices}')
+
+            if item_type == 'product':
+                msg = f'Please choose the Output Layer options{info_str}'
+            else:
+                msg = f'Please choose the "{item_name}"{info_str}'
+            choice = self.get_input(msg, required=required, default=default,
+                                    def_msg=def_msg)
+
+            if not multiple and required:
+                if not choice.isdigit():
+                    err_msg = "An invalid value has been entered."
+                    # self.eod.print_support(True, err_msg)
+                    self.eod.print_msg(err_msg, heading='error')
+                    self.logger.error(err_msg)
+                    self.eod.exit_cli(1)
+            else:
+                if choice:
+                    choice = str(choice).split(',')
+
+            return choice
+
+        self.print_header("Enter SAR Toolbox Information")
+
+        st = sar.SARToolbox(self.eod, record_ids)
+        
+        ###############################
+        # Set the category
+        ###############################
+
+        # Ask for polarization to start
+        param = st.get_polarization_param()
+        def_msg = param.get_default(as_listidx=True, include_label=True)
+        default = param.get_default(as_listidx=True)
+        labels = [c.get('label') for c in param.const_vals]
+        print(f"labels: {labels}")
+        multiple = param.multiple
+        choice_idx = ask_item(param.label, labels, 'param', 
+                                default=default, 
+                                multiple=multiple,
+                                def_msg=def_msg)
+        polarization = [labels[int(idx) - 1] for idx in choice_idx]
+        param.set_value(polarization)
+
+        cat_names = st.get_cat_names(True)
+        cat_indices = ask_item("Categories", cat_names, multiple=True, 
+                               required=True)
+        categories = st.set_category_runs(cat_indices)
+
+        for category in categories:
+            self.print_sub_header(f'Enter Methods for "{category.name}"')
+
+            ###############################
+            # Set the method
+            ###############################
+
+            methods = category.get_method_names(True)
+            method_indices = ask_item("Methods", methods, multiple=True, 
+                                      required=True)
+            methods = category.set_method_runs(method_indices)
+
+            for method in methods:
+
+                self.print_sub_header(f'Enter Arguments for '
+                                      f'"{category.name} - {method.name}"')
+
+                ###############################
+                # Ask for arguments
+                ###############################
+                params = method.get_parameters()
+                for param in params:
+                    ask_param(param)
+                    method.add_param_run(param)
+
+                ###############################
+                # Ask for products
+                ###############################
+
+                products = method.get_products()
+
+                if products:
+                    labels = [p.name for p in products]
+                    choice_idx = ask_item(param.label, labels, 'product', True)
+                    if choice_idx:
+                        choices = [products[int(c) - 1] for c in choice_idx]
+                        method.set_prod_runs(choices)
+
+                method.print_info()
+
+        msg = "If you'd like to save the SAR Toolbox JSON request, " \
+                "enter the file path"
+        save_st = self.get_input(msg, required=False)
+        st.set_output_fn(save_st)
+
+        return st
 
     def build_syntax(self):
         """
@@ -999,7 +1179,7 @@ class Prompter:
         :param required: Determines if the argument is required.
         :type  required: boolean
         :param options: A list of available options for the user to choose from.
-        :type  options: list
+        :type  options: list[str]
         :param default: The default value if the user just hits enter.
         :type  default: str
         :param def_msg: If the default is None or an empty string, this 
@@ -1027,7 +1207,8 @@ class Prompter:
             if default is not None:
                 def_str = f" {self.eod.def_colour}[{default}]" \
                     f"{self.eod.reset_colour}"
-            elif def_msg is not None:
+            
+            if def_msg is not None:
                 def_str = f" {self.eod.def_colour}[{def_msg}]" \
                     f"{self.eod.reset_colour}"
 
@@ -1100,6 +1281,14 @@ class Prompter:
         print(f"{self.eod.head_colour}\n--------------{header}--------------" \
               f"{self.eod.reset_colour}")
 
+    def print_sub_header(self, header):
+        """
+        Prints the header for input
+        """
+
+        print(f"{self.eod.head_colour}\n=== {header} ===" \
+              f"{self.eod.reset_colour}")
+
     def print_syntax(self):
         """
         Prints the command-line syntax for the script.
@@ -1131,6 +1320,7 @@ class Prompter:
         orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
+        st_request = self.params.get('st_request')
         silent = self.params.get('silent')
         version = self.params.get('version')
 
@@ -1497,6 +1687,34 @@ class Prompter:
             # Run the order_csv process
             self.eod.order_ids(self.params)
 
+        elif self.process == 'order_st':
+            self.logger.info("Ordering an image from the SAR Toolbox")
+
+            # print(f"self.params: {self.params}")
+
+            # st_request = self.params.get('st_request')
+            # print(f"st_request: {st_request}")
+            if st_request:
+                sar_tb = sar.SARToolbox(self.eod, out_fn=st_request)
+                sar_tb.ingest_request()
+            else:
+                inputs = self.ask_record_ids(input_val, True)
+                self.params['input_val'] = inputs
+
+                sar_tb = self.ask_st(self.params['input_val'])
+
+            self.params['st_request'] = sar_tb.out_fn
+
+            # Get the priority
+            priority = self.ask_priority(priority)
+            self.params['priority'] = priority
+
+            # Print command-line syntax for future processes
+            self.print_syntax()
+
+            # Run the order_csv process
+            self.eod.order_st(sar_tb, priority)
+
         else:
             # self.eod.print_support("That is not a valid process type.")
             self.eod.print_msg("That is not a valid process type.", 
@@ -1671,13 +1889,16 @@ eodmsrapi_recent = get_latest_version()
 @click.option('--downloads', '-dn', default=None,
               help='The path where the images will be downloaded. Overrides '
                    'the downloads parameter in the configuration file.')
+@click.option('--st_request', '-st', default=None,
+              help='The path of a file containing the JSON request for a ' 
+              'SAR Toolbox order.')
 @click.option('--silent', '-s', is_flag=True, default=None,
               help='Sets process to silent which suppresses all questions.')
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
         maximum, priority, output, aws, overlap, orderitems, no_order,
-        downloads, silent, version, configure):
+        downloads, st_request, silent, version, configure):
     """
     Search & Order EODMS products.
     """
@@ -1708,7 +1929,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     conf_util.import_config()
 
     config_params = get_configuration_values(conf_util, downloads)
-    download_path = config_params['download_path']
+    download_path = os.path.abspath(config_params['download_path'])
     res_path = config_params['res_path']
     log_path = config_params['log_path']
     timeout_query = config_params['timeout_query']
@@ -1782,6 +2003,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'orderitems': orderitems,
                   'no_order': no_order,
                   'downloads': downloads,
+                  'st_request': st_request,
                   'silent': silent,
                   'version': version}
 

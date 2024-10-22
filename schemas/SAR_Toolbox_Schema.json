@@ -1,0 +1,1743 @@
+{
+    "categories": [
+        {
+            "category_id": 100,
+            "name": "Utilities",
+            "methods": [
+                {
+                    "method_id": 102,
+                    "name": "Complex to Detected",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 104,
+                    "name": "Incidence Angle Extraction",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 102,
+                            "name": "Incidence Angle (xml format)",
+                            "display_order": 2
+                        },
+                        {
+                            "product_id": 103,
+                            "name": "Incidence Angle (raster format)",
+                            "display_order": 3
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "category_id": 200,
+            "name": "Filters",
+            "methods": [
+                {
+                    "method_id": 204,
+                    "name": "Touzi-Lopes MMSE Filter",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Curve_detection_threshold",
+                            "label": "Curve detection threshold",
+                            "data_type": "float",
+                            "default": 0.5,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Edge_detection_threshold",
+                            "label": "Edge detection threshold",
+                            "data_type": "float",
+                            "default": 0.5,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Gradient_threshold",
+                            "label": "Gradient threshold",
+                            "data_type": "float",
+                            "default": 0.5,
+                            "display_order": 6,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 7,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 205,
+                    "name": "Median (G)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 206,
+                    "name": "Enhanced Lee (G)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Dampening_coefficient",
+                            "label": "Dampening coefficient",
+                            "data_type": "float",
+                            "default": 1.0,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 207,
+                    "name": "Average Filter (G)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "WeightingType",
+                            "label": "Dampening Weighting Type",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 4,
+                            "constants_key": "weighting_types",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 208,
+                    "name": "Gamma MAP (G)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "method_id": 209,
+                    "name": "Lee (G)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "category_id": 300,
+            "name": "Ortho-rectification and mosaic",
+            "methods": [
+                {
+                    "method_id": 301,
+                    "name": "Rational Function",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "ImgResampling",
+                            "label": "Image resampling",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 2,
+                            "constants_key": "resampling_methods",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "OutputPixSpacing",
+                            "label": "Output pixel spacing unit",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 3,
+                            "constants_key": "units",
+                            "sub_params": [
+                                {
+                                    "param_id": "OutputPixSpacingMeters",
+                                    "label": "Output pixel spacing (meters)",
+                                    "data_type": "int",
+                                    "default": 30,
+                                    "display_order": 1,
+                                    "constants_key": null
+                                },
+                                {
+                                    "param_id": "OutputPixSpacingDeg",
+                                    "label": "Output pixel spacing (degrees)",
+                                    "data_type": "float",
+                                    "default": null,
+                                    "display_order": 2,
+                                    "constants_key": null
+                                }
+                            ]
+                        },
+                        {
+                            "param_id": "TargetAlignedPixel",
+                            "label": "Target aligned pixels",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 4,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DemSource",
+                            "label": "Digital Elevation Model (DEM)",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 5,
+                            "constants_key": "dems",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Projection",
+                            "label": "Projection",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 6,
+                            "constants_key": "projections",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "ProcessAllOutputLayers",
+                            "label": "Process all selected Output layers from previous methods(s)",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 8,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 9,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 302,
+                            "name": "Digital elevation model",
+                            "display_order": 7
+                        }
+                    ]
+                },
+                {
+                    "method_id": 303,
+                    "name": "Mosaic",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "OrthoMethod",
+                            "label": "Ortho-rectification method",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 2,
+                            "constants_key": "ortho_methods",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "ImgResampling",
+                            "label": "Image resampling",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 3,
+                            "constants_key": "resampling_methods",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "OutputPixSpacing",
+                            "label": "Output pixel spacing unit",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 4,
+                            "constants_key": "units",
+                            "sub_params": [
+                                {
+                                    "param_id": "OutputPixSpacingMeters",
+                                    "label": "Output pixel spacing (meters)",
+                                    "data_type": "int",
+                                    "default": 30,
+                                    "display_order": 1,
+                                    "constants_key": null
+                                },
+                                {
+                                    "param_id": "OutputPixSpacingDeg",
+                                    "label": "Output pixel spacing (degrees)",
+                                    "data_type": "float",
+                                    "default": null,
+                                    "display_order": 2,
+                                    "constants_key": null
+                                }
+                            ]
+                        },
+                        {
+                            "param_id": "TargetAlignedPixel",
+                            "label": "Target aligned pixels",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DemSource",
+                            "label": "Digital Elevation Model (DEM)",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 6,
+                            "constants_key": "dems",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "Projection",
+                            "label": "Projection",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 7,
+                            "constants_key": "projections",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "OverlapMode",
+                            "label": "Overlap mode",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 8,
+                            "constants_key": "mosaic_overlap_modes",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 10,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 308,
+                            "name": "Digital elevation model",
+                            "display_order": 9
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "category_id": 500,
+            "name": "Radiometry",
+            "methods": [
+                {
+                    "method_id": 501,
+                    "name": "Convert to Sigma Nought",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 502,
+                    "name": "Convert to Beta Nought",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                },
+                {
+                    "method_id": 503,
+                    "name": "Convert to Gamma Nought",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": []
+                }
+            ]
+        },
+        {
+            "category_id": 600,
+            "name": "Polarimetry",
+            "methods": [
+                {
+                    "method_id": 601,
+                    "name": "Pauli Decomposition",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 10,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 633,
+                            "name": "Pauli Alpha: (single, or odd) bounce scatterer components - Complex",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 634,
+                            "name": "Pauli Beta: (double, or even) bounce scatterer components at 0 degree - Complex",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 635,
+                            "name": "Pauli Gamma: (double, or even) bounce scatterer components at 45 degrees - Complex",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 695,
+                            "name": "Pauli Alpha: (single, or odd) bounce scatterer components - Float",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 696,
+                            "name": "Pauli Beta: (double, or even) bounce scatterer components at 0 degree - Float",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 697,
+                            "name": "Pauli Gamma: (double, or even) bounce scatterer components at 45 degrees - Float",
+                            "display_order": 9
+                        }
+                    ]
+                },
+                {
+                    "method_id": 602,
+                    "name": "Freeman-Durden Decomposition",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 7,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 624,
+                            "name": "Volume scatterer components",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 625,
+                            "name": "Double (or even) bounce scatterer components",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 626,
+                            "name": "Surface (or single, or odd) bounce scatterer components",
+                            "display_order": 6
+                        }
+                    ]
+                },
+                {
+                    "method_id": 603,
+                    "name": "Touzi Decomposition",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "AngleUnit",
+                            "label": "Angle units",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 4,
+                            "constants_key": "angle_units",
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 20,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 601,
+                            "name": "EV1 - Orientation Angle (psi)",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 602,
+                            "name": "EV1 - Dominant Eigenvalue (lambda)",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 603,
+                            "name": "EV1 - Angle of the symmetric-scattering vector (Touzi alpha_s)",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 604,
+                            "name": "EV1 - Phase difference between vector components (Touzi phi)",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 605,
+                            "name": "EV1 - Helicity (Touzi tau)",
+                            "display_order": 9
+                        },
+                        {
+                            "product_id": 606,
+                            "name": "EV2 - Orientation Angle (psi)",
+                            "display_order": 10
+                        },
+                        {
+                            "product_id": 607,
+                            "name": "EV2 - Dominant Eigenvalue (lambda)",
+                            "display_order": 11
+                        },
+                        {
+                            "product_id": 608,
+                            "name": "EV2 - Angle of the symmetric-scattering vector (Touzi alpha_s)",
+                            "display_order": 12
+                        },
+                        {
+                            "product_id": 609,
+                            "name": "EV2 - Phase difference between vector components (Touzi phi)",
+                            "display_order": 13
+                        },
+                        {
+                            "product_id": 610,
+                            "name": "EV2 - Helicity (Touzi tau)",
+                            "display_order": 14
+                        },
+                        {
+                            "product_id": 611,
+                            "name": "EV3 - Orientation Angle (psi)",
+                            "display_order": 15
+                        },
+                        {
+                            "product_id": 612,
+                            "name": "EV3 - Dominant Eigenvalue (lambda)",
+                            "display_order": 16
+                        },
+                        {
+                            "product_id": 613,
+                            "name": "EV3 - Angle of the symmetric-scattering vector (Touzi alpha_s)",
+                            "display_order": 17
+                        },
+                        {
+                            "product_id": 614,
+                            "name": "EV3 - Phase difference between vector components (Touzi phi)",
+                            "display_order": 18
+                        },
+                        {
+                            "product_id": 615,
+                            "name": "EV3 - Helicity (Touzi tau)",
+                            "display_order": 19
+                        }
+                    ]
+                },
+                {
+                    "method_id": 604,
+                    "name": "Polarimetric Discriminators",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 19,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 616,
+                            "name": "Sine of the latitude of the Stokes vector (s2chi)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 617,
+                            "name": "Sine of the longitude of the Stokes vector (s2psi)",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 618,
+                            "name": "Degree of linear polarization (ml)",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 619,
+                            "name": "Degree of circular polarization (mc)",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 652,
+                            "name": "Circular polarization ratio (cpRatio)",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 653,
+                            "name": "Stokes Vector - S0 (Total power)",
+                            "display_order": 9
+                        },
+                        {
+                            "product_id": 654,
+                            "name": "Stokes Vector - S1",
+                            "display_order": 10
+                        },
+                        {
+                            "product_id": 655,
+                            "name": "Stokes Vector - S2",
+                            "display_order": 11
+                        },
+                        {
+                            "product_id": 656,
+                            "name": "Stokes Vector - S3",
+                            "display_order": 12
+                        },
+                        {
+                            "product_id": 657,
+                            "name": "Degree of Polarization (m)",
+                            "display_order": 13
+                        },
+                        {
+                            "product_id": 658,
+                            "name": "Relative H and V Phase Difference (delta)",
+                            "display_order": 14
+                        },
+                        {
+                            "product_id": 659,
+                            "name": "Linear polarization ratio (lpRatio)",
+                            "display_order": 15
+                        },
+                        {
+                            "product_id": 661,
+                            "name": "Coherency parameter (mu)",
+                            "display_order": 16
+                        },
+                        {
+                            "product_id": 662,
+                            "name": "Alpha parameter in the compact H/alpha (alpha)",
+                            "display_order": 17
+                        },
+                        {
+                            "product_id": 663,
+                            "name": "Longitude of Stokes vector 2*psi (phi)",
+                            "display_order": 18
+                        }
+                    ]
+                },
+                {
+                    "method_id": 605,
+                    "name": "m-chi Decomposition",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 7,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 627,
+                            "name": "Double (or even) bounce scatterer components (M-Chi 1)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 628,
+                            "name": "Volume scatterer components (M-Chi 2)",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 629,
+                            "name": "Surface (or single, or odd) bounce scatterer components (M-Chi 3)",
+                            "display_order": 6
+                        }
+                    ]
+                },
+                {
+                    "method_id": 606,
+                    "name": "m-delta Decomposition",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "FilterSizeX",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - X",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 2,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "FilterSizeY",
+                            "label": "Polarimetric Boxcar Filter Size (in pixels) - Y",
+                            "data_type": "int",
+                            "default": 5,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": null
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 7,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 630,
+                            "name": "Double (or even) bounce scatterer components (M-Delta 1)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 631,
+                            "name": "Volume scatterer components (M-Delta 2)",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 632,
+                            "name": "Surface (or single, or odd) bounce scatterer components (M-Delta 3)",
+                            "display_order": 6
+                        }
+                    ]
+                },
+                {
+                    "method_id": 609,
+                    "name": "Compact Polarization to Circular Polarization to (RR, RL)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 6,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 641,
+                            "name": "RR Circular Polarization component (Complex Intensity)",
+                            "display_order": 2
+                        },
+                        {
+                            "product_id": 642,
+                            "name": "RL Circular Polarization component (Complex Intensity)",
+                            "display_order": 3
+                        },
+                        {
+                            "product_id": 687,
+                            "name": "RR Circular Polarization component (Intensity)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 688,
+                            "name": "RL Circular Polarization component (Intensity)",
+                            "display_order": 5
+                        }
+                    ]
+                },
+                {
+                    "method_id": 614,
+                    "name": "Quad-Pol. to Compact-Pol. (RH, RV)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 6,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 643,
+                            "name": "RH Compact Polarization component (Complex Intensity)",
+                            "display_order": 2
+                        },
+                        {
+                            "product_id": 644,
+                            "name": "RV Compact Polarization component (Complex Intensity)",
+                            "display_order": 3
+                        },
+                        {
+                            "product_id": 693,
+                            "name": "RH Compact Polarization component (Intensity)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 694,
+                            "name": "RV Compact Polarization component (Intensity)",
+                            "display_order": 5
+                        }
+                    ]
+                },
+                {
+                    "method_id": 615,
+                    "name": "Quad-Pol. to Full Circular (RR, RL, LR, LL)",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "DeliverOutputFile",
+                            "label": "Deliver output file",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 10,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "SaveOutputFormat",
+                                    "label": "Save as:",
+                                    "data_type": "int",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constants_key": "output_formats"
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 645,
+                            "name": "RR Circular Polarization component (Complex Intensity)",
+                            "display_order": 2
+                        },
+                        {
+                            "product_id": 646,
+                            "name": "RL Circular Polarization component (Complex Intensity)",
+                            "display_order": 3
+                        },
+                        {
+                            "product_id": 647,
+                            "name": "LR Circular Polarization component (Complex Intensity)",
+                            "display_order": 4
+                        },
+                        {
+                            "product_id": 648,
+                            "name": "LL Circular Polarization component (Complex Intensity)",
+                            "display_order": 5
+                        },
+                        {
+                            "product_id": 689,
+                            "name": "RR Circular Polarization component (Intensity)",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 690,
+                            "name": "RL Circular Polarization component (Intensity)",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 691,
+                            "name": "LR Circular Polarization component (Intensity)",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 692,
+                            "name": "LL Circular Polarization component (Intensity)",
+                            "display_order": 9
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "category_id": 700,
+            "name": "Interferometry",
+            "methods": [
+                {
+                    "method_id": 701,
+                    "name": "Ground deformation",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "SpatialAvg",
+                            "label": "Spatial averaging",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 2,
+                            "constants_key": "gd_spat_avgs",
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "prodEnh",
+                            "label": "Product enhancement",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "DemSource",
+                            "label": "Digital Elevation Model (DEM)",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 4,
+                            "constants_key": "dems",
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "ProcessExtent",
+                            "label": "Process Specific Extent",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "ProcessExtentGeometry",
+                                    "label": "Process Specific Extent Geometry",
+                                    "data_type": "str",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constant_keys": null
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 701,
+                            "name": "Digital elevation model",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 702,
+                            "name": "Coregistered intensity",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 703,
+                            "name": "Coherence",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 704,
+                            "name": "Coherence (filtered)",
+                            "display_order": 9
+                        },
+                        {
+                            "product_id": 705,
+                            "name": "Wrapped phase",
+                            "display_order": 10
+                        },
+                        {
+                            "product_id": 706,
+                            "name": "Wrapped phase (filtered)",
+                            "display_order": 11
+                        },
+                        {
+                            "product_id": 707,
+                            "name": "Range displacements",
+                            "display_order": 12
+                        },
+                        {
+                            "product_id": 708,
+                            "name": "Range displacements time series and rates",
+                            "display_order": 13
+                        },
+                        {
+                            "product_id": 715,
+                            "name": "Unwrapped phase",
+                            "display_order": 7
+                        }
+                    ]
+                },
+                {
+                    "method_id": 702,
+                    "name": "Very large ground deformation",
+                    "params": [
+                        {
+                            "param_id": "LabelName",
+                            "label": "Label name",
+                            "data_type": "str",
+                            "default": null,
+                            "display_order": 1,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "SpatialAvg",
+                            "label": "Spatial averaging",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 2,
+                            "constants_key": "vlg_spat_avgs",
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "prodEnh",
+                            "label": "Product enhancement",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 3,
+                            "constants_key": null,
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "DemSource",
+                            "label": "Digital Elevation Model (DEM)",
+                            "data_type": "int",
+                            "default": null,
+                            "display_order": 4,
+                            "constants_key": "dems",
+                            "sub_params": []
+                        },
+                        {
+                            "param_id": "ProcessExtent",
+                            "label": "Process Specific Extent",
+                            "data_type": "bool",
+                            "default": false,
+                            "display_order": 5,
+                            "constants_key": null,
+                            "sub_params": [
+                                {
+                                    "param_id": "ProcessExtentGeometry",
+                                    "label": "Process Specific Extent Geometry",
+                                    "data_type": "str",
+                                    "default": null,
+                                    "display_order": 1,
+                                    "constant_keys": null
+                                }
+                            ]
+                        }
+                    ],
+                    "products": [
+                        {
+                            "product_id": 709,
+                            "name": "Digital elevation model",
+                            "display_order": 6
+                        },
+                        {
+                            "product_id": 710,
+                            "name": "Coregistered intensity",
+                            "display_order": 7
+                        },
+                        {
+                            "product_id": 711,
+                            "name": "Azimuth/range displacements",
+                            "display_order": 8
+                        },
+                        {
+                            "product_id": 712,
+                            "name": "Azimuth/range displacements time series and rates",
+                            "display_order": 9
+                        },
+                        {
+                            "product_id": 713,
+                            "name": "3D displacements (surface parallel flow)",
+                            "display_order": 10
+                        },
+                        {
+                            "product_id": 714,
+                            "name": "3D displacements time series and rates (surface parallel flow)",
+                            "display_order": 11
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

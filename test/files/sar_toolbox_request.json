@@ -1,0 +1,74 @@
+{
+    "items": [
+        {
+            "collectionId": "RCMImageProducts",
+            "recordId": "8538795",
+            "parameters": {}
+        },
+        {
+            "collectionId": "RCMImageProducts",
+            "recordId": "8526252",
+            "parameters": {}
+        },
+        {
+            "collectionId": "RCMImageProducts",
+            "recordId": "8502911",
+            "parameters": {}
+        }
+    ],
+    "destinations": [],
+    "vapRequest": {
+        "sequence": {
+			"sequence_1": "My Convert to Gamma Nought",
+            "sequence_2": "My Incidence Angle Extraction",
+            "sequence_3": "My Lee (G)",
+            "sequence_4": "My Mosaic"
+        },
+        "method": {
+            "method-503-1": {
+                "Category": "500",
+                "Method": "503",
+                "LabelName": "My Convert to Gamma Nought",
+                "DeliverOutputFile": "on",
+                "SaveOutputFormat": "1"
+            },
+			"method-104-1": {
+                "Category": "100",
+                "Method": "104",
+                "LabelName": "My Incidence Angle Extraction",
+                "DeliverOutputFile": "on",
+                "SaveOutputFormat": "1",
+                "Product-102": "on",
+                "Product-103": "on"
+            },
+            "method-209-1": {
+                "Category": "200",
+                "Method": "209",
+                "LabelName": "My Lee (G)",
+                "FilterSizeX": "5",
+                "FilterSizeY": "5",
+                "DeliverOutputFile": "on",
+                "SaveOutputFormat": "1"
+            },
+            "method-303-1": {
+                "Category": "300",
+                "Method": "303",
+                "LabelName": "My Mosaic",
+                "OrthoMethod": "1",
+                "ImgResampling": "1",
+                "OutputPixSpacingMeters": "5",
+                "OutputPixSpacingDeg": "0.000064",
+                "DemSource": "1",
+                "Projection": "1",
+                "OverlapMode": "3",
+                "DeliverOutputFile": "on",
+                "SaveOutputFormat": "1",
+                "Product-308": "on"
+            }
+        },
+        "deliveryLocation": "DOWNLOAD",
+        "HHPol": "on",
+		"HVPol": "on",
+        "pr_users_username": "kballan_test"
+    }
+}
