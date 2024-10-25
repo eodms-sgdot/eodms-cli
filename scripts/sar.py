@@ -703,9 +703,10 @@ class SARToolbox:
         with urllib.request.urlopen(schema_url) as response:
             self.schema_json = json.loads(response.read())
 
-        if record_ids:
-            self.coll_id, rec_ids = record_ids.split(':')
-            self.record_ids = rec_ids.split('|')
+        # if record_ids:
+        #     self.coll_id, rec_ids = record_ids.split(':')
+        #     self.record_ids = rec_ids.split('|')
+        self.record_ids = record_ids
         
         # self.constants = None
         self.out_fn = out_fn
@@ -725,6 +726,12 @@ class SARToolbox:
         self.polarization = Parameter(param_info, multiple=True)
         
         self.logger = logging.getLogger('eodms')
+
+    def set_coll_id(self, coll_id):
+        self.coll_id = coll_id
+
+    def set_record_ids(self, record_ids):
+        self.record_ids = record_ids
 
     def ingest_request(self, json_fn=None):
         """

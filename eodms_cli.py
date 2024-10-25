@@ -911,8 +911,9 @@ class Prompter:
                       f"RCMImageProducts:7625368|25654750" \
                       f",NAPL:3736869{self.eod.reset_colour})\n"
                 if single_coll:
-                    msg = "\nEnter a single or set of Record IDs with the " \
-                        f"(Ex: {self.eod.var_colour}" \
+                    msg = f"\nEnter a single or set of Record IDs with the " \
+                        f"Collection ID at the start of IDs separated by a " \
+                        f"pipe (Ex: {self.eod.var_colour}" \
                         f"RCMImageProducts:7625368|25654750" \
                         f"{self.eod.reset_colour})\n"
                 ids = self.get_input(msg, required=False)
@@ -928,7 +929,43 @@ class Prompter:
 
         return ids
 
-    def ask_st(self, record_ids):
+    def ask_st_images(self, ids):
+
+        """
+        Asks the user for Record IDs or Order Keys for SAR Toolbox orders.
+        
+        :param ids: A single or set of Record IDs with their collections.
+        :type  ids: str
+        """
+
+        if ids is None or ids == '':
+
+            if not self.eod.silent:
+                self.print_header("Enter Record Id(s) or Order Key(s)")
+                
+                msg = f"\nEnter a single or set of Record IDs or enter a " \
+                    f"single or set of Order Keys separated by a pipe. " \
+                    f"Include the Collection Id at the beginning of the set." \
+                    f" (Ex: {self.eod.var_colour}" \
+                    f"RCMImageProducts:7625368|25654750" \
+                    f"{self.eod.reset_colour} or {self.eod.var_colour}" \
+                    f"RCMImageProducts:RCM2_OK1373330_PK1530425_1_16M12_" \
+                    f"20210326_111202_HH_HV_GRD|RCM2_OK1373330_PK1524695_1_" \
+                    f"16M17_20210321_225956_HH_HV_GRD{self.eod.reset_colour})\n"
+                ids = self.get_input(msg, required=False)
+
+                process = self.eod.validate_st_images(ids)
+
+                if not process:
+                    err_msg = "Invalid entry for the Record Ids or Order Keys."
+                    # self.eod.print_support(True, err_msg)
+                    self.eod.print_msg(err_msg, heading='error')
+                    self.logger.error(err_msg)
+                    self.eod.exit_cli(1)
+
+        return ids
+
+    def ask_st(self):
         """
         Ask user for all SAR Toolbox information
         """
@@ -960,7 +997,7 @@ class Prompter:
             if param.get_value():
                 sub_params = param.get_sub_param()
                 # print(f"param.get_value(): {param.get_value()}")
-                if param.data_type == bool and not param.get_value():
+                if param.data_type == 'bool' and param.get_value() == 'False':
                     return None
                 if sub_params:
                     for s_param in sub_params:
@@ -1025,7 +1062,7 @@ class Prompter:
 
         self.print_header("Enter SAR Toolbox Information")
 
-        st = sar.SARToolbox(self.eod, record_ids)
+        st = sar.SARToolbox(self.eod)
         
         ###############################
         # Set the category
@@ -1698,10 +1735,11 @@ class Prompter:
                 sar_tb = sar.SARToolbox(self.eod, out_fn=st_request)
                 sar_tb.ingest_request()
             else:
-                inputs = self.ask_record_ids(input_val, True)
+                inputs = self.ask_st_images(input_val)
                 self.params['input_val'] = inputs
 
-                sar_tb = self.ask_st(self.params['input_val'])
+                # sar_tb = self.ask_st(self.params['input_val'])
+                sar_tb = self.ask_st()
 
             self.params['st_request'] = sar_tb.out_fn
 
@@ -1713,7 +1751,7 @@ class Prompter:
             self.print_syntax()
 
             # Run the order_csv process
-            self.eod.order_st(sar_tb, priority)
+            self.eod.order_st(sar_tb, self.params)
 
         else:
             # self.eod.print_support("That is not a valid process type.")

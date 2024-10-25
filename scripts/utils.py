@@ -1760,6 +1760,23 @@ Example:
         except Exception:
             return False
         
+    def validate_st_images(self, in_vals):
+        """
+        Validates the user input for the Record Id search
+
+        :param in_vals: The input values from the user
+        :type  in_vals: str
+        """
+
+        try:
+            if in_vals.find(":") > -1:
+                coll, rec_ids = in_vals.split(':')
+            return in_vals
+        except Exception as e:
+            print(f"e: {e}")
+            return False
+
+        
     def validate_record_ids(self, ids, single_coll=False):
         """
         Validates the user input for the Record Id search
@@ -1776,7 +1793,7 @@ Example:
                 for i in ids_lst:
                     coll, rec_ids = i.split(':')
             return ids
-        except Exceptionase:
+        except Exception as e:
             return False
 
     def validate_int(self, val, limit=None):
@@ -2580,10 +2597,36 @@ class EodmsProcess(EodmsUtils):
         self.cur_res = query_imgs
         self._finish_process(orders)
 
-    def order_st(self, sar_toolbox, priority):
+    def order_st(self, sar_toolbox, params): # sar_toolbox, priority):
         """
         Submit a SAR Toolbox order to the RAPI.
         """
+
+        in_vals = params.get('input_val')
+        priority = params.get('priority')
+
+        coll_id, ids = in_vals.split(':')
+
+        if ids.find("_") > -1:
+            ord_keys = ids.split('|')
+            for ok in ord_keys:
+                filters = {'Order Key': ('=', ok)}
+                self.eodms_rapi.search(coll_id, filters)
+
+            res = self.eodms_rapi.get_results()
+            if len(res) > 0:
+                record_ids = [r.get('recordId') for r in res]
+
+                # print(f"res: {res}")
+                # answer = input("Press enter...")
+        else:
+            record_ids = ids.split('|')
+
+        # print(f"record_ids: {record_ids}")
+        # answer = input("Press enter...")
+
+        sar_toolbox.set_coll_id(coll_id)
+        sar_toolbox.set_record_ids(record_ids)
 
         start_str = self._set_result_fn()
         self.logger.info(f"Process start time: {start_str}")
