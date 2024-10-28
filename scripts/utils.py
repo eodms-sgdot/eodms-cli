@@ -1773,7 +1773,6 @@ Example:
                 coll, rec_ids = in_vals.split(':')
             return in_vals
         except Exception as e:
-            print(f"e: {e}")
             return False
 
         
