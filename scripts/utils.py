@@ -1237,6 +1237,22 @@ class EodmsUtils:
 
     #     return displayed_fields
 
+    def get_record_ids(self, coll_id, order_keys):
+
+        if not isinstance(order_keys, list):
+            order_keys = [order_keys]
+        
+        record_ids = []
+        for ok in order_keys:
+            filters = {'Order Key': ('=', ok)}
+            self.eodms_rapi.search(coll_id, filters)
+
+            res = self.eodms_rapi.get_results()
+            if len(res) > 0:
+                record_ids = [r.get('recordId') for r in res]
+
+        return record_ids
+
     def get_image_from_order(self, order):
         """
         Gets an image from the RAPI based on an order into an image.Image object.
@@ -2604,28 +2620,8 @@ class EodmsProcess(EodmsUtils):
         in_vals = params.get('input_val')
         priority = params.get('priority')
 
-        coll_id, ids = in_vals.split(':')
-
-        if ids.find("_") > -1:
-            ord_keys = ids.split('|')
-            for ok in ord_keys:
-                filters = {'Order Key': ('=', ok)}
-                self.eodms_rapi.search(coll_id, filters)
-
-            res = self.eodms_rapi.get_results()
-            if len(res) > 0:
-                record_ids = [r.get('recordId') for r in res]
-
-                # print(f"res: {res}")
-                # answer = input("Press enter...")
-        else:
-            record_ids = ids.split('|')
-
-        # print(f"record_ids: {record_ids}")
-        # answer = input("Press enter...")
-
-        sar_toolbox.set_coll_id(coll_id)
-        sar_toolbox.set_record_ids(record_ids)
+        sar_toolbox.set_coll_id(in_vals.get('collection_id'))
+        sar_toolbox.set_record_ids(in_vals.get('record_ids'))
 
         start_str = self._set_result_fn()
         self.logger.info(f"Process start time: {start_str}")
