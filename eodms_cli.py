@@ -1736,7 +1736,28 @@ class Prompter:
                 sar_tb.ingest_request()
             else:
                 inputs = self.ask_st_images(input_val)
-                self.params['input_val'] = inputs
+
+                coll_id, ids = inputs.split(':')
+                # If Order Keys are entered, check if they exist
+                if inputs.find("_") > -1:
+                    ord_keys = ids.split('|')
+                    rec_ids = self.eod.get_record_ids(coll_id, ord_keys)
+
+                    if len(rec_ids) == 0:
+                        err_msg = f"No images could be found with Order Keys: "\
+                                f"{', '.join(ord_keys)}."
+                        self.eod.logger.error(err_msg)
+                        # self.print_support(err_msg)
+                        self.eod.print_msg(err_msg, heading='error')
+                        self.eod.exit_cli(1)
+                else:
+                    rec_ids = ids.split('|')
+
+                print(f"\nSubmitting images with Record Ids: " \
+                      f"{', '.join(rec_ids)}")
+
+                self.params['input_val'] = {"collection_id": coll_id, 
+                                            "record_ids": rec_ids}
 
                 # sar_tb = self.ask_st(self.params['input_val'])
                 sar_tb = self.ask_st()
