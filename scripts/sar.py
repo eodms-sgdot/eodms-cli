@@ -294,6 +294,16 @@ class Parameter:
 
         # print(f"self.const_vals 2: {self.const_vals}")
 
+    def get_data_type(self):
+        """
+        Gets the data type of the parameter.
+
+        :return: The data type of the parameter.
+        :rtype:  str
+        """
+
+        return self.data_type
+
     def get_default_idx(self):
         """
         Gets the index of the default value in the constant values for the 
@@ -388,7 +398,7 @@ class Parameter:
 
         out_value = str(self.value)
         if self.data_type == 'float':
-            out_value = '{:f}'.format(self.value)
+            out_value = '{:f}'.format(float(self.value))
 
         if self.data_type == "bool":
             if not as_label:
@@ -442,7 +452,15 @@ class Parameter:
         if isinstance(val, list) and not self.multiple:
             val = val[0]
 
+        # Verify entry
+        try:
+            eval(f"{self.data_type}(val)")
+        except ValueError:
+            return False
+
         self.value = val
+
+        return True
 
 class Method:
 
@@ -698,8 +716,10 @@ class SARToolbox:
         
         self.eod = eod
 
-        schema_url = "https://github.com/eodms-sgdot/eodms-cli/blob/" \
-                    "development/schemas/SAR_Toolbox_Schema.json?raw=true"
+        # schema_url = "https://github.com/eodms-sgdot/eodms-cli/blob/" \
+        #             "development/schemas/SAR_Toolbox_Schema.json?raw=true"
+        schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/" \
+                    "sar-toolbox-schema.json"
         with urllib.request.urlopen(schema_url) as response:
             self.schema_json = json.loads(response.read())
 
@@ -728,9 +748,23 @@ class SARToolbox:
         self.logger = logging.getLogger('eodms')
 
     def set_coll_id(self, coll_id):
+        """
+        Sets the Collection Id for the SAR Toolbox order.
+
+        :param coll_id: The Collection Id.
+        :type  coll_id: str
+        """
+
         self.coll_id = coll_id
 
     def set_record_ids(self, record_ids):
+        """
+        Sets the Record Ids for the SAR Toolbox order.
+
+        :param record_ids: The Record Id(s).
+        :type  record_ids: str
+        """
+
         self.record_ids = record_ids
 
     def ingest_request(self, json_fn=None):
