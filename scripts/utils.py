@@ -2620,8 +2620,28 @@ class EodmsProcess(EodmsUtils):
         in_vals = params.get('input_val')
         priority = params.get('priority')
 
-        sar_toolbox.set_coll_id(in_vals.get('collection_id'))
-        sar_toolbox.set_record_ids(in_vals.get('record_ids'))
+        if in_vals:
+            sar_toolbox.set_coll_id(in_vals.get('collection_id'))
+            sar_toolbox.set_record_ids(in_vals.get('record_ids'))
+        else:
+            st_request = params.get('st_request')
+            if not st_request:
+                err_msg = "No input JSON request file specified."
+                self.logger.error(err_msg)
+                # self.print_support(err_msg)
+                self.print_msg(err_msg, heading='error')
+                self.exit_cli(1)
+
+            with open(st_request) as f:
+                json_info = json.load(f)
+            
+            items = json_info.get('items')
+
+            coll_id = items[0].get('collectionId')
+            record_ids = [i.get('recordId') for i in items]
+
+            sar_toolbox.set_coll_id(coll_id)
+            sar_toolbox.set_record_ids(record_ids)
 
         start_str = self._set_result_fn()
         self.logger.info(f"Process start time: {start_str}")

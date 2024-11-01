@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.6.1'
+__version__ = '3.6.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -981,17 +981,33 @@ class Prompter:
                 labels = [c.get('label') for c in param.const_vals 
                           if c.get('active')]
                 multiple = param.multiple
-                choice_idx = ask_item(param.label, labels, 'param', 
+                choice = ask_item(param.label, labels, 'param', 
                                         multiple=multiple,
                                         default=default_val,
                                         def_msg=default_str)
-                choice = [labels[int(idx) - 1] for idx in choice_idx]
             else:
                 msg = f'Enter the "{param.get_label()}"'
                 choice = self.get_input(msg, required=False,
                                         default=default)
             
-            param.set_value(choice)
+            # print(f"choice: {choice}")
+            
+            val_check = param.set_value(choice)
+
+            if not val_check:
+                err_msg = f"An invalid value has been entered. The value has " \
+                            f"to be of type '{param.get_data_type()}'"
+                self.eod.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                self.eod.exit_cli(1)
+
+            if param.const_vals:
+                # print(f"param.const_vals: {param.const_vals}")
+                # print(f"labels: {labels}")
+                # print(f"choice_idx: {choice}")
+                choice = [labels[int(idx) - 1] for idx in choice]
+
+            # print(f"choice: {choice}")
 
             # if (param.data_type == bool and choice) or ():
             if param.get_value():
@@ -1058,6 +1074,14 @@ class Prompter:
                 if choice:
                     choice = str(choice).split(',')
 
+                    for c in choice:
+                        if not c.isdigit() or int(c) > len(item_list) \
+                                or int(c) <= 0:
+                            err_msg = "An invalid value has been entered."
+                            self.eod.print_msg(err_msg, heading='error')
+                            self.logger.error(err_msg)
+                            self.eod.exit_cli(1)
+
             return choice
 
         self.print_header("Enter SAR Toolbox Information")
@@ -1073,7 +1097,7 @@ class Prompter:
         def_msg = param.get_default(as_listidx=True, include_label=True)
         default = param.get_default(as_listidx=True)
         labels = [c.get('label') for c in param.const_vals]
-        print(f"labels: {labels}")
+        # print(f"labels: {labels}")
         multiple = param.multiple
         choice_idx = ask_item(param.label, labels, 'param', 
                                 default=default, 

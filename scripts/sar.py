@@ -2,101 +2,6 @@ import json
 import logging
 import urllib.request
 
-CONSTANTS = {
-            "output_formats": [
-                {"id": 1, "label": "GeoTIFF", "active": True, "display_order": 1, "default": True, "extension": "tif"},
-                {"id": 2, "label": "PNG", "active": False, "display_order": 4, "default": False, "extension": "png"},
-                {"id": 3, "label": "BMP", "active": False, "display_order": 3, "default": False, "extension": "bmp"},
-                {"id": 4, "label": "ENVI (hdr)", "active": False, "display_order": 2, "default": False, "extension": "bil"},
-                {"id": 5, "label": "XML", "active": False, "display_order": 999, "default": False, "extension": "xml"}
-            ],
-            "dem_resamplings": [
-                {"id": 1, "label": "Nearest Neighbour", "active": True, "display_order": 1, "default": False},
-                {"id": 2, "label": "Bilinear Interpolation", "active": True, "display_order": 2, "default": True},
-                {"id": 3, "label": "Cubic Convolution", "active": True, "display_order": 3, "default": False},
-                {"id": 4, "label": "Bi-Sinc Interpolation", "active": True, "display_order": 4, "default": False},
-                {"id": 5, "label": "Bi-Cubic Interpolation", "active": True, "display_order": 5, "default": False}
-            ],
-            "resampling_methods": [
-                {"id": 1, "label": "Nearest Neighbour", "active": True, "display_order": 1, "default": False, "gamma_code": "0"},
-                {"id": 2, "label": "Bi-cubic", "active": True, "display_order": 3, "default": True, "gamma_code": "1"},
-                {"id": 3, "label": "Bi-linear", "active": True, "display_order": 2, "default": False, "gamma_code": "3"},
-                {"id": 4, "label": "Bi-cubic of log", "active": False, "display_order": 999, "default": False, "gamma_code": "2"},
-            ],
-            "dems": [
-                {"id": 1, "label": "CDEM", "active": True, "display_order": 1},
-                {"id": 2, "label": "CDSM (CDEM+SRTM)", "active": True, "display_order": 2},
-                {"id": 3, "label": "SRTM 30m (Canada)", "active": True, "display_order": 3},
-                {"id": 4, "label": "SRTM 90m (World)", "active": True, "display_order": 4},
-                {"id": 5, "label": "Fixed Elevation - 0 meter at Mean Sea Level", "active": False, "display_order": 5},
-                {"id": 6, "label": "ASTER 30m (World)", "active": True, "display_order": 6},
-                {"id": 7, "label": "SRTM 30m (World)", "active": True, "display_order": 5},
-                {"id": 8, "label": "EQUI7 Basemap (NA)", "active": False, "display_order": 8}
-            ],
-            "projections": [
-                {"id": 1, "label": "UTM (auto) / NAD83  (CSRS)", "active": True, "display_order": 1},
-                {"id": 2, "label": "UTM (auto) / WGS84", "active": True, "display_order": 2},
-                {"id": 3, "label": "UTM (auto) / NAD27", "active": False, "display_order": 3},
-                {"id": 4, "label": "UTM / NAD83 (CSRS)", "active": True, "display_order": 4},
-                {"id": 5, "label": "UTM / WGS84", "active": True, "display_order": 5},
-                {"id": 6, "label": "UTM / NAD27", "active": False, "display_order": 6},
-                {"id": 7, "label": "Geographic / WGS84", "active": False, "display_order": 7},
-                {"id": 9, "label": "Canada Atlas Lambert / NAD83 (EPSG:3978)", "active": True, "display_order": 10},
-                {"id": 11, "label": "Canada Albers Equal Area / NAD83 (EPSG:102001)", "active": True, "display_order": 13},
-                {"id": 12, "label": "Polar Stereographic - North / WGS84", "active": False, "display_order": 16},
-                {"id": 13, "label": "Polar Stereographic - South / WGS84", "active": False, "display_order": 17},
-                {"id": 14, "label": "Geographic / NAD83 (CSRS)", "active": False, "display_order": 8},
-                {"id": 15, "label": "Geographic / NAD27", "active": False, "display_order": 9},
-                {"id": 16, "label": "Canada Crop Inventory Albers Equal Area / WGS84 ", "active": True, "display_order": 14},
-                {"id": 17, "label": "NSIDC Sea Ice Polar Stereographic North / WGS84", "active": True, "display_order": 15},
-                {"id": 18, "label": "NSIDC EASE-Grid 2.0 North / WGS84", "active": True, "display_order": 16},
-                {"id": 19, "label": "Canada Atlas Lambert / NAD83 (CSRS) (EPSG:3979)", "active": False, "display_order": 11}
-            ],
-            "ortho_methods": [
-                {"id": 1, "label": "Rational Function", "active": True, "display_order": 1},
-                {"id": 2, "label": "Range Doppler", "active": False, "display_order": 2}
-            ],
-            "mosaic_overlap_modes": [
-                {"id": 1, "label": "Average valid inputs", "active": False, "display_order": 3, "default": False},
-                {"id": 2, "label": "First image preferred", "active": False, "display_order": 2, "default": False},
-                {"id": 3, "label": "Last image preferred", "active": True, "display_order": 1, "default": True}
-            ],
-            "weighting_types": [
-                {"id": 0, "label": "Constant", "active": True, "display_order": 1, "default": True},
-                {"id": 1, "label": "Linear", "active": True, "display_order": 2, "default": False},
-                {"id": 2, "label": "Gaussian", "active": True, "display_order": 3, "default": False}
-            ],
-            "angle_units": [
-                {'id': 1, 'label': 'Degree', 'active': True, 'display_order': 1, 'default': True},
-                {'id': 2, 'label': 'Radian', 'active': True, 'display_order': 2, 'default': False}
-            ],
-            "gd_spat_avgs": [
-                {'id': 1, 'label': 'x1', 'active': True, 'display_order': 1, 'default': False, 'multilooking_value': 1},
-                {'id': 2, 'label': 'x2', 'active': True, 'display_order': 2, 'default': False, 'multilooking_value': 2},
-                {'id': 3, 'label': 'x4', 'active': True, 'display_order': 3, 'default': True, 'multilooking_value': 4},
-                {'id': 4, 'label': 'x8', 'active': True, 'display_order': 4, 'default': False, 'multilooking_value': 8}
-            ],
-            "vlg_spat_avgs": [
-                {'id': 1, 'label': 'x8', 'active': True, 'display_order': 1, 'default': False, 'multilooking_value': 8},
-                {'id': 2, 'label': 'x16 (recommended)', 'active': True, 'display_order': 2, 'default': True, 'multilooking_value': 16},
-                {'id': 3, 'label': 'x32', 'active': True, 'display_order': 3, 'default': False, 'multilooking_value': 32},
-                {'id': 4, 'label': 'x64', 'active': True, 'display_order': 4, 'default': False, 'multilooking_value': 64}             
-            ],
-            "polarizations": [
-                {'id': 1, 'label': 'All available', 'uid_name': 'AllPol', 'active': True, 'display_order': 1, 'default': True},
-                {'id': 2, 'label': 'CH', 'uid_name': 'CHPol', 'active': True, 'display_order': 2, 'default': False},
-                {'id': 3, 'label': 'CV', 'uid_name': 'CVPol', 'active': True, 'display_order': 3, 'default': False},
-                {'id': 4, 'label': 'HH', 'uid_name': 'HHPol', 'active': True, 'display_order': 4, 'default': False},
-                {'id': 5, 'label': 'HV', 'uid_name': 'HVPol', 'active': True, 'display_order': 5, 'default': False},
-                {'id': 6, 'label': 'VV', 'uid_name': 'VVPol', 'active': True, 'display_order': 6, 'default': False},
-                {'id': 7, 'label': 'VH', 'uid_name': 'VHPol', 'active': True, 'display_order': 7, 'default': False}
-            ],
-            "units": [
-                {'id': 1, 'label': 'Meters', 'active': True, 'display_order': 1, 'default': True},
-                {'id': 2, 'label': 'Degrees', 'active': True, 'display_order': 2, 'default': False}
-            ]
-        }
-
 def create_table_row(row, col_lens, centre=False):
     """
     Creates a table row.
@@ -228,7 +133,8 @@ class Product:
 
 class Parameter:
 
-    def __init__(self, param_info, multiple=False):
+    def __init__(self, st, param_info, multiple=False):
+        self.st = st
         self.param_id = param_info.get('param_id')
         self.label = param_info.get('label')
         self.data_type = param_info.get('data_type')
@@ -267,11 +173,11 @@ class Parameter:
         if in_subs:
             self.sub_params = list()
             for param in in_subs:
-                self.sub_params.append(Parameter(param))
+                self.sub_params.append(Parameter(self.st, param))
 
         # print(f"self.param_id: {self.param_id}")
         # print(f"self.constants_key: {self.constants_key}")
-        self.const_vals = CONSTANTS.get(self.constants_key)
+        self.const_vals = self.st.constants.get(self.constants_key)
         # print(f"self.const_vals: {self.const_vals}")
 
         if self.const_vals and not self.default:
@@ -293,6 +199,16 @@ class Parameter:
                 self.value = self.default
 
         # print(f"self.const_vals 2: {self.const_vals}")
+
+    def get_data_type(self):
+        """
+        Gets the data type of the parameter.
+
+        :return: The data type of the parameter.
+        :rtype:  str
+        """
+
+        return self.data_type
 
     def get_default_idx(self):
         """
@@ -388,7 +304,7 @@ class Parameter:
 
         out_value = str(self.value)
         if self.data_type == 'float':
-            out_value = '{:f}'.format(self.value)
+            out_value = '{:f}'.format(float(self.value))
 
         if self.data_type == "bool":
             if not as_label:
@@ -442,7 +358,15 @@ class Parameter:
         if isinstance(val, list) and not self.multiple:
             val = val[0]
 
+        # Verify entry
+        try:
+            eval(f"{self.data_type}(val)")
+        except ValueError:
+            return False
+
         self.value = val
+
+        return True
 
 class Method:
 
@@ -698,8 +622,10 @@ class SARToolbox:
         
         self.eod = eod
 
-        schema_url = "https://github.com/eodms-sgdot/eodms-cli/blob/" \
-                    "development/schemas/SAR_Toolbox_Schema.json?raw=true"
+        # schema_url = "https://github.com/eodms-sgdot/eodms-cli/blob/" \
+        #             "development/schemas/SAR_Toolbox_Schema.json?raw=true"
+        schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/" \
+                    "sar-toolbox-schema.json"
         with urllib.request.urlopen(schema_url) as response:
             self.schema_json = json.loads(response.read())
 
@@ -708,7 +634,7 @@ class SARToolbox:
         #     self.record_ids = rec_ids.split('|')
         self.record_ids = record_ids
         
-        # self.constants = None
+        self.constants = self.schema_json.get('constants')
         self.out_fn = out_fn
         self.full_request = None
 
@@ -723,14 +649,28 @@ class SARToolbox:
             "data_type": "list",
             "constants_key": "polarizations",
         }
-        self.polarization = Parameter(param_info, multiple=True)
+        self.polarization = Parameter(self, param_info, multiple=True)
         
         self.logger = logging.getLogger('eodms')
 
     def set_coll_id(self, coll_id):
+        """
+        Sets the Collection Id for the SAR Toolbox order.
+
+        :param coll_id: The Collection Id.
+        :type  coll_id: str
+        """
+
         self.coll_id = coll_id
 
     def set_record_ids(self, record_ids):
+        """
+        Sets the Record Ids for the SAR Toolbox order.
+
+        :param record_ids: The Record Id(s).
+        :type  record_ids: str
+        """
+
         self.record_ids = record_ids
 
     def ingest_request(self, json_fn=None):
@@ -792,7 +732,7 @@ class SARToolbox:
 
         out_lst = list()
         
-        const_vals = CONSTANTS.get(const_key)
+        const_vals = self.constants.get(const_key)
         const_vals = sorted(const_vals, key=lambda d: d['display_order'])
 
         for c in const_vals:
@@ -916,7 +856,7 @@ class SARToolbox:
 
         pols = self.polarization.value
         pol_uid = [pol.get('uid_name') 
-                   for pol in CONSTANTS.get('polarizations') 
+                   for pol in self.constants.get('polarizations') 
                    if pol.get('label') in pols]
         for p in pol_uid:
             vap_request[p] = "on"
@@ -1050,7 +990,7 @@ class SARToolbox:
                         if param.get('param_id') == 'LabelName':
                             param['default'] = f"My {method_name}"
                             
-                        params.append(Parameter(param))
+                        params.append(Parameter(self, param))
 
                 products = list()
                 if method.get('products'):
