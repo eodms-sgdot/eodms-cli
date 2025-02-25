@@ -2648,8 +2648,8 @@ class EodmsProcess(EodmsUtils):
         priority = params.get('priority')
 
         if in_vals:
-        sar_toolbox.set_coll_id(in_vals.get('collection_id'))
-        sar_toolbox.set_record_ids(in_vals.get('record_ids'))
+            sar_toolbox.set_coll_id(in_vals.get('collection_id'))
+            sar_toolbox.set_record_ids(in_vals.get('record_ids'))
         else:
             st_request = params.get('st_request')
             if not st_request:
