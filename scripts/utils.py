@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
+# represented by the Minister of Natural Resources, 2025
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -17,7 +17,7 @@ import re
 import textwrap
 from colorama import Fore, Back, Style
 from tqdm.auto import tqdm
-import datetime
+from datetime import datetime, timezone
 import dateutil.parser as util_parser
 # import dateparser
 import json
@@ -169,6 +169,8 @@ class EodmsUtils:
 
         self.csv_unique = ['recordid', 'record id', 'sequence id']
 
+        self.time_words = ['hour', 'day', 'week', 'month', 'year']
+
         self.sat_coll_mapping = {'COSMOS-Skymed': ['COSMO-SkyMed1'],
                                  'NAPL': ['NAPL'],
                                  'sgap': ['SGBAirPhotos'],
@@ -288,9 +290,9 @@ class EodmsUtils:
         if in_dates is None or in_dates == '':
             return ''
 
-        time_words = ['hour', 'day', 'week', 'month', 'year']
+        # time_words = ['hour', 'day', 'week', 'month', 'year']
 
-        if any(word in in_dates for word in time_words):
+        if any(word in in_dates for word in self.time_words):
             dates = [in_dates]
         else:
 
@@ -616,6 +618,10 @@ class EodmsUtils:
                 order_id = item_info.get_metadata('orderId')
                 orderitem_id = item_info.get_metadata('itemId')
                 dests = item_info.get_metadata('downloadPaths')
+                if dests is None:
+                    # print(f"Skipping Image with Record Id: {rec_id}")
+                    continue
+
                 for d in dests:
                     loc_dest = d['local_destination']
                     src_url = d['url']
@@ -928,7 +934,7 @@ class EodmsUtils:
                                                      self.download_path, '*.*'))
 
             for f in downloads_files:
-                file_date = datetime.datetime.fromtimestamp(os.path.getmtime(f))
+                file_date = datetime.fromtimestamp(os.path.getmtime(f))
 
                 if file_date < downloads_start:
                     # # print("The file %s will be deleted." % r)
@@ -1983,7 +1989,7 @@ class EodmsProcess(EodmsUtils):
 
         self.export_results()
 
-        end_time = datetime.datetime.now()
+        end_time = datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
 
         self.logger.info(f"End time: {end_str}")
@@ -1996,7 +2002,7 @@ class EodmsProcess(EodmsUtils):
         :rtype:  str
         """
 
-        start_time = datetime.datetime.now()
+        start_time = datetime.now()
         start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
         self.fn_str = start_time.strftime("%Y%m%d_%H%M%S")
 
@@ -2089,7 +2095,11 @@ class EodmsProcess(EodmsUtils):
 
         # Print results info
         msg = f"{query_imgs.count()} unique images returned from search " \
-              f"results.\n\n"
+              f"results:\n\n"
+        if query_imgs.count() <= 20:
+            msg += f"Record Ids: {', '.join(query_imgs.get_ids())}"
+        else:
+            msg += "Check the results file for Record Ids."
         self.print_footer('Query Results', msg)
 
         if no_order:
@@ -2494,9 +2504,25 @@ class EodmsProcess(EodmsUtils):
 
         self.logger.info(f"Process start time: {start_str}")
 
+        dtstart = None
+        dtend = None
+        if self.order_check_date:
+            dtstart = self.order_check_date
+            dtend = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+
+            if any(word in dtstart for word in self.time_words):
+                print(f"\nGetting orders from the last {dtstart} "
+                      f"(from entry RAPI.order_check_date set in the "
+                      f"configuration file).\n")
+            else:
+                print(f"\nGetting orders since {dtstart} "
+                      f"(from entry RAPI.order_check_date set in the "
+                      f"configuration file).\n")
+
         ################################################
         # Get Existing Orders
         ################################################
+        orders = image.OrderList(self)
         if self.order_items is not None and not self.order_items == '':
             # Parse orders and order items
             oi_split = self.order_items.split('|')
@@ -2512,7 +2538,6 @@ class EodmsProcess(EodmsUtils):
                     item_ids += ids
 
             # orders = []
-            orders = image.OrderList(self)
             for id in order_ids:
                 order = self.eodms_rapi.get_order(id)
                 if order is not None:
@@ -2529,15 +2554,17 @@ class EodmsProcess(EodmsUtils):
 
         elif self.max_downloads is not None and not self.max_downloads == '':
             ord_res = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
+                                                dtstart=dtstart, dtend=dtend,
                                                 status='AVAILABLE_FOR_DOWNLOAD')
             imgs = self.get_image_from_order(ord_res)
             orders.ingest_results(ord_res, imgs)
         else:
             max_orders = 250
-            orders = None
+            ord_res = None
             # Cycle through until orders have been returned
-            while orders is None and max_orders > 0:
+            while ord_res is None and max_orders > 0:
                 ord_res = self.eodms_rapi.get_orders(max_orders=max_orders,
+                                                dtstart=dtstart, dtend=dtend,
                                                 status='AVAILABLE_FOR_DOWNLOAD')
                 imgs = self.get_image_from_order(ord_res)
                 orders.ingest_results(ord_res, imgs)
@@ -2551,7 +2578,7 @@ class EodmsProcess(EodmsUtils):
             self.exit_cli(1)
 
         msg = f"Number of order items with status " \
-              f"AVAILABLE_FOR_DOWNLOAD: {orders.count()}"
+              f"AVAILABLE_FOR_DOWNLOAD: {orders.count_items()}"
         print(f"\n{msg}")
         self.logger.info(msg)
 

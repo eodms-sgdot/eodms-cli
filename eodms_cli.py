@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2024
+# represented by the Minister of Natural Resources, 2025
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.6.2'
+__version__ = '3.6.3'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -2143,9 +2143,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         eod.eodms_rapi.close_session()
 
-        print("\nProcess complete.")
+        # print("\nProcess complete.")
 
-        eod.print_support()
+        # eod.print_support()
 
         eod.exit_cli()
 
