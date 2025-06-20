@@ -1154,10 +1154,18 @@ class OrderList:
         :rtype: Order
         """
 
+        order_items = []
         for o in self.order_lst:
             o_item = o.get_item(item_id)
             if o_item:
-                return o_item
+                order_items.append(o_item)
+
+        if len(order_items) == 0:
+            return None
+        elif len(order_items) == 1:
+            return order_items[0]
+        
+        return order_items
             
     def get_item_by_rec_id(self, record_id):
         """

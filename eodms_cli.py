@@ -1786,7 +1786,8 @@ class Prompter:
                 # sar_tb = self.ask_st(self.params['input_val'])
                 sar_tb = self.ask_st()
 
-            self.params['st_request'] = sar_tb.out_fn
+            # self.params['sar_tb'] = sar_tb
+            # self.params['st_request'] = sar_tb.out_fn
 
             # Get the priority
             priority = self.ask_priority(priority)
