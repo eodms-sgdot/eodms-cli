@@ -119,6 +119,11 @@ class Image:
         :rtype: str
         """
         return self.metadata['thisRecordUrl']
+    
+    def get_uuid(self):
+        uuid = self.metadata.get('archiveId')
+
+        return uuid
 
     def get_metadata(self, entry=None):
         """
@@ -210,8 +215,8 @@ class Image:
             elif k == 'geometry':
                 self.metadata['geometry'] = v
                 coords = v['coordinates']
-                self.metadata['wkt'] = geo_util.convert_image_geom(
-                    coords, 'wkt')
+                self.metadata['wkt'] = geo_util.convert_image_geom(coords,
+                                                                   'wkt')
             elif k == 'metadata':
                 if isinstance(v, list):
                     for m in v:

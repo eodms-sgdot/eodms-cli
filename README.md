@@ -9,7 +9,7 @@ The **EODMS-CLI** script is used to search, order and download imagery from the 
 
 ### Python
 
-The EODMS-CLI was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
+The EODMS-CLI was designed using **Python 3.10**.
 
 ### Python Packages
 

@@ -13,11 +13,11 @@
 __title__ = 'EODMS-CLI'
 __author__ = 'Kevin Ballantyne'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2024'
+                'as represented by the Minister of Natural Resources, 2025'
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
-                  'the EODMS using the REST API (RAPI) service.'
-__version__ = '3.6.3'
+                  'the EODMS using the REST API (RAPI) service and DDS API service.'
+__version__ = '3.7.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -1629,46 +1629,6 @@ class Prompter:
 
             # Run the order_csv process
             self.eod.order_csv(self.params)
-
-        # elif self.process == 'download_aoi' or self.process == 'search_only':
-        #
-        #     if self.process == 'download_aoi':
-        #         self.logger.info("Downloading existing orders using an AOI.")
-        #     else:
-        #         self.logger.info("Searching for images using an AOI.")
-        #
-        #     # Get the collection(s)
-        #     coll = self.ask_collection(collections)
-        #     self.params['collections'] = coll
-        #
-        #     # Get the AOI file
-        #     inputs = self.ask_aoi(input_val)
-        #     self.params['input_val'] = inputs
-        #
-        #     # If an AOI is specified, ask for a minimum overlap percentage
-        #     if inputs is not None:
-        #         overlap = self.ask_overlap(overlap)
-        #         self.params['overlap'] = overlap
-        #
-        #     # Get the filter(s)
-        #     filt_dict = self.ask_filter(filters)
-        #     self.params['filters'] = filt_dict
-        #
-        #     # Get the date(s)
-        #     dates = self.ask_dates(dates)
-        #     self.params['dates'] = dates
-        #
-        #     # Get the output geospatial filename
-        #     output = self.ask_output(output)
-        #     self.params['output'] = output
-        #
-        #     # Print command-line syntax for future processes
-        #     self.print_syntax()
-        #
-        #     if self.process == 'download_aoi':
-        #         self.eod.download_aoi(self.params)
-        #     else:
-        #         self.eod.search_only(self.params)
 
         elif self.process == 'download_results':
             # Download existing orders using CSV file from previous session

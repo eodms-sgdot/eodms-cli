@@ -23,11 +23,14 @@ import dateutil.parser as util_parser
 import json
 import glob
 import logging
+import time
 # from copy import copy
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 from eodms_rapi import QueryError
+
+from eodms_dds import dds
 
 try:
     import dateparser
@@ -76,6 +79,8 @@ class EodmsUtils:
 
         self.username = kwargs.get('username')
         self.password = kwargs.get('password')
+
+        self.dds_api = None
 
         self.logger = logging.getLogger('eodms')
 
@@ -742,6 +747,44 @@ class EodmsUtils:
 
         return filt_imgs
 
+    def get_dds_item(self, coll_id, item_uuid):
+
+        status_code = 0
+        suggested_retry_interval = 0
+
+        while not status_code == 200:
+
+            time.sleep(suggested_retry_interval)
+
+            item_info = self.dds_api.get_item(coll_id, item_uuid)
+
+            # print(f"item_info: {item_info}")
+
+            status_code = item_info.get('code')
+            suggested_retry_interval = item_info.get('suggested_retry_interval')
+
+            if status_code >= 400:
+                print(f"An error has occurred.")
+                return None
+
+            if status_code == 200:
+                return item_info
+            else:
+                print(f"Waiting for {suggested_retry_interval} seconds "
+                    f"to check again for download link...")
+
+    def _get_dds_images(self, imgs):
+
+        # print(f"imgs: {imgs.get_raw()}")
+
+        for img in imgs.get_images():
+            item_uuid = img.get_uuid()
+            coll_id = img.get_coll_id()
+
+            self.get_dds_item(coll_id, item_uuid)
+
+            self.dds_api.download_item(self.download_path)
+
     def _submit_orders(self, imgs, priority=None, max_items=None):
         """
         Submits orders to the RAPI.
@@ -981,6 +1024,7 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
+        self.dds_api = dds.DDS_API(username, password)
 
         # Add CLI version info to User-Agent in header
         if 'rapi_session' in dir(self.eodms_rapi):
@@ -2137,34 +2181,40 @@ class EodmsProcess(EodmsUtils):
             eodms_imgs = query_imgs
             aws_imgs = None
 
-        #############################################
-        # Order Images
-        #############################################
-        orders = image.OrderList(self)
-        if eodms_imgs.count() > 0:
-            orders = self._submit_orders(eodms_imgs, priority, max_items)
-
-        #############################################
-        # Download Images
-        #############################################
-
         # Make the download folder if it doesn't exist
         if not os.path.exists(self.download_path):
             os.mkdir(self.download_path)
 
         # Download all AWS images first
-        aws_downloads = None
+        # aws_downloads = None
         if aws_imgs:
             aws_downloads = self.download_aws(aws_imgs)
-
-        # Get a list of order items in JSON format for the EODMSRAPI
-        if orders.count() > 0:
-            self._download_items(orders, eodms_imgs)
-
-        if aws_downloads:
             eodms_imgs.add_images(aws_downloads)
 
-        self._finish_process(orders)
+        # #############################################
+        # # Order Images
+        # #############################################
+
+        self._get_dds_images(eodms_imgs)
+
+        # orders = image.OrderList(self)
+        # if eodms_imgs.count() > 0:
+        #     orders = self._submit_orders(eodms_imgs, priority, max_items)
+
+        # #############################################
+        # # Download Images
+        # #############################################
+
+        
+
+        # # Get a list of order items in JSON format for the EODMSRAPI
+        # if orders.count() > 0:
+        #     self._download_items(orders, eodms_imgs)
+
+        # if aws_downloads:
+        #     eodms_imgs.add_images(aws_downloads)
+
+        # self._finish_process(orders)
 
     def order_csv(self, params):
         """
