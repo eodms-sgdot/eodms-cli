@@ -24,7 +24,8 @@ import json
 import glob
 import logging
 import time
-# from copy import copy
+import threading
+import copy
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
@@ -146,6 +147,10 @@ class EodmsUtils:
         if kwargs.get('rapi_url') is not None:
             self.rapi_domain = str(kwargs.get('rapi_url'))
             # self.eodms_rapi.set_root_url(self.rapi_domain)
+
+        self.concurrent_downloads = '10'
+        if kwargs.get('concurrent_downloads') is not None:
+            self.concurrent_downloads = str(kwargs.get('concurrent_downloads'))
 
         if self.download_attempts is not None:
             if self.download_attempts == '':
@@ -747,7 +752,7 @@ class EodmsUtils:
 
         return filt_imgs
 
-    def get_dds_item(self, coll_id, item_uuid):
+    def download_dds_item(self, coll_id, item_uuid):
 
         status_code = 0
         suggested_retry_interval = 0
@@ -768,22 +773,41 @@ class EodmsUtils:
                 return None
 
             if status_code == 200:
-                return item_info
+                break
             else:
                 print(f"Waiting for {suggested_retry_interval} seconds "
                     f"to check again for download link...")
+
+        print("Downloading item")
+        self.dds_api.download_item(self.download_path)
 
     def _get_dds_images(self, imgs):
 
         # print(f"imgs: {imgs.get_raw()}")
 
-        for img in imgs.get_images():
+        img_lst = copy.deepcopy(imgs.get_images())
+        while len(img_lst) > 0:
+            threads = []
+            print(f"img_lst: {len(img_lst)}")
+            for idx in range(int(self.concurrent_downloads)):
+                if len(img_lst) == 0:
+                    break
+
+                img = img_lst.pop()
             item_uuid = img.get_uuid()
             coll_id = img.get_coll_id()
 
-            self.get_dds_item(coll_id, item_uuid)
+                t1 = threading.Thread(target=self.download_dds_item, 
+                                      args=(coll_id,item_uuid))
+                threads.append(t1)
 
-            self.dds_api.download_item(self.download_path)
+            print(f"threads: {threads}")
+
+            for th in threads:
+                th.start()
+
+            for th in threads:
+                th.join()
 
     def _submit_orders(self, imgs, priority=None, max_items=None):
         """

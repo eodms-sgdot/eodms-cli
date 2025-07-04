@@ -670,30 +670,31 @@ class Prompter:
                     else:
                         total_records = None
 
-                    msg = "If you'd like a limit of images per order, " \
-                          "enter a value (EODMS sets a maximum limit of " \
-                          "100)"
-                    def_msg = "leave blank to order all images in one order " \
-                        "(up to 100)"
-                    order_limit = self.get_input(msg, required=False, 
-                                                 def_msg=def_msg)
+                    # msg = "If you'd like a limit of images per order, " \
+                    #       "enter a value (EODMS sets a maximum limit of " \
+                    #       "100)"
+                    # def_msg = "leave blank to order all images in one order " \
+                    #     "(up to 100)"
+                    # order_limit = self.get_input(msg, required=False, 
+                    #                              def_msg=def_msg)
 
-                    if order_limit == '':
-                        order_limit = None
-                    else:
-                        order_limit = self.eod.validate_int(order_limit,
-                                                            100)
-                        if not order_limit:
-                            self.eod.print_msg("Order limit "
-                                               "value not valid. "
-                                               "Excluding it.",
-                                               indent=False, heading='warning')
-                            order_limit = None
-                        else:
-                            order_limit = str(order_limit)
+                    # order_limit = None
 
-                    maximum = ':'.join(filter(None, [total_records,
-                                                     order_limit]))
+                    # if order_limit == '':
+                    #     order_limit = None
+                    # else:
+                    #     order_limit = self.eod.validate_int(order_limit,
+                    #                                         100)
+                    #     if not order_limit:
+                    #         self.eod.print_msg("Order limit "
+                    #                            "value not valid. "
+                    #                            "Excluding it.",
+                    #                            indent=False, heading='warning')
+                    #         order_limit = None
+                    #     else:
+                    #         order_limit = str(order_limit)
+
+                    maximum = ':'.join(filter(None, [total_records]))
 
         else:
 
@@ -1572,10 +1573,10 @@ class Prompter:
             maximum = self.ask_maximum(maximum)
             self.params['maximum'] = maximum
 
-            if not no_order:
-                # Get the priority
-                priority = self.ask_priority(priority)
-                self.params['priority'] = priority
+            # if not no_order:
+            #     # Get the priority
+            #     priority = self.ask_priority(priority)
+            #     self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1619,10 +1620,10 @@ class Prompter:
             maximum = self.ask_maximum(maximum)
             self.params['maximum'] = maximum
 
-            if not no_order:
-                # Get the priority
-                priority = self.ask_priority(priority)
-                self.params['priority'] = priority
+            # if not no_order:
+            #     # Get the priority
+            #     priority = self.ask_priority(priority)
+            #     self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1697,10 +1698,10 @@ class Prompter:
             no_order = self.ask_order(no_order)
             self.params['no_order'] = no_order
 
-            if not no_order:
-                # Get the priority
-                priority = self.ask_priority(priority)
-                self.params['priority'] = priority
+            # if not no_order:
+            #     # Get the priority
+            #     priority = self.ask_priority(priority)
+            #     self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1750,8 +1751,8 @@ class Prompter:
             # self.params['st_request'] = sar_tb.out_fn
 
             # Get the priority
-            priority = self.ask_priority(priority)
-            self.params['priority'] = priority
+            # priority = self.ask_priority(priority)
+            # self.params['priority'] = priority
 
             # Print command-line syntax for future processes
             self.print_syntax()
@@ -1850,6 +1851,9 @@ def get_configuration_values(config_util, download_path):
 
     config_params['download_attempts'] = config_util.get('RAPI',
                                                         'download_attempts')
+
+    config_params['concurrent_downloads'] = config_util.get('DDS',
+                                                        'concurrent_downloads')
 
     # Get URL for debug purposes
     config_params['rapi_url'] = config_util.get('Debug', 'root_url')
@@ -1985,6 +1989,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     order_check_date = config_params['order_check_date']
     download_attempts = config_params['download_attempts']
     rapi_url = config_params['rapi_url']
+    concurrent_downloads = config_params['concurrent_downloads']
 
     print(eod_util.EodmsProcess(colourize=colourize).title_colour)
     print("##########################################################"
@@ -2087,7 +2092,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     colourize=colourize, 
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
-                                    rapi_url=rapi_url)
+                                    rapi_url=rapi_url,
+                                    concurrent_downloads=concurrent_downloads)
 
         print(f"\nCSV Results will be placed in '{fn_col}{eod.results_path}" \
                 f"{reset}'.")

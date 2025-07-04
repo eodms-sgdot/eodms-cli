@@ -96,6 +96,10 @@ class ConfigUtils:
                                  "images while waiting for orders to become "
                                  "AVAILABLE_FOR_DOWNLOAD": None,
                                  "download_attempts": ""
+                                 },
+                            "DDS":
+                                {"# Number of concurrent downloads for the DDS": None,
+                                 "concurrent_downloads": '10'
                                  }
                             }
 
@@ -368,6 +372,9 @@ Options:
         self._set_dict('RAPI', sr, 'timeout_order')
         self._set_dict('RAPI', 'RAPI', 'order_check_date')
         self._set_dict('RAPI', 'RAPI', 'download_attempts')
+
+        sr = ['Script', 'DDS']  # For backwards compatibility
+        self._set_dict('DDS', 'DDS', 'concurrent_downloads')
 
         # If any hidden parameters exist in the current config file, keep it
         if self.config_info.has_section('Debug'):
