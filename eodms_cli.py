@@ -1878,6 +1878,21 @@ def get_latest_version():
 
     return latest_version
 
+def setup_logger(log_name, log_path):
+
+    logger = logging.getLogger(log_name)
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
+                                    '%(message)s',
+                                    datefmt='%Y-%m-%d %I:%M:%S %p')
+    log_handler = handlers.RotatingFileHandler(log_path, maxBytes=500000,
+                                                backupCount=2)
+    log_handler.setLevel(logging.DEBUG)
+    log_handler.setFormatter(formatter)
+    logger.addHandler(log_handler)
+
+    return logger
+
 eodmsrapi_recent = get_latest_version()
 
 @click.command(context_settings={'help_option_names': ['-h', '--help']})
@@ -2066,18 +2081,21 @@ def cli(username, password, input_val, collections, process, filters, dates,
             pathlib.Path(os.path.dirname(log_path)).mkdir(
                 parents=True, exist_ok=True)
             
-        # Setup logging
-        logger = logging.getLogger('EODMSRAPI')
+        # Setup logging for the RAPI Python package to print to .log file
+        logger = setup_logger('EODMSRAPI', log_path)
+        # logger = logging.getLogger('EODMSRAPI')
 
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
-                                        '%(message)s',
-                                        datefmt='%Y-%m-%d %I:%M:%S %p')
-        log_handler = handlers.RotatingFileHandler(log_path,
-                                                    maxBytes=500000,
-                                                    backupCount=2)
-        log_handler.setLevel(logging.DEBUG)
-        log_handler.setFormatter(formatter)
-        logger.addHandler(log_handler)
+        # formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
+        #                                 '%(message)s',
+        #                                 datefmt='%Y-%m-%d %I:%M:%S %p')
+        # log_handler = handlers.RotatingFileHandler(log_path, maxBytes=500000,
+        #                                             backupCount=2)
+        # log_handler.setLevel(logging.DEBUG)
+        # log_handler.setFormatter(formatter)
+        # logger.addHandler(log_handler)
+
+        # Setup logging for the DDS Python package to print to .log file
+        dds_logger = setup_logger('eodms_dds', log_path)
 
         logger.info(f"Script start time: {start_str}")
 
