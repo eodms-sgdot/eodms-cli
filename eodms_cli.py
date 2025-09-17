@@ -1851,7 +1851,7 @@ def get_configuration_values(config_util, download_path):
 
     config_params['download_attempts'] = config_util.get('RAPI',
                                                         'download_attempts')
-
+    
     config_params['concurrent_downloads'] = config_util.get('DDS',
                                                         'concurrent_downloads')
 

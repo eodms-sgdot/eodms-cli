@@ -26,6 +26,7 @@ import logging
 import time
 import threading
 import copy
+import traceback
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
@@ -231,7 +232,8 @@ class EodmsUtils:
         self.color_map = {
             'error': self.err_colour, 
             'warning': self.warn_colour, 
-            'note': self.note_colour
+            'note': self.note_colour,
+            'single_note': self.note_colour
         }
             
 
@@ -752,35 +754,54 @@ class EodmsUtils:
 
         return filt_imgs
 
-    def download_dds_item(self, coll_id, item_uuid):
+    def download_dds_item(self, coll_id, item_uuid, thread_idx):
 
-        status_code = 0
-        suggested_retry_interval = 0
+        try:
 
-        while not status_code == 200:
+            status_code = 0
+            suggested_retry_interval = 0
 
-            time.sleep(suggested_retry_interval)
+            while not status_code == 200:
 
-            item_info = self.dds_api.get_item(coll_id, item_uuid)
+                time.sleep(suggested_retry_interval)
 
-            # print(f"item_info: {item_info}")
+                # msg = f"Getting image {item_uuid} from Collection {coll_id}..."
+                # self.print_msg(msg, indent=False, heading='note', 
+                #                wrap_text=False)
+                item_info = self.dds_api.get_item(coll_id, item_uuid)
 
-            status_code = item_info.get('code')
-            suggested_retry_interval = item_info.get('suggested_retry_interval')
+                err_msg = f"\nThread {thread_idx} - An error has occurred " \
+                        f"with the DDS when getting image {item_uuid} in " \
+                        f"Collection {coll_id}."
 
-            if status_code >= 400:
-                print(f"An error has occurred.")
-                return None
+                if item_info is None:
+                    self.print_msg(err_msg, indent=False, heading='warning', 
+                                    wrap_text=False)
+                    return None
 
-            if status_code == 200:
-                break
-            else:
-                print(f"Waiting for {suggested_retry_interval} seconds "
-                    f"to check again for download link...")
+                status_code = item_info.get('code')
+                suggested_retry_interval = item_info.get('suggested_retry_interval')
 
-        print("Downloading item")
-        self.dds_api.download_item(self.download_path)
+                if status_code >= 400:
+                    self.print_msg(err_msg, indent=False, heading='warning', 
+                                    wrap_text=False)
+                    return None
 
+                if status_code == 200:
+                    break
+                else:
+                    print(f"\nThread {thread_idx} - Waiting for " 
+                          f"{suggested_retry_interval} seconds to check "
+                          f"again for download link...")
+            
+            print(f"\nThread {thread_idx} - Downloading item")
+            self.dds_api.download_item(self.download_path)
+
+        except Exception as e:
+            trc_back = f"\n{traceback.format_exc()}"
+            # print(f"trc_back: {trc_back}")
+            print(traceback.format_exc())
+            
     def _get_dds_images(self, imgs):
 
         # print(f"imgs: {imgs.get_raw()}")
@@ -788,22 +809,24 @@ class EodmsUtils:
         img_lst = copy.deepcopy(imgs.get_images())
         while len(img_lst) > 0:
             threads = []
-            print(f"img_lst: {len(img_lst)}")
             for idx in range(int(self.concurrent_downloads)):
                 if len(img_lst) == 0:
                     break
 
                 img = img_lst.pop()
-            item_uuid = img.get_uuid()
-            coll_id = img.get_coll_id()
+                item_uuid = img.get_uuid()
+                coll_id = img.get_coll_id()
 
                 t1 = threading.Thread(target=self.download_dds_item, 
-                                      args=(coll_id,item_uuid))
+                                      args=(coll_id, item_uuid, idx+1))
                 threads.append(t1)
 
-            print(f"threads: {threads}")
+            # print(f"threads: {threads}")
 
-            for th in threads:
+            for idx, th in enumerate(threads):
+                msg = f"\n{self.note_colour}**** Running thread {idx+1} of " \
+                    f"{len(threads)} ****{self.reset_colour}\n"
+                print(msg)
                 th.start()
 
             for th in threads:
@@ -1502,7 +1525,8 @@ class EodmsUtils:
 
         return max_images, max_items
 
-    def print_msg(self, msg, nl=True, indent=False, heading=None, wrap_text=True):
+    def print_msg(self, msg, nl=True, indent=False, heading=None,
+                  wrap_text=True):
         """
         Prints a message to the command prompt.
         
@@ -1512,6 +1536,9 @@ class EodmsUtils:
         :type  nl: boolean
         :param indent: A string with the indentation.
         :type  indent: boolean
+        :param heading: The heading type of the message (can be 'error', 
+                        'warning', 'note' or 'single_note').
+        :type  heading: str
         """
 
         # tabsize = 0
@@ -1532,8 +1559,11 @@ class EodmsUtils:
         color = ''
         if heading:
             color = self.color_map.get(heading)
-            msg = f"{initial_indent}**** {heading.upper()} ****\n" \
-                f"{msg}\n{initial_indent}*****************\n"
+            if heading == 'single_note':
+                msg = f"{initial_indent}**** NOTE **** {msg} ****\n"
+            else:
+                msg = f"{initial_indent}**** {heading.upper()} ****\n" \
+                    f"{msg}\n{initial_indent}*****************\n"
 
         if nl:
             msg = color + f"\n{msg}"

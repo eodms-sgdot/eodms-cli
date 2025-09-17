@@ -100,7 +100,7 @@ class ConfigUtils:
                             "DDS":
                                 {"# Number of concurrent downloads for the DDS": None,
                                  "concurrent_downloads": '10'
-                                 }
+                                }
                             }
 
     def _set_dict(self, dict_sect, sections, option):
