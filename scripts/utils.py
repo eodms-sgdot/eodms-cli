@@ -32,7 +32,7 @@ import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 from eodms_rapi import QueryError
 
-from eodms_dds import dds
+from eodms_dds import dds, aaa
 
 try:
     import dateparser
@@ -1071,7 +1071,8 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
-        self.dds_api = dds.DDS_API(username, password)
+        aaa_api = aaa.AAA_API(username, password)
+        self.dds_api = dds.DDS_API(aaa_api)
 
         # Add CLI version info to User-Agent in header
         if 'rapi_session' in dir(self.eodms_rapi):
