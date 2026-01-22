@@ -2132,6 +2132,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
 
         # eod.print_support()
 
+        prmpt.print_syntax()
+
         eod.exit_cli()
 
     except KeyboardInterrupt:
