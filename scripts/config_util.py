@@ -376,10 +376,10 @@ Options:
         sr = ['Script', 'DDS']  # For backwards compatibility
         self._set_dict('DDS', 'DDS', 'concurrent_downloads')
 
-        # If any hidden parameters exist in the current config file, keep it
-        if self.config_info.has_section('Debug'):
-            if self.config_info.has_option('Debug', 'rapi_url'):
-                self._set_dict('Debug', 'Debug', 'rapi_url')
+        # # If any hidden parameters exist in the current config file, keep it
+        # if self.config_info.has_section('Debug'):
+        #     if self.config_info.has_option('Debug', 'eodms_domain'):
+        #         self._set_dict('Debug', 'Debug', 'eodms_domain')
 
     def write(self):
         """

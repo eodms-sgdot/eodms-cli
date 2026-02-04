@@ -25,6 +25,7 @@ import sys
 import os
 import re
 import requests
+# from urllib.parse import urlparse
 # import argparse
 import click
 import traceback
@@ -1460,12 +1461,23 @@ class Prompter:
 
         # Set the RAPI URL from the config file (only for development of
         #   EODMS-CLI)
-        rapi_url = self.config_util.get('Debug', 'rapi_url')
-        # print(f"rapi_url: {rapi_url}")
-        if rapi_url:
-            if rapi_url.find('staging'):
-                print("\n**** RUNNING IN STAGING ENVIRONMENT ****\n")
-            self.eod.rapi_domain = rapi_url
+        
+        # if eodms_domain is None or eodms_domain == "":
+        #     eodms_domain = "https://www.eodms-sgdot.nrcan-rncan.gc.ca"
+
+        # if config_util.has_section('Debug'):
+        #     if config_util.has_option('Debug', 'eodms_domain'):
+        #         eodms_domain = self.config_util.get('Debug', 'eodms_domain')
+        #     elif config_util.has_option('Debug', 'rapi_url'):
+        #         rapi_url = self.config_util.get('Debug', 'rapi_url')
+        #         eodms_domain = urlparse(rapi_url).netloc
+        
+        # if eodms_domain:
+        eodms_domain = self.eod.eodms_domain
+        if eodms_domain and eodms_domain.find('staging'):
+            print("\n**** RUNNING IN STAGING ENVIRONMENT ****\n")
+        
+        # self.eod.eodms_domain = eodms_domain
 
         # Get number of attempts when querying the RAPI
         self.eod.set_attempts(self.config_util.get('RAPI', 'access_attempts'))
@@ -1856,7 +1868,12 @@ def get_configuration_values(config_util, download_path):
                                                         'concurrent_downloads')
 
     # Get URL for debug purposes
-    config_params['rapi_url'] = config_util.get('Debug', 'root_url')
+    # if config_util.has_section('Debug'):
+    #     if config_util.has_option('Debug', 'eodms_domain'):
+    #         config_params['eodms_domain'] = config_util.get('Debug', 'eodms_domain')
+    #     elif config_util.has_option('Debug', 'rapi_url'):
+    #         rapi_url = config_util.get('Debug', 'rapi_url')
+    #         config_params['eodms_domain'] = urlparse(rapi_url).netloc
 
     return config_params
 
@@ -2003,8 +2020,10 @@ def cli(username, password, input_val, collections, process, filters, dates,
     max_results = config_params['max_results']
     order_check_date = config_params['order_check_date']
     download_attempts = config_params['download_attempts']
-    rapi_url = config_params['rapi_url']
+    # eodms_domain = config_params['eodms_domain']
     concurrent_downloads = config_params['concurrent_downloads']
+
+    eodms_domain = os.getenv('EODMS_STAGING_DOMAIN')
 
     print(eod_util.EodmsProcess(colourize=colourize).title_colour)
     print("##########################################################"
@@ -2110,7 +2129,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     colourize=colourize, 
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
-                                    rapi_url=rapi_url,
+                                    eodms_domain=eodms_domain,
                                     concurrent_downloads=concurrent_downloads)
 
         print(f"\nCSV Results will be placed in '{fn_col}{eod.results_path}" \

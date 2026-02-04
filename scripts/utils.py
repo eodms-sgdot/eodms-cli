@@ -71,7 +71,7 @@ class EodmsUtils:
         :type  kwargs: dict
         """
 
-        self.rapi_domain = None
+        self.eodms_domain = None
         self.indent = 3
 
         self.operators = ['=', '<', '>', '<>', '<=', '>=', ' LIKE ',
@@ -145,8 +145,8 @@ class EodmsUtils:
         if kwargs.get('download_attempts') is not None:
             self.download_attempts = kwargs.get('download_attempts')
 
-        if kwargs.get('rapi_url') is not None:
-            self.rapi_domain = str(kwargs.get('rapi_url'))
+        if kwargs.get('eodms_domain') is not None:
+            self.eodms_domain = str(kwargs.get('eodms_domain'))
             # self.eodms_rapi.set_root_url(self.rapi_domain)
 
         self.concurrent_downloads = '10'
@@ -210,6 +210,7 @@ class EodmsUtils:
         self.attempts = None
         self.output = None
         self.fn_str = None
+        self.rerun = []
 
         # Set colours
         self.reset_colour = self.get_colour(reset=True)
@@ -235,7 +236,24 @@ class EodmsUtils:
             'note': self.note_colour,
             'single_note': self.note_colour
         }
-            
+    
+    def _check_dds_collection(self, coll_id):
+
+        # LAST UPDATED: 2026-01-27
+        # Hard-coded for now
+
+        dmc_map = ["RCMImageProducts", "SGBAirPhotos", "RapidEye", "ALOS-2",
+	                "WorldView-3", "Radarsat2",
+                    "Radarsat-2_Tropical_Rain_Forest_Products", "WorldView-1",
+                    "WorldView-2", "WorldView-4", "Radarsat1", "QuickBird-2",
+	                "TerraSarX", "Pleiades", "GeoEye-1", "IRS", "Gaofen-1",
+	                "DMC", "SPOT", "COSMO-SkyMed1", "PlanetScope", "IKONOS",
+                    "OpenNAPL"]
+        
+        if coll_id in dmc_map:
+            return True
+
+        return False
 
     def _get_collection(self, sat):
 
@@ -283,6 +301,8 @@ class EodmsUtils:
             return ['WorldView-4']
         elif sat.lower().find('alos-2') > -1:
             return ['ALOS-2']
+        elif sat.lower().find('iceye') > -1:
+            return ['ICEYE']
 
     def _parse_dates(self, in_dates):
         """
@@ -540,6 +560,11 @@ class EodmsUtils:
                     # Get the results
                     for coll in colls:
                         res = self.eodms_rapi.get_record(coll, rec_id)
+                        
+                        if 'errors' in res and \
+                                res.get('errors').find('404') > -1:
+                            continue
+
                         if len(res) > 0:
                             break
 
@@ -765,9 +790,17 @@ class EodmsUtils:
 
                 time.sleep(suggested_retry_interval)
 
+                if coll_id == "NAPL":
+                    coll_id = "OpenNAPL"
+
                 # msg = f"Getting image {item_uuid} from Collection {coll_id}..."
                 # self.print_msg(msg, indent=False, heading='note', 
                 #                wrap_text=False)
+                if not self._check_dds_collection(coll_id):
+                    print(f"\nCollection {coll_id} is not available in the" 
+                          f" DDS API.")
+                    return None
+                
                 item_info = self.dds_api.get_item(coll_id, item_uuid)
 
                 err_msg = f"\nThread {thread_idx} - An error has occurred " \
@@ -777,6 +810,14 @@ class EodmsUtils:
                 if item_info is None:
                     self.print_msg(err_msg, indent=False, heading='warning', 
                                     wrap_text=False)
+                    return None
+
+                if item_info.get('status') == 'Failed':
+                    self.print_msg(f"\nThread {thread_idx} - Your request " 
+                                   f"for item {item_uuid} has failed.",
+                                   heading='warning', 
+                                   wrap_text=False)
+                    self.print_msg(f"Item Info: {item_info}")
                     return None
 
                 status_code = item_info.get('code')
@@ -790,11 +831,17 @@ class EodmsUtils:
                 if status_code == 200:
                     break
                 else:
-                    print(f"\nThread {thread_idx} - Waiting for " 
-                          f"{suggested_retry_interval} seconds to check "
-                          f"again for download link...")
+                    print(f"suggested_retry_interval: {suggested_retry_interval}")
+                    if suggested_retry_interval > 300:
+                        self.rerun.append(item_info)
+                        return None
+                    else:
+                        print(f"\nThread {thread_idx} - Waiting for " 
+                              f"{suggested_retry_interval} seconds to check "
+                              f"again for download link...")
             
             print(f"\nThread {thread_idx} - Downloading item")
+            # print(f"self.download_path: {self.download_path}")
             self.dds_api.download_item(self.download_path)
 
         except Exception as e:
@@ -831,6 +878,10 @@ class EodmsUtils:
 
             for th in threads:
                 th.join()
+
+        print(f"self.rerun: {self.rerun}")
+
+        # for img in self.rerun:  
 
     def _submit_orders(self, imgs, priority=None, max_items=None):
         """
@@ -1071,18 +1122,29 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
-        aaa_api = aaa.AAA_API(username, password)
-        self.dds_api = dds.DDS_API(aaa_api)
+
+        environment = 'prod'
+        if self.eodms_domain is not None:
+            rapi_root = self.eodms_domain + "/wes/rapi"
+            print(f"Changing root url to {rapi_root}\n")
+            self.eodms_rapi.set_root_url(rapi_root)
+            environment = 'staging'
+
+        # self.logger.info(f"EodmsUtils.create_session.username: {username}")
+        # self.logger.info(f"EodmsUtils.create_session.password: {password}")
+        # self.logger.info(f"EodmsUtils.create_session.environment: {environment}")
+        # print(f"EodmsUtils.create_session.username: {username}")
+        # print(f"EodmsUtils.create_session.password: {password}")
+        # print(f"EodmsUtils.create_session.environment: {environment}")
+
+        aaa_api = aaa.AAA_API(username, password, environment=environment)
+        self.dds_api = dds.DDS_API(aaa_api, environment=environment)
 
         # Add CLI version info to User-Agent in header
         if 'rapi_session' in dir(self.eodms_rapi):
             self.eodms_rapi.rapi_session.add_header('User-Agent', 
                                                 f"EODMSCLI/{self.version}", 
                                                 True)
-
-        if self.rapi_domain is not None:
-            print(f"Changing root url to {self.rapi_domain}\n")
-            self.eodms_rapi.set_root_url(self.rapi_domain)
 
         self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
 
@@ -2241,35 +2303,46 @@ class EodmsProcess(EodmsUtils):
             os.mkdir(self.download_path)
 
         # Download all AWS images first
-        # aws_downloads = None
+        aws_downloads = None
         if aws_imgs:
             aws_downloads = self.download_aws(aws_imgs)
             eodms_imgs.add_images(aws_downloads)
 
-        # #############################################
-        # # Order Images
-        # #############################################
+        ###############################################
+        # Get Items and Download from DDS API
+        ###############################################
 
-        self._get_dds_images(eodms_imgs)
+        dds_res = self._get_dds_images(eodms_imgs)
 
-        # orders = image.OrderList(self)
-        # if eodms_imgs.count() > 0:
-        #     orders = self._submit_orders(eodms_imgs, priority, max_items)
+        # if dds_res is None:
 
-        # #############################################
-        # # Download Images
-        # #############################################
+        #     # If the images cannot be ordered using DDS API:
 
-        
+        #     print("Images could not be ordered and downloaded using DDS API.\n")
 
-        # # Get a list of order items in JSON format for the EODMSRAPI
-        # if orders.count() > 0:
-        #     self._download_items(orders, eodms_imgs)
+        #     #############################################
+        #     # Submit Orders using EODMS RAPI
+        #     #############################################
+            
+        #     orders = image.OrderList(self)
+        #     if eodms_imgs.count() > 0:
+        #         orders = self._submit_orders(eodms_imgs, priority, max_items)
 
-        # if aws_downloads:
-        #     eodms_imgs.add_images(aws_downloads)
+        #     #############################################
+        #     # Download Images
+        #     #############################################
 
-        # self._finish_process(orders)
+        #     if not os.path.exists(self.download_path):
+        #         os.mkdir(self.download_path)
+
+        #     # Get a list of order items in JSON format for the EODMSRAPI
+        #     if orders.count() > 0:
+        #         self._download_items(orders, eodms_imgs)
+
+        #     if aws_downloads:
+        #         eodms_imgs.add_images(aws_downloads)
+
+        #     self._finish_process(orders)
 
     def order_csv(self, params):
         """
@@ -2310,7 +2383,7 @@ class EodmsProcess(EodmsUtils):
         self.eodms_rapi.get_collections()
 
         # Parse the maximum number of orders and items per order
-        max_images, max_items = self.parse_max(maximum)
+        max_images, _ = self.parse_max(maximum)
 
         # Import and query entries from the CSV
         query_imgs = self._get_eodms_res(csv_fn, max_images)
@@ -2325,6 +2398,9 @@ class EodmsProcess(EodmsUtils):
             self.print_msg(msg, heading="warning")
             self.logger.warning(msg)
             self.exit_cli(1)
+
+        self.print_msg(f"query_imgs: {query_imgs.count()}")
+        self.print_msg(f"query_imgs: {query_imgs.get_raw()}")
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -2352,33 +2428,48 @@ class EodmsProcess(EodmsUtils):
             eodms_imgs = query_imgs
             aws_imgs = None
 
-        # print(f"filt_imgs: {filt_imgs.count()}")
-
-        orders = image.OrderList(self)
-        if eodms_imgs.count() > 0:
-            orders = self._submit_orders(eodms_imgs, priority)
-
-        #############################################
-        # Download Images
-        #############################################
-
-        # Make the download folder if it doesn't exist
-        if not os.path.exists(self.download_path):
-            os.mkdir(self.download_path)
-
         # Download all AWS images first
         aws_downloads = None
         if aws_imgs:
             aws_downloads = self.download_aws(aws_imgs)
-
-        # Get a list of order items in JSON format for the EODMSRAPI
-        if orders.count() > 0:
-            self._download_items(orders, eodms_imgs)
-
-        if aws_downloads:
             eodms_imgs.add_images(aws_downloads)
 
-        self._finish_process(orders)
+        ###############################################
+        # Get Items and Download from DDS API
+        ###############################################
+
+        dds_res = self._get_dds_images(eodms_imgs)
+
+        # if dds_res is None:
+
+        #     # If the images cannot be ordered using DDS API:
+
+        #     print("Images could not be ordered and downloaded using DDS API.")
+
+        #     #############################################
+        #     # Submit Orders using EODMS RAPI
+        #     #############################################
+
+        #     orders = image.OrderList(self)
+        #     if eodms_imgs.count() > 0:
+        #         orders = self._submit_orders(eodms_imgs, priority)
+
+        #     #############################################
+        #     # Download Images
+        #     #############################################
+
+        #     # Make the download folder if it doesn't exist
+        #     if not os.path.exists(self.download_path):
+        #         os.mkdir(self.download_path)
+
+        #     # Get a list of order items in JSON format for the EODMSRAPI
+        #     if orders.count() > 0:
+        #         self._download_items(orders, eodms_imgs)
+
+        #     if aws_downloads:
+        #         eodms_imgs.add_images(aws_downloads)
+
+        #     self._finish_process(orders)
 
     def order_ids(self, params):
         """
@@ -2408,10 +2499,15 @@ class EodmsProcess(EodmsUtils):
 
         self.eodms_rapi.get_collections()
 
-        ids_lst = in_ids.split(',')
+        ids_lst = in_ids.split('|')
+
+        # self.logger.info(f"order_ids.ids_lst: {ids_lst}")
+        # print(f"order_ids.ids_lst: {ids_lst}")
 
         all_res = []
         for i in ids_lst:
+            # self.logger.info(f"order_ids.i: {i}")
+            # print(f"order_ids.i: {i}")
             coll, rec_ids = i.split(':')
 
             for rec_id in rec_ids.split('|'):
@@ -2455,47 +2551,45 @@ class EodmsProcess(EodmsUtils):
             eodms_imgs = query_imgs
             aws_imgs = None
 
-        #############################################
-        # Order Images
-        #############################################
+        ###############################################
+        # Get Items and Download from DDS API
+        ###############################################
 
-        if eodms_imgs.count() > 0:
-            orders = self._submit_orders(eodms_imgs, priority)
-
-        # print(f"2240 - orders: {id(orders)}")
-
-        if orders is None:
-            orders = image.OrderList(self)
-
-        # print(f"orders 2 len: {orders.count_items()}")
-       #  orders.print_orders("Orders 2")
-
-        # print(f"2248 - orders: {id(orders)}")
-
-        #############################################
-        # Download Images
-        #############################################
-
-        # Download all AWS images first
         aws_downloads = None
         if aws_imgs:
             aws_downloads = self.download_aws(aws_imgs)
-
-        # Get a list of order items in JSON format for the EODMSRAPI
-        if orders.count() > 0:
-            self._download_items(orders, eodms_imgs)
-        
-        # print(f"orders 3 len: {orders.count_items()}")
-        # orders.print_orders("Orders 3")
-
-        # print(f"2266 - orders: {id(orders)}")
-
-        orders.print_orders("Download results")
-
-        if aws_downloads:
             eodms_imgs.add_images(aws_downloads)
 
-        self._finish_process(orders)
+        dds_res = self._get_dds_images(eodms_imgs)
+
+        # if dds_res is None:
+
+        #     # If the images cannot be ordered using DDS API:
+
+        #     print("Images could not be ordered and downloaded using DDS API.")
+
+        #     #############################################
+        #     # Submit Orders using EODMS RAPI
+        #     #############################################
+
+        #     if eodms_imgs.count() > 0:
+        #         orders = self._submit_orders(eodms_imgs, priority)
+
+        #     if orders is None:
+        #         orders = image.OrderList(self)
+
+        #     #############################################
+        #     # Download Images
+        #     #############################################
+
+        #     # Get a list of order items in JSON format for the EODMSRAPI
+        #     if orders.count() > 0:
+        #         self._download_items(orders, eodms_imgs)
+            
+        #     if aws_downloads:
+        #         eodms_imgs.add_images(aws_downloads)
+
+        #     self._finish_process(orders)
 
     def download_aoi(self, params):
         """

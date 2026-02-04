@@ -89,7 +89,7 @@ class TestEodmsCli(unittest.TestCase):
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
         download_attempts = config_params['download_attempts']
-        rapi_url = config_params['rapi_url']
+        eodms_domain = config_params['eodms_domain']
 
         eod = eod_util.EodmsProcess(version=eodms_cli.__version__, 
                                     download=download_path,
@@ -102,7 +102,7 @@ class TestEodmsCli(unittest.TestCase):
                                     colourize=colourize,
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
-                                    rapi_url=rapi_url)
+                                    eodms_domain=eodms_domain)
 
         prmpt = eodms_cli.Prompter(eod, conf_util, params, click, testing=True)
 
