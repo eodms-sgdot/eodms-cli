@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service and DDS API service.'
-__version__ = '3.7.0'
+__version__ = '4.0.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -73,17 +73,21 @@ proc_choices = {'full': {
                     'desc': 'Order and download a single or set of images '
                             'using Record IDs'
                 },
-                'download_available': {
-                    'name': 'Download Available Order Items',
-                    'desc': 'Downloads order items with status '
-                            'AVAILABLE_FOR_DOWNLOAD'
+                'download_restored_items': {
+                    'name': 'Download Restored Items',
+                    'desc': 'Download requests that had status ItemsRestoring'
                 },
-                'download_results': {
-                    'name': 'Download EODMS-CLI Results',
-                    'desc': 'Download existing orders using a CSV file from '
-                            'a previous order/download process (files found '
-                            'under "results" folder)'
-                },
+                # 'download_available': {
+                #     'name': 'Download Available Order Items',
+                #     'desc': 'Downloads order items with status '
+                #             'AVAILABLE_FOR_DOWNLOAD'
+                # },
+                # 'download_results': {
+                #     'name': 'Download EODMS-CLI Results',
+                #     'desc': 'Download existing orders using a CSV file from '
+                #             'a previous order/download process (files found '
+                #             'under "results" folder)'
+                # },
                 'order_st': {
                     'name': 'Submit Order to SAR Toolbox',
                     'desc': 'Submit order to the SAR Toolbox'
@@ -554,7 +558,7 @@ class Prompter:
 
         return filt_dict
 
-    def ask_input_file(self, input_fn, msg):
+    def ask_input_file(self, input_fn, msg, file_type='csv'):
         """
         Asks the user for the input filename.
         
@@ -570,21 +574,24 @@ class Prompter:
         if input_fn is None or input_fn == '':
 
             if self.eod.silent:
-                err_msg = "No CSV file specified. Exiting process."
+                err_msg = f"No {file_type.upper()} file specified. " \
+                            f"Exiting process."
                 self.eod.print_msg(err_msg, heading='error')
                 # self.eod.print_support(True, err_msg)
                 self.logger.error(err_msg)
                 self.eod.exit_cli(1)
 
-            self.print_header("Enter Input CSV File")
+            self.print_header(f"Enter Input {file_type.upper()} File")
 
-            err_msg = "No CSV specified. Please enter a valid CSV file"
+            err_msg = f"No {file_type.upper()} specified. " \
+                        f"Please enter a valid {file_type.upper()} file"
             input_fn = self.get_input(msg, err_msg)
 
         if not os.path.exists(input_fn):
             # err_msg = "Not a valid CSV file. Please enter a valid CSV file."
-            err_msg = f"The specified CSV file ({input_fn}) does not exist. " \
-                      f"Please enter a valid CSV file."
+            err_msg = f"The specified {file_type.upper()} file ({input_fn}) " \
+                        f"does not exist. Please enter a valid " \
+                        f"{file_type.upper()} file."
             # self.eod.print_support(True, err_msg)
             self.eod.print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
@@ -1367,6 +1374,8 @@ class Prompter:
         Prompts the user for the input options.
         """
 
+        # print(f"prompt.params: {self.params}")
+
         username = self.params.get('username')
         password = self.params.get('password')
         input_val = self.params.get('input_val')
@@ -1386,6 +1395,8 @@ class Prompter:
         st_request = self.params.get('st_request')
         silent = self.params.get('silent')
         version = self.params.get('version')
+
+        # print(f"prompt.st_request: {st_request}")
 
         if version:
             print(f"{__title__}: Version {__version__}")
@@ -1643,49 +1654,49 @@ class Prompter:
             # Run the order_csv process
             self.eod.order_csv(self.params)
 
-        elif self.process == 'download_results':
-            # Download existing orders using CSV file from previous session
+        # elif self.process == 'download_results':
+        #     # Download existing orders using CSV file from previous session
 
-            self.logger.info("Downloading images using results from a CSV "
-                             "file from a previous session.")
+        #     self.logger.info("Downloading images using results from a CSV "
+        #                      "file from a previous session.")
 
-            # Get the CSV file
-            msg = "Enter the full path of the CSV Results file from a " \
-                  "previous session"
-            inputs = self.ask_input_file(input_val, msg)
-            self.params['input_val'] = inputs
+        #     # Get the CSV file
+        #     msg = "Enter the full path of the CSV Results file from a " \
+        #           "previous session"
+        #     inputs = self.ask_input_file(input_val, msg)
+        #     self.params['input_val'] = inputs
 
-            # Get the output geospatial filename
-            output = self.ask_output(output)
-            self.params['output'] = output
+        #     # Get the output geospatial filename
+        #     output = self.ask_output(output)
+        #     self.params['output'] = output
 
-            # Print command-line syntax for future processes
-            self.print_syntax()
+        #     # Print command-line syntax for future processes
+        #     self.print_syntax()
 
-            # Run the download_only process
-            self.eod.download_results(self.params)
+        #     # Run the download_only process
+        #     self.eod.download_results(self.params)
 
-        elif self.process == 'download_available':
-            self.logger.info("Downloading existing order items with status"
-                             "AVAILABLE_FOR_DOWNLOAD.")
+        # elif self.process == 'download_available':
+        #     self.logger.info("Downloading existing order items with status"
+        #                      "AVAILABLE_FOR_DOWNLOAD.")
 
-            orderitems = self.ask_orderitems(orderitems)
-            self.params['orderitems'] = orderitems
+        #     orderitems = self.ask_orderitems(orderitems)
+        #     self.params['orderitems'] = orderitems
 
-            if orderitems is None or orderitems == '':
-                # Get the maximum(s)
-                maximum = self.ask_maximum(maximum, 'download')
-                self.params['maximum'] = maximum
+        #     if orderitems is None or orderitems == '':
+        #         # Get the maximum(s)
+        #         maximum = self.ask_maximum(maximum, 'download')
+        #         self.params['maximum'] = maximum
 
-            # Get the output geospatial filename
-            output = self.ask_output(output)
-            self.params['output'] = output
+        #     # Get the output geospatial filename
+        #     output = self.ask_output(output)
+        #     self.params['output'] = output
 
-            # Print command-line syntax for future processes
-            self.print_syntax()
+        #     # Print command-line syntax for future processes
+        #     self.print_syntax()
 
-            # Run the download_available process
-            self.eod.download_available(self.params)
+        #     # Run the download_available process
+        #     self.eod.download_available(self.params)
 
 
         elif self.process == 'record_id':
@@ -1721,14 +1732,27 @@ class Prompter:
             # Run the order_csv process
             self.eod.order_ids(self.params)
 
+        elif self.process == 'download_restored_items':
+            self.logger.info("Downloading previous requests with status ItemsRestoring")
+
+            # Get the CSV file
+            msg = "Enter the full path of the JSON ItemsRestore file from a " \
+                  "previous session"
+            inputs = self.ask_input_file(input_val, msg, file_type='json')
+            self.params['input_val'] = inputs
+
+            # Run the order_csv process
+            self.eod.download_restored_items(self.params)
+
         elif self.process == 'order_st':
             self.logger.info("Ordering an image from the SAR Toolbox")
 
-            # print(f"self.params: {self.params}")
+            print(f"self.params 1: {self.params}")
 
             # st_request = self.params.get('st_request')
             # print(f"st_request: {st_request}")
             if st_request:
+                self.params['st_request'] = st_request
                 sar_tb = sar.SARToolbox(self.eod, out_fn=st_request)
                 sar_tb.ingest_request()
             else:
@@ -1768,6 +1792,8 @@ class Prompter:
 
             # Print command-line syntax for future processes
             self.print_syntax()
+
+            # print(f"self.params 2: {self.params}")
 
             # Run the order_csv process
             self.eod.order_st(sar_tb, self.params)
@@ -2132,8 +2158,8 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     eodms_domain=eodms_domain,
                                     concurrent_downloads=concurrent_downloads)
 
-        print(f"\nCSV Results will be placed in '{fn_col}{eod.results_path}" \
-                f"{reset}'.")
+        # print(f"\nCSV Results will be placed in '{fn_col}{eod.results_path}" \
+        #         f"{reset}'.")
 
         eod.cleanup_folders()
 
@@ -2162,7 +2188,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         logger.info(msg)
 
         if 'eod' in vars() or 'eod' in globals():
-            eod.export_results()
+            # eod.export_results()
             eod.exit_cli(1)
         else:
             eod_util.EodmsProcess().exit_cli(1)
@@ -2173,7 +2199,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         if 'eod' in vars() or 'eod' in globals():
             # eod.print_support(True, trc_back)
             eod.print_msg(trc_back, heading='error')
-            eod.export_results()
+            # eod.export_results()
             eod.exit_cli(0)
         else:
             # eod_util.EodmsProcess().print_support(True, trc_back)

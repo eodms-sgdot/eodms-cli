@@ -210,7 +210,7 @@ class EodmsUtils:
         self.attempts = None
         self.output = None
         self.fn_str = None
-        self.rerun = []
+        self.items_restoring = []
 
         # Set colours
         self.reset_colour = self.get_colour(reset=True)
@@ -607,105 +607,167 @@ class EodmsUtils:
 
         return query_imgs
 
-    def _print_results(self, orders):
-        """
-        Prints the results of order downloads.
+    def _print_results(self, imgs):
+
+        if isinstance(imgs, image.OrderList):
+            imgs = imgs.get_images()
         
-        :param orders: A list of orders after they've been downloaded.
-        :type  orders: image.OrderList
-        """
+        download_res = {}
+        for img in imgs.get_images():
+            request_status = img.get_metadata('requestStatus')
 
-        success_orders = image.OrderList(self)
-        failed_orders = image.OrderList(self)
+            img_lst = download_res.get(request_status, [])
+            img_lst.append(img)
+            download_res[request_status] = img_lst
 
-        for item in orders.get_order_items():
-            # print(f"img status: {img.get_metadata()}")
-
-            # print(f"item: {item}")
-
-            # order_items = item.get_metadata('orderItems')
-
-            # for item in order_items:
-            # order_item_id = item.get_item_id()
-            # img = item.get_image()
-            status = item.get_status()
-            # print(f"status: {status}")
-            if status in ['AVAILABLE_FOR_DOWNLOAD', 'SUCCESS']:
-                # order_item_info = {"order_item_id": order_item_id, 
-                #                     "image": img}
-                success_orders.add_order_item(item)
-            else:
-                # order_item_info = {"order_item_id": order_item_id, 
-                #                     "image": img}
-                failed_orders.add_order_item(item)
-
-        if success_orders.count_items() > 0:
-            # Print information for all successful orders
-            #   including the download location
+        if len(download_res.get('Available', [])) > 0:
             msg = "The following images have been downloaded:\n"
-            for item_info in success_orders.get_order_items():
 
-                # order_item_id = item_info.get('order_item_id')
-                # img = item_info.get_image()
+            for avail_img in download_res.get('Available', []):
+                img_uuid = avail_img.get_image_uuid()
+                coll_id = avail_img.get_coll_id()
+                loc_dest = avail_img.get_metadata('downloadDestination')
+                src_url = avail_img.get_metadata('ddsResults').get('download_url')
 
-                # rec_id = img.get_record_id()
-                # coll_id = img.get_metadata('collectionId')
-                rec_id = item_info.get_record_id()
-                coll_id = item_info.get_metadata('collectionId')
-                order_id = item_info.get_metadata('orderId')
-                orderitem_id = item_info.get_metadata('itemId')
-                dests = item_info.get_metadata('downloadPaths')
-                if dests is None:
-                    # print(f"Skipping Image with Record Id: {rec_id}")
-                    continue
+                msg += f"\nImage UUID {img_uuid}\n"
+                msg += f"    Collection ID: {coll_id}\n"
+                msg += f"    Downloaded File: {loc_dest}\n"
+                msg += f"    Source URL: {src_url}\n"
 
-                for d in dests:
-                    loc_dest = d['local_destination']
-                    src_url = d['url']
-                    msg += f"\nRecord ID {rec_id}\n"
-                    msg += f"    Collection ID: {coll_id}\n"
-                    msg += f"    Order Item ID: {orderitem_id}\n"
-                    msg += f"    Order ID: {order_id}\n"
-                    msg += f"    Downloaded File: {loc_dest}\n"
-                    msg += f"    Source URL: {src_url}\n"
             self.print_footer('Successful Downloads', msg)
-            self.logger.info(f"Successful Downloads: {msg}")
 
-        if failed_orders.count_items() > 0:
+        if len(download_res.get('ItemsRestoring', [])) > 0:
+            msg = "The following images are currently being restored " \
+                "(status: ItemsRestoring):\n"
+
+            for itrest_img in download_res.get('ItemsRestoring', []):
+                img_uuid = itrest_img.get_image_uuid()
+                coll_id = itrest_img.get_coll_id()
+
+                msg += f"\nImage UUID {img_uuid}\n"
+                msg += f"    Collection ID: {coll_id}\n"
+
+            msg += "\nNOTE: Images with status ItemsRestoring take " \
+                    "approximately 12 hours to become Available. A JSON file " \
+                    "with a list of images has been saved to the 'results' " \
+                    "folder. Please run Process 4 using this file at a later " \
+                    "time."
+
+            self.print_footer('ItemsRestoring Images', msg)
+
+        if len(download_res.get('Failed', [])) > 0:
             msg = "The following images did not download:\n"
-            for item_info in failed_orders.get_order_items():
+
+            for itrest_img in download_res.get('Failed', []):
+                img_uuid = itrest_img.get_image_uuid()
+                coll_id = itrest_img.get_coll_id()
+
+                msg += f"\nImage UUID {img_uuid}\n"
+                msg += f"    Collection ID: {coll_id}\n"
+
+            self.print_footer('Failed Images', msg)
+
+        return None
+
+    # def _print_results(self, orders):
+    #     """
+    #     Prints the results of order downloads.
+        
+    #     :param orders: A list of orders after they've been downloaded.
+    #     :type  orders: image.OrderList
+    #     """
+
+    #     success_orders = image.OrderList(self)
+    #     failed_orders = image.OrderList(self)
+
+    #     for item in orders.get_order_items():
+    #         # print(f"img status: {img.get_metadata()}")
+
+    #         # print(f"item: {item}")
+
+    #         # order_items = item.get_metadata('orderItems')
+
+    #         # for item in order_items:
+    #         # order_item_id = item.get_item_id()
+    #         # img = item.get_image()
+    #         status = item.get_status()
+    #         # print(f"status: {status}")
+    #         if status in ['AVAILABLE_FOR_DOWNLOAD', 'SUCCESS']:
+    #             # order_item_info = {"order_item_id": order_item_id, 
+    #             #                     "image": img}
+    #             success_orders.add_order_item(item)
+    #         else:
+    #             # order_item_info = {"order_item_id": order_item_id, 
+    #             #                     "image": img}
+    #             failed_orders.add_order_item(item)
+
+    #     if success_orders.count_items() > 0:
+    #         # Print information for all successful orders
+    #         #   including the download location
+    #         msg = "The following images have been downloaded:\n"
+    #         for item_info in success_orders.get_order_items():
+
+    #             # order_item_id = item_info.get('order_item_id')
+    #             # img = item_info.get_image()
+
+    #             # rec_id = img.get_record_id()
+    #             # coll_id = img.get_metadata('collectionId')
+    #             rec_id = item_info.get_record_id()
+    #             coll_id = item_info.get_metadata('collectionId')
+    #             order_id = item_info.get_metadata('orderId')
+    #             orderitem_id = item_info.get_metadata('itemId')
+    #             dests = item_info.get_metadata('downloadPaths')
+    #             if dests is None:
+    #                 # print(f"Skipping Image with Record Id: {rec_id}")
+    #                 continue
+
+    #             for d in dests:
+    #                 loc_dest = d['local_destination']
+    #                 src_url = d['url']
+    #                 msg += f"\nRecord ID {rec_id}\n"
+    #                 msg += f"    Collection ID: {coll_id}\n"
+    #                 msg += f"    Order Item ID: {orderitem_id}\n"
+    #                 msg += f"    Order ID: {order_id}\n"
+    #                 msg += f"    Downloaded File: {loc_dest}\n"
+    #                 msg += f"    Source URL: {src_url}\n"
+    #         self.print_footer('Successful Downloads', msg)
+    #         self.logger.info(f"Successful Downloads: {msg}")
+
+    #     if failed_orders.count_items() > 0:
+    #         msg = "The following images did not download:\n"
+    #         for item_info in failed_orders.get_order_items():
                 
-                # order_item_id = item_info.get('order_item_id')
-                # img = item_info.get_image()
+    #             # order_item_id = item_info.get('order_item_id')
+    #             # img = item_info.get_image()
 
-                # rec_id = img.get_record_id()
-                order_id = item_info.get_metadata('orderId')
-                rec_id = item_info.get_record_id()
-                coll_id = item_info.get_metadata('collectionId')
-                orderitem_id = item_info.get_metadata('itemId')
-                status = item_info.get_status()
-                stat_msg = item_info.get_metadata('statusMessage')
+    #             # rec_id = img.get_record_id()
+    #             order_id = item_info.get_metadata('orderId')
+    #             rec_id = item_info.get_record_id()
+    #             coll_id = item_info.get_metadata('collectionId')
+    #             orderitem_id = item_info.get_metadata('itemId')
+    #             status = item_info.get_status()
+    #             stat_msg = item_info.get_metadata('statusMessage')
 
-                msg += f"\nRecord ID {rec_id}\n"
-                msg += f"    Order Item ID: {orderitem_id}\n"
-                msg += f"    Order ID: {order_id}\n"
-                msg += f"    Status: {status}\n"
-                msg += f"    Status Message: {stat_msg}\n"
-            self.print_footer('Failed Downloads', msg)
-            self.logger.info(f"Failed Downloads: {msg}")
+    #             msg += f"\nRecord ID {rec_id}\n"
+    #             msg += f"    Order Item ID: {orderitem_id}\n"
+    #             msg += f"    Order ID: {order_id}\n"
+    #             msg += f"    Status: {status}\n"
+    #             msg += f"    Status Message: {stat_msg}\n"
+    #         self.print_footer('Failed Downloads', msg)
+    #         self.logger.info(f"Failed Downloads: {msg}")
 
-            if self.download_attempts is not None:
-                self.print_msg(f"The 'download_attempts' parameter in the "
-                               f"configuration file is currently "
-                               f"set to {self.download_attempts}.\nPlease "
-                               f"consider increasing it to make sure the "
-                               f"script continues to check for your orders "
-                               f"until they become AVAILABLE_FOR_DOWNLOAD.\n"
-                               f"(You can change the value by runnning "
-                               f"'python eodms_cli.py --configure RAPI' "
-                               f"and go through the parameters until you "
-                               f"reach the 'download_attempts').", 
-                               heading='note')
+    #         if self.download_attempts is not None:
+    #             self.print_msg(f"The 'download_attempts' parameter in the "
+    #                            f"configuration file is currently "
+    #                            f"set to {self.download_attempts}.\nPlease "
+    #                            f"consider increasing it to make sure the "
+    #                            f"script continues to check for your orders "
+    #                            f"until they become AVAILABLE_FOR_DOWNLOAD.\n"
+    #                            f"(You can change the value by runnning "
+    #                            f"'python eodms_cli.py --configure RAPI' "
+    #                            f"and go through the parameters until you "
+    #                            f"reach the 'download_attempts').", 
+    #                            heading='note')
 
     def _parse_aws(self, query_imgs):
         """
@@ -779,9 +841,12 @@ class EodmsUtils:
 
         return filt_imgs
 
-    def download_dds_item(self, coll_id, item_uuid, thread_idx):
+    def download_dds_item(self, img, thread_idx):
 
         try:
+
+            image_uuid = img.get_image_uuid()
+            coll_id = img.get_coll_id()
 
             status_code = 0
             suggested_retry_interval = 0
@@ -801,10 +866,10 @@ class EodmsUtils:
                           f" DDS API.")
                     return None
                 
-                item_info = self.dds_api.get_item(coll_id, item_uuid)
+                item_info = self.dds_api.get_item(coll_id, image_uuid)
 
                 err_msg = f"\nThread {thread_idx} - An error has occurred " \
-                        f"with the DDS when getting image {item_uuid} in " \
+                        f"with the DDS when getting image {image_uuid} in " \
                         f"Collection {coll_id}."
 
                 if item_info is None:
@@ -812,13 +877,20 @@ class EodmsUtils:
                                     wrap_text=False)
                     return None
 
-                if item_info.get('status') == 'Failed':
+                status = item_info.get('status')
+                
+                img.set_metadata(item_info, 'ddsResults')
+                img.set_metadata(status, 'requestStatus')
+
+                if status == 'Failed':
                     self.print_msg(f"\nThread {thread_idx} - Your request " 
-                                   f"for item {item_uuid} has failed.",
+                                   f"for item {image_uuid} has failed.",
                                    heading='warning', 
                                    wrap_text=False)
-                    self.print_msg(f"Item Info: {item_info}")
+                    # self.print_msg(f"Item Info: {item_info}")
                     return None
+                
+                # self.print_msg(f"Item Info: {item_info}")
 
                 status_code = item_info.get('code')
                 suggested_retry_interval = item_info.get('suggested_retry_interval')
@@ -831,9 +903,10 @@ class EodmsUtils:
                 if status_code == 200:
                     break
                 else:
-                    print(f"suggested_retry_interval: {suggested_retry_interval}")
-                    if suggested_retry_interval > 300:
-                        self.rerun.append(item_info)
+                    if status and status == 'ItemsRestoring':
+                        item_info['image_uuid'] = image_uuid
+                        item_info['collection_id'] = coll_id
+                        self.items_restoring.append(item_info)
                         return None
                     else:
                         print(f"\nThread {thread_idx} - Waiting for " 
@@ -842,7 +915,8 @@ class EodmsUtils:
             
             print(f"\nThread {thread_idx} - Downloading item")
             # print(f"self.download_path: {self.download_path}")
-            self.dds_api.download_item(self.download_path)
+            download_dest = self.dds_api.download_item(self.download_path)
+            img.set_metadata(download_dest, 'downloadDestination')
 
         except Exception as e:
             trc_back = f"\n{traceback.format_exc()}"
@@ -854,6 +928,7 @@ class EodmsUtils:
         # print(f"imgs: {imgs.get_raw()}")
 
         img_lst = copy.deepcopy(imgs.get_images())
+        updated_imgs = []
         while len(img_lst) > 0:
             threads = []
             for idx in range(int(self.concurrent_downloads)):
@@ -861,27 +936,35 @@ class EodmsUtils:
                     break
 
                 img = img_lst.pop()
-                item_uuid = img.get_uuid()
-                coll_id = img.get_coll_id()
+                # image_uuid = img.get_uuid()
+                # coll_id = img.get_coll_id()
 
                 t1 = threading.Thread(target=self.download_dds_item, 
-                                      args=(coll_id, item_uuid, idx+1))
+                                      args=(img, idx+1))
                 threads.append(t1)
+
+                updated_imgs.append(img)
 
             # print(f"threads: {threads}")
 
             for idx, th in enumerate(threads):
                 msg = f"\n{self.note_colour}**** Running thread {idx+1} of " \
-                    f"{len(threads)} ****{self.reset_colour}\n"
+                        f"{len(threads)} ****{self.reset_colour}\n"
                 print(msg)
                 th.start()
 
             for th in threads:
                 th.join()
 
-        print(f"self.rerun: {self.rerun}")
+        # print(f"self.items_restoring: {self.items_restoring}")
+        # self.print_msg(f"self.items_restoring: {self.items_restoring}")
 
-        # for img in self.rerun:  
+        imgs.update_images(updated_imgs)
+
+        # self.print_msg(f"_get_dds_images.imgs: {imgs.get_raw()}")
+        # imgs.print_images()
+        
+        self.export_items_restoring()
 
     def _submit_orders(self, imgs, priority=None, max_items=None):
         """
@@ -961,7 +1044,7 @@ class EodmsUtils:
 
             if orders.count_items() == 0:
                 # If no orders could be found
-                self.export_results()
+                # self.export_results()
                 err_msg = "No orders were submitted successfully."
                 # self.print_support(True, err_msg)
                 self.print_msg(err_msg, heading='error')
@@ -1221,6 +1304,9 @@ class EodmsUtils:
         :type  exit_code: int
         """
 
+        if self.cur_res:
+            self.eodms_geo.export_results(self.cur_res, self.output)
+
         if 'eodms_rapi' in dir(self):
             if 'close_session' in dir(self.eodms_rapi):
                 # If statement for backward compatibility
@@ -1235,23 +1321,42 @@ class EodmsUtils:
         
         sys.exit(exit_code)
 
-    def export_results(self):
+    def export_items_restoring(self):
         """
         Exports results to a CSV file.
         """
 
-        if self.cur_res is None:
+        if len(self.items_restoring) == 0:
             return None
 
         # Create EODMS_CSV object to export results
-        res_fn = os.path.join(self.results_path, f"{self.fn_str}_Results.csv")
-        res_csv = csv_util.EODMS_CSV(self, res_fn)
-
-        res_csv.export_results(self.cur_res)
+        res_fn = os.path.join(self.results_path, 
+                              f"{self.fn_str}_ItemsRestoring.json")
+        
+        with open(res_fn, 'w') as json_file:
+            json.dump(self.items_restoring, json_file, indent=4)
 
         msg = f"Results exported to '{self.path_colour}{res_fn}" \
-            f"{self.reset_colour}'."
+                f"{self.reset_colour}'."
         self.print_msg(msg, indent=False)
+
+    # def export_results(self):
+    #     """
+    #     Exports results to a CSV file.
+    #     """
+
+    #     if self.cur_res is None:
+    #         return None
+
+    #     # Create EODMS_CSV object to export results
+    #     res_fn = os.path.join(self.results_path, f"{self.fn_str}_Results.csv")
+    #     res_csv = csv_util.EODMS_CSV(self, res_fn)
+
+    #     res_csv.export_results(self.cur_res)
+
+    #     msg = f"Results exported to '{self.path_colour}{res_fn}" \
+    #         f"{self.reset_colour}'."
+    #     self.print_msg(msg, indent=False)
 
     def export_records(self, csv_f, header, records):
         """
@@ -1504,7 +1609,7 @@ class EodmsUtils:
                     # Export polygons of images
                     self.eodms_geo.export_results(query_imgs, self.output)
 
-                    self.export_results()
+                    # self.export_results()
                     self.logger.info("Process ended by user.")
                     self.exit_cli()
 
@@ -1789,6 +1894,9 @@ class EodmsUtils:
 
                 if av_fields is None:
                     return None
+                
+                # self.print_msg(f"query_entries.filt_parse: {filt_parse}")
+                # self.print_msg(f"query_entries.av_fields: {av_fields}")
 
                 result_fields.extend(k for k in filt_parse.keys() 
                     if k in av_fields['results'])
@@ -1801,6 +1909,8 @@ class EodmsUtils:
                 "resultFields": result_fields, 
                 "maxResults": max_images
             }
+
+            # self.print_msg(f"self.rapi_search_args: {self.rapi_search_args}")
 
             # Send a query to the EODMSRAPI object
             print(f"\nSending query to EODMSRAPI with the following "
@@ -2135,7 +2245,7 @@ class EodmsProcess(EodmsUtils):
 
         self.ingest_downloads(orders, download_items, eodms_imgs)
 
-    def _finish_process(self, orders=None, in_imgs=None):
+    def _finish_process(self, in_imgs=None):
         """
         Exports and prints available information at the end of a process.
         """
@@ -2143,12 +2253,12 @@ class EodmsProcess(EodmsUtils):
         if not in_imgs:
             in_imgs = self.cur_res
 
-        self._print_results(orders)
+        self._print_results(in_imgs)
 
         # Export polygons of images
         self.eodms_geo.export_results(in_imgs, self.output)
 
-        self.export_results()
+        # self.export_results()
 
         end_time = datetime.now()
         end_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -2219,7 +2329,7 @@ class EodmsProcess(EodmsUtils):
         #############################################
 
         # Parse maximum items
-        max_images, max_items = self.parse_max(maximum)
+        max_images, _ = self.parse_max(maximum)
 
         # Convert collections to list if not already
         if not isinstance(collections, list):
@@ -2265,7 +2375,7 @@ class EodmsProcess(EodmsUtils):
 
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
-            self.export_results()
+            # self.export_results()
             self.exit_cli()
 
         if max_images is None or max_images == '':
@@ -2276,7 +2386,7 @@ class EodmsProcess(EodmsUtils):
                                f"your search filters. Proceed with "
                                f"ordering? (y/n): ")
                 if answer.lower().find('n') > -1:
-                    self.export_results()
+                    # self.export_results()
                     self.logger.info("Process stopped by user.")
                     self.exit_cli()
         else:
@@ -2312,7 +2422,9 @@ class EodmsProcess(EodmsUtils):
         # Get Items and Download from DDS API
         ###############################################
 
-        dds_res = self._get_dds_images(eodms_imgs)
+        self._get_dds_images(eodms_imgs)
+
+        self._finish_process(eodms_imgs)
 
         # if dds_res is None:
 
@@ -2399,9 +2511,6 @@ class EodmsProcess(EodmsUtils):
             self.logger.warning(msg)
             self.exit_cli(1)
 
-        self.print_msg(f"query_imgs: {query_imgs.count()}")
-        self.print_msg(f"query_imgs: {query_imgs.get_raw()}")
-
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
 
@@ -2409,7 +2518,7 @@ class EodmsProcess(EodmsUtils):
 
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
-            self.export_results()
+            # self.export_results()
             self.exit_cli()
 
         #############################################
@@ -2438,7 +2547,9 @@ class EodmsProcess(EodmsUtils):
         # Get Items and Download from DDS API
         ###############################################
 
-        dds_res = self._get_dds_images(eodms_imgs)
+        self._get_dds_images(eodms_imgs)
+
+        self._finish_process(eodms_imgs)
 
         # if dds_res is None:
 
@@ -2531,7 +2642,7 @@ class EodmsProcess(EodmsUtils):
 
         if no_order:
             self.eodms_geo.export_results(query_imgs, self.output)
-            self.export_results()
+            # self.export_results()
             self.exit_cli()
 
         # # Parse the maximum number of orders and items per order
@@ -2539,7 +2650,7 @@ class EodmsProcess(EodmsUtils):
 
         # # Import and query entries from the CSV
         # query_imgs = self._get_eodmsRes(csv_fn)
-        print(f"query_imgs: {query_imgs.count()}")
+        # print(f"query_imgs: {query_imgs.count()}")
 
         # Update the self.cur_res for output results
         self.cur_res = query_imgs
@@ -2560,7 +2671,9 @@ class EodmsProcess(EodmsUtils):
             aws_downloads = self.download_aws(aws_imgs)
             eodms_imgs.add_images(aws_downloads)
 
-        dds_res = self._get_dds_images(eodms_imgs)
+        self._get_dds_images(eodms_imgs)
+
+        self._finish_process(eodms_imgs)
 
         # if dds_res is None:
 
@@ -2684,159 +2797,190 @@ class EodmsProcess(EodmsUtils):
 
         self._finish_process(orders)
 
-    def download_available(self, params):
-        """
-        Downloads order items that have status AVAILABLE_FOR_DOWNLOAD.
-
-        :return:
-        """
+    def download_restored_items(self, params):
 
         # Log the parameters
         self.log_parameters(params)
 
-        self.order_items = params.get('orderitems')
-        self.max_downloads = params.get('maximum')
-        self.output = params.get('output')
+        json_fn = params.get('input_val')
 
-        # Create info folder, if it doesn't exist, to store CSV files
-        start_str = self._set_result_fn()
+        self.print_msg(f"json_fn: {json_fn}")
 
-        self.logger.info(f"Process start time: {start_str}")
+        with open(json_fn, 'r') as json_f:
+            restored_items = json.load(json_f)
 
-        dtstart = None
-        dtend = None
-        if self.order_check_date:
-            dtstart = self.order_check_date
-            dtend = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+        self.print_msg(f"restored_items: {restored_items}")
 
-            if any(word in dtstart for word in self.time_words):
-                print(f"\nGetting orders from the last {dtstart} "
-                      f"(from entry RAPI.order_check_date set in the "
-                      f"configuration file).\n")
-            else:
-                print(f"\nGetting orders since {dtstart} "
-                      f"(from entry RAPI.order_check_date set in the "
-                      f"configuration file).\n")
+        # restored_imgs = [image.Image(item) for item in restored_items]
+        
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(restored_items)
 
-        ################################################
-        # Get Existing Orders
-        ################################################
-        orders = image.OrderList(self)
-        if self.order_items is not None and not self.order_items == '':
-            # Parse orders and order items
-            oi_split = self.order_items.split('|')
+        # self.print_msg(f"query_imgs: {query_imgs}")
 
-            order_ids = []
-            item_ids = []
-            for i in oi_split:
-                if i.find('order') > -1:
-                    ids = [id for id in i.split(':')[1].split(',')]
-                    order_ids += ids
-                elif i.find('item') > -1:
-                    ids =[id for id in i.split(':')[1].split(',')]
-                    item_ids += ids
+        self._get_dds_images(query_imgs)
 
-            # orders = []
-            for id in order_ids:
-                order = self.eodms_rapi.get_order(id)
-                if order is not None:
-                    imgs = self.get_image_from_order(order)
-                    orders.ingest_results(order, imgs)
-                    # orders += order
+        self._finish_process(query_imgs)
 
-            for id in item_ids:
-                item = self.eodms_rapi.get_order_item(id)
-                if item is not None and not isinstance(item, QueryError):
-                    # orders += item['items']
-                    imgs = self.get_image_from_order(item['items'])
-                    orders.ingest_results(item['items'], imgs)
+        # while len(restored_items) > 0:
+        #     threads = []
+        #     for idx in range(int(self.concurrent_downloads)):
+        #         if len(restored_items) == 0:
+         #            break
 
-        elif self.max_downloads is not None and not self.max_downloads == '':
-            ord_res = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
-                                                dtstart=dtstart, dtend=dtend,
-                                                status='AVAILABLE_FOR_DOWNLOAD')
-            imgs = self.get_image_from_order(ord_res)
-            orders.ingest_results(ord_res, imgs)
-        else:
-            max_orders = 250
-            ord_res = None
-            # Cycle through until orders have been returned
-            while ord_res is None and max_orders > 0:
-                ord_res = self.eodms_rapi.get_orders(max_orders=max_orders,
-                                                dtstart=dtstart, dtend=dtend,
-                                                status='AVAILABLE_FOR_DOWNLOAD')
-                imgs = self.get_image_from_order(ord_res)
-                orders.ingest_results(ord_res, imgs)
-                max_orders -= 50
+    # def download_available(self, params):
+    #     """
+    #     Downloads order items that have status AVAILABLE_FOR_DOWNLOAD.
 
-        if orders is None or orders.count() == 0:
-            msg = "No orders were returned."
-            self.logger.error(msg)
-            # self.print_support(msg)
-            self.print_msg(msg, heading='error')
-            self.exit_cli(1)
+    #     :return:
+    #     """
 
-        msg = f"Number of order items with status " \
-              f"AVAILABLE_FOR_DOWNLOAD: {orders.count_items()}"
-        print(f"\n{msg}")
-        self.logger.info(msg)
+    #     # Log the parameters
+    #     self.log_parameters(params)
 
-        ########################################################################
+    #     self.order_items = params.get('orderitems')
+    #     self.max_downloads = params.get('maximum')
+    #     self.output = params.get('output')
 
-        # Download images using the EODMSRAPI
-        self._download_items(orders)
+    #     # Create info folder, if it doesn't exist, to store CSV files
+    #     start_str = self._set_result_fn()
 
-        # Get ImageList from orders
-        query_imgs = orders.get_images()
+    #     self.logger.info(f"Process start time: {start_str}")
 
-        self.cur_res = query_imgs
-        self._finish_process(orders)
+    #     dtstart = None
+    #     dtend = None
+    #     if self.order_check_date:
+    #         dtstart = self.order_check_date
+    #         dtend = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
-    def download_results(self, params):
-        """
-        Downloads existing images using the CSV results file from a previous
-            session.
+    #         if any(word in dtstart for word in self.time_words):
+    #             print(f"\nGetting orders from the last {dtstart} "
+    #                   f"(from entry RAPI.order_check_date set in the "
+    #                   f"configuration file).\n")
+    #         else:
+    #             print(f"\nGetting orders since {dtstart} "
+    #                   f"(from entry RAPI.order_check_date set in the "
+    #                   f"configuration file).\n")
 
-        :param params: A dictionary containing the arguments and values.
-        :type  params: dict
-        """
+    #     ################################################
+    #     # Get Existing Orders
+    #     ################################################
+    #     orders = image.OrderList(self)
+    #     if self.order_items is not None and not self.order_items == '':
+    #         # Parse orders and order items
+    #         oi_split = self.order_items.split('|')
 
-        # Log the parameters
-        self.log_parameters(params)
+    #         order_ids = []
+    #         item_ids = []
+    #         for i in oi_split:
+    #             if i.find('order') > -1:
+    #                 ids = [id for id in i.split(':')[1].split(',')]
+    #                 order_ids += ids
+    #             elif i.find('item') > -1:
+    #                 ids =[id for id in i.split(':')[1].split(',')]
+    #                 item_ids += ids
 
-        csv_fn = params.get('input_val')
-        self.output = params.get('output')
+    #         # orders = []
+    #         for id in order_ids:
+    #             order = self.eodms_rapi.get_order(id)
+    #             if order is not None:
+    #                 imgs = self.get_image_from_order(order)
+    #                 orders.ingest_results(order, imgs)
+    #                 # orders += order
 
-        if csv_fn.find('.csv') == -1:
-            msg = "The provided input file is not a CSV file."
-            self.logger.error(msg)
-            # self.print_support(msg)
-            self.print_msg(msg, heading='error')
-            self.exit_cli(1)
+    #         for id in item_ids:
+    #             item = self.eodms_rapi.get_order_item(id)
+    #             if item is not None and not isinstance(item, QueryError):
+    #                 # orders += item['items']
+    #                 imgs = self.get_image_from_order(item['items'])
+    #                 orders.ingest_results(item['items'], imgs)
 
-        # Create info folder, if it doesn't exist, to store CSV files
-        start_str = self._set_result_fn()
-        self.logger.info(f"Process start time: {start_str}")
+    #     elif self.max_downloads is not None and not self.max_downloads == '':
+    #         ord_res = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
+    #                                             dtstart=dtstart, dtend=dtend,
+    #                                             status='AVAILABLE_FOR_DOWNLOAD')
+    #         imgs = self.get_image_from_order(ord_res)
+    #         orders.ingest_results(ord_res, imgs)
+    #     else:
+    #         max_orders = 250
+    #         ord_res = None
+    #         # Cycle through until orders have been returned
+    #         while ord_res is None and max_orders > 0:
+    #             ord_res = self.eodms_rapi.get_orders(max_orders=max_orders,
+    #                                             dtstart=dtstart, dtend=dtend,
+    #                                             status='AVAILABLE_FOR_DOWNLOAD')
+    #             imgs = self.get_image_from_order(ord_res)
+    #             orders.ingest_results(ord_res, imgs)
+    #             max_orders -= 50
 
-        ################################################
-        # Get results from Results CSV
-        query_imgs = self._get_prev_res(csv_fn)
+    #     if orders is None or orders.count() == 0:
+    #         msg = "No orders were returned."
+    #         self.logger.error(msg)
+    #         # self.print_support(msg)
+    #         self.print_msg(msg, heading='error')
+    #         self.exit_cli(1)
 
-        ########################################################################
+    #     msg = f"Number of order items with status " \
+    #           f"AVAILABLE_FOR_DOWNLOAD: {orders.count_items()}"
+    #     print(f"\n{msg}")
+    #     self.logger.info(msg)
 
-        ################################################
-        # Get Existing Orders
-        ################################################
+    #     ########################################################################
 
-        orders = self.retrieve_orders(query_imgs)
+    #     # Download images using the EODMSRAPI
+    #     self._download_items(orders)
 
-        ################################################
-        # Download Images
-        self._download_items(orders, query_imgs)
+    #     # Get ImageList from orders
+    #     query_imgs = orders.get_images()
 
-        # Export info
-        self.cur_res = query_imgs
-        self._finish_process(orders)
+    #     self.cur_res = query_imgs
+    #     self._finish_process(orders)
+
+    # def download_results(self, params):
+    #     """
+    #     Downloads existing images using the CSV results file from a previous
+    #         session.
+
+    #     :param params: A dictionary containing the arguments and values.
+    #     :type  params: dict
+    #     """
+
+    #     # Log the parameters
+    #     self.log_parameters(params)
+
+    #     csv_fn = params.get('input_val')
+    #     self.output = params.get('output')
+
+    #     if csv_fn.find('.csv') == -1:
+    #         msg = "The provided input file is not a CSV file."
+    #         self.logger.error(msg)
+    #         # self.print_support(msg)
+    #         self.print_msg(msg, heading='error')
+    #         self.exit_cli(1)
+
+    #     # Create info folder, if it doesn't exist, to store CSV files
+    #     start_str = self._set_result_fn()
+    #     self.logger.info(f"Process start time: {start_str}")
+
+    #     ################################################
+    #     # Get results from Results CSV
+    #     query_imgs = self._get_prev_res(csv_fn)
+
+    #     ########################################################################
+
+    #     ################################################
+    #     # Get Existing Orders
+    #     ################################################
+
+    #     orders = self.retrieve_orders(query_imgs)
+
+    #     ################################################
+    #     # Download Images
+    #     self._download_items(orders, query_imgs)
+
+    #     # Export info
+    #     self.cur_res = query_imgs
+    #     self._finish_process(orders)
 
     def order_st(self, sar_toolbox, params): # sar_toolbox, priority):
         """
@@ -2850,7 +2994,7 @@ class EodmsProcess(EodmsUtils):
             sar_toolbox.set_coll_id(in_vals.get('collection_id'))
             sar_toolbox.set_record_ids(in_vals.get('record_ids'))
         else:
-            st_request = params.get('st_request')
+            st_request = sar_toolbox.out_fn
             if not st_request:
                 err_msg = "No input JSON request file specified."
                 self.logger.error(err_msg)

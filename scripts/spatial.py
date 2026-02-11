@@ -267,10 +267,13 @@ class Geo:
             imgs = img_lst.get_images()
             for i in imgs:
                 mdata = i.get_metadata()
-                f_dict = {"type": "Feature",
-                          "properties": mdata,
-                          "geometry": mdata['geometry']}
-                feats.append(f_dict)
+                # self.eod.print_msg(f"export_results.mdata: {mdata}")
+                geom = mdata.get('geometry')
+                if geom:
+                    f_dict = {"type": "Feature",
+                            "properties": mdata,
+                            "geometry": geom}
+                    feats.append(f_dict)
 
             json_out = {"type": "FeatureCollection",
                         "name": lyr_name,

@@ -14,6 +14,7 @@ import json
 # import traceback
 import os
 import copy
+import uuid
 # import re
 
 # from . import csv_util
@@ -57,6 +58,13 @@ class Image:
         self.geometry = {'array': None,
                          'geom': None,
                          'wkt': None}
+        
+        # Create a unique identifier for the Image
+        unique_id = uuid.uuid4()
+        self.uuid = str(unique_id)
+
+    def get_uuid(self):
+        return self.uuid
 
     def get_record_id(self):
         """
@@ -65,7 +73,7 @@ class Image:
         Returns:
             str or int: The Record Id of the image.
         """
-        return self.metadata['recordId']
+        return self.metadata.get('recordId')
 
     def get_coll_id(self):
         """
@@ -75,7 +83,11 @@ class Image:
         :rtype: str
         """
         # print("self.metadata: %s" % self.metadata)
-        return self.metadata['collectionId']
+
+        if 'collectionId' in self.metadata:
+            return self.metadata.get('collectionId')
+        elif 'collection_id' in self.metadata:
+            return self.metadata.get('collection_id')
 
     def get_title(self):
         """
@@ -84,7 +96,7 @@ class Image:
         :return: The Title of the image.
         :rtype: str
         """
-        return self.metadata['title']
+        return self.metadata.get('title')
 
     def get_coll_title(self):
         """
@@ -93,7 +105,7 @@ class Image:
         :return: The Collection Title of the image.
         :rtype: str
         """
-        return self.metadata['collectionTitle']
+        return self.metadata.get('collectionTitle')
 
     def get_date(self):
         """
@@ -118,12 +130,13 @@ class Image:
         :return: The URL of the image.
         :rtype: str
         """
-        return self.metadata['thisRecordUrl']
+        return self.metadata.get('thisRecordUrl')
     
-    def get_uuid(self):
-        uuid = self.metadata.get('archiveId')
-
-        return uuid
+    def get_image_uuid(self):
+        if 'archiveId' in self.metadata:
+            return self.metadata.get('archiveId')
+        elif 'image_uuid' in self.metadata:
+            return self.metadata.get('image_uuid')
 
     def get_metadata(self, entry=None):
         """
@@ -142,7 +155,7 @@ class Image:
         if entry not in self.metadata.keys():
             return None
 
-        return self.metadata[entry]
+        return self.metadata.get(entry)
 
     def set_metadata(self, val, entry=None):
         """
@@ -437,8 +450,15 @@ class ImageList:
         for r in results:
             if 'errors' in r.keys():
                 continue
-            rec_id = r.get('recordId')
-            if rec_id in img_ids:
+
+            if 'archiveId' in r:
+                unique_id = r.get('archiveId')
+            elif 'image_uuid' in r:
+                unique_id = r.get('image_uuid')
+            elif 'recordId' in r:
+                unique_id = r.get('recordId')
+            
+            if unique_id in img_ids:
                 continue
 
             image = Image()
@@ -447,7 +467,7 @@ class ImageList:
             else:
                 image.parse_record(r)
             self.img_lst.append(image)
-            img_ids.append(rec_id)
+            img_ids.append(unique_id)
 
     def print_images(self, heading=None, as_var=False, tabs=1):
         """
@@ -526,6 +546,13 @@ class ImageList:
 
             self.img_lst = new_imgs
 
+    def update_images(self, imgs):
+
+        for idx, img in enumerate(self.img_lst):
+            for i in imgs:
+                if i.get_uuid() == img.get_uuid():
+                    self.img_lst[idx] = i
+
     def update_downloads(self, download_items):
         """
         Updates the download information of a list of specific Images.
@@ -572,7 +599,6 @@ class ImageList:
             order_items.append(order_item)
 
         img.set_metadata(order_items, 'orderItems')
-
 
 class OrderItem:
     """
