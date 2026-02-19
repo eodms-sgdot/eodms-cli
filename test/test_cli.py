@@ -97,7 +97,7 @@ class TestEodmsCli(unittest.TestCase):
                    '-c', 'RCMImageProducts,Radarsat2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
-                   '-max', '2:1',
+                   '-max', '2',
                    '-prc', 'full',
                    '-ov', '30',
                    '-f', '"RCMImageProducts.beam_mnemonic like 16M%,'
@@ -105,7 +105,6 @@ class TestEodmsCli(unittest.TestCase):
                          'Radarsat2.beam_mnemonic like EH%,'
                          'Radarsat2.transmit_polarization=H"',
                    '-o', 'files/test1_output.geojson',
-                   '-pri', 'low',
                    '-s']
 
         self.add_creds()
@@ -124,7 +123,6 @@ class TestEodmsCli(unittest.TestCase):
                    '-max', '4',
                    '-prc', 'order_csv',
                    '-o', 'files/test2_output.geojson',
-                   '-pri', 'low',
                    '-nord',
                    '-s']
 
@@ -145,7 +143,6 @@ class TestEodmsCli(unittest.TestCase):
                    '-prc', 'record_id',
                    '-a',
                    '-o', 'files/test3_output.geojson',
-                   '-pri', 'low',
                    '-s']
 
         self.add_creds()
@@ -160,9 +157,8 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 4")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-prc', 'download_available',
-                   '-o', 'files/test4_output.geojson',
-                   '-m', '3',
+                   '-prc', 'download_restored_items',
+                   '-i', 'files/20260216_155955_ItemsRestoring.json',
                    '-s']
 
         self.add_creds()
@@ -177,8 +173,8 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 5")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-i', 'files/20220530_145625_Results.csv',
-                   '-prc', 'download_results',
+                   '-st', 'files/sar_toolbox_request.json',
+                   '-prc', 'order_st',
                    '-o', 'files/test5_output.geojson',
                    '-s']
 
@@ -198,14 +194,13 @@ class TestEodmsCli(unittest.TestCase):
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
                    '-prc', 'full',
-                   '-max', '5:3',
+                   '-max', '5',
                    '-ov', '30',
                    '-f', '"RCMImageProducts.beam_mnemonic like 16M%,'
                          'RCMImageProducts.product_type=SLC,'
                          'Radarsat2.beam_mnemonic like EH%,'
                          'Radarsat2.transmit_polarization=H"',
                    '-o', 'files/test6_output.geojson',
-                   '-pri', 'low',
                    '-nord',
                    '-s']
 

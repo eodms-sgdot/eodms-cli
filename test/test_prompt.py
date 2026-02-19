@@ -89,7 +89,7 @@ class TestEodmsCli(unittest.TestCase):
         max_results = config_params['max_results']
         order_check_date = config_params['order_check_date']
         download_attempts = config_params['download_attempts']
-        eodms_domain = config_params['eodms_domain']
+        # eodms_domain = config_params['eodms_domain']
 
         eod = eod_util.EodmsProcess(version=eodms_cli.__version__, 
                                     download=download_path,
@@ -101,31 +101,26 @@ class TestEodmsCli(unittest.TestCase):
                                     keep_downloads=keep_downloads,
                                     colourize=colourize,
                                     order_check_date=order_check_date,
-                                    download_attempts=download_attempts,
-                                    eodms_domain=eodms_domain)
+                                    download_attempts=download_attempts)
 
         prmpt = eodms_cli.Prompter(eod, conf_util, params, click, testing=True)
 
         return prmpt
 
-    inputs = {'test1': ['1', '17,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
-                    '', 'files/test1_output.geojson', '', '3', '', 'low'],
+    inputs = {'test1': ['1', '18,13', 'Yes', '', 'BEAM_MNEMONIC LIKE 16M%', '',
+                        '', '', '3', 'files/test1_output.geojson'],
               'test2': ['2', 'files/EODMS_Results.csv', 'y', 
-                    'files/test2_output.geojson', 'y', ''],
-              'test3': ['3', 'RCMImageProducts:13531983,'
-                                'RCMImageProducts:13531917,'
+                        'y', '', 'files/test2_output.geojson'],
+              'test3': ['3', 'RCMImageProducts:13531983|13531917,'
                                 'Radarsat2:13532412,'
                                 'Radarsat1:5053934',
-                        'Yes', 'files/test3_output.geojson', '', 'low'],
-              'test4': ['4', '', '3', 'files/test4_output.geojson'],
-              'test5': ['5', 'files/20220530_145625_Results.csv',
-                        'files/test5_output.geojson'],
-              'test6': ['', '17,15', 'files/NCR_AOI.geojson', '30',
+                        'Yes', '', 'files/test3_output.geojson'],
+              'test4': ['4', 'files/20260216_155955_ItemsRestoring.json'],
+              'test5': ['', '18,15', 'files/NCR_AOI.geojson', '30',
                         'beam_mnemonic like 16M%,product_type=SLC',
                         'beam_mnemonic like EH%,transmit_polarization=H',
-                        '20170101-20220527', 'files/test6_output.geojson',
-                        'y', ''],
-              'test8': ['6', 'RCMImageProducts:8538795|8526252|8502911',
+                        '20170101-20220527', 'y', 'files/test6_output.geojson'],
+              'test8': ['5', 'RCMImageProducts:8538795|8526252|8502911',
                         '4,5', '4,1,2,3', '3', '', 'True', '', '2', '', 'True',
                         '', '1,2', '6', '', '', '', 'True', '', '2', '', '', 
                         '', '', '5', '', '', '', '', 'True', '', '1', '', 'low']
@@ -171,7 +166,7 @@ class TestEodmsCli(unittest.TestCase):
     @patch('builtins.input', side_effect=inputs['test4'])
     def test_process4(self, mock_input):
         """
-        Runs a test of Process 4 (download AVAILABLE_FOR_DOWNLOAD).
+        Runs a test of Process 4.
         """
 
         self._print_header("Process 4")
@@ -181,18 +176,6 @@ class TestEodmsCli(unittest.TestCase):
         self.assertEqual(prmpt.prompt(), None)
 
     @patch('builtins.input', side_effect=inputs['test5'])
-    def test_process5(self, mock_input):
-        """
-        Runs a test of Process 5 with previous results.
-        """
-
-        self._print_header("Process 5")
-
-        prmpt = self._setup_prompt()
-
-        self.assertEqual(prmpt.prompt(), None)
-
-    @patch('builtins.input', side_effect=inputs['test6'])
     def test_searchonly(self, mock_input):
         """
         Runs a test of Process 1 but without ordering and downloading.
@@ -217,12 +200,12 @@ class TestEodmsCli(unittest.TestCase):
         self.assertEqual(prmpt.prompt(), None)
 
     @patch('builtins.input', side_effect=inputs['test8'])
-    def test_process6(self, mock_input):
+    def test_process5(self, mock_input):
         """
         Runs a test to submit a SAR Toolbox order.
         """
 
-        self._print_header("Process 6 - SAR Toolbox Order")
+        self._print_header("Process 5 - SAR Toolbox Order")
 
         prmpt = self._setup_prompt()
 
