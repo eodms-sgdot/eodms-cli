@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.0.0 (2026-02-)
+## 4.0.0 (2026-02-19)
 
 - Implementation of the EODMS DDS API for ordering and downloading images using the py-eodms-dds Python package.
 - CSV results files will no longer be exported with every run, instead the user can choose to export the results as a geospatial file or CSV file.
