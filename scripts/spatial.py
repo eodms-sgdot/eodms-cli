@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
+# represented by the Minister of Natural Resources, 2026
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -11,9 +11,7 @@
 ##############################################################################
 
 import os
-# import sys
 from geomet import wkt
-# from xml.etree import ElementTree
 import json
 import logging
 import shapely.wkt
@@ -24,20 +22,20 @@ import math
 
 from eodms_rapi import EODMSGeo
 
+from . import csv_util
+
 try:
     import osgeo.ogr as ogr
     import osgeo.osr as osr
 
     GDAL_INCLUDED = True
 except ImportError:
-    # print("error with gdal import")
     try:
         import ogr
         import osr
 
         GDAL_INCLUDED = True
     except ImportError:
-        # print("error with osgeo gdal import")
         GDAL_INCLUDED = False
 
 
@@ -140,23 +138,6 @@ class Geo:
             else:
                 return pnt_array
 
-    # def convert_from_wkt(self, in_feat):
-    #     """
-    #     Converts a WKT to a polygon geometry.
-    #
-    #     :param in_feat: The WKT of the polygon.
-    #     :type  in_feat: str
-    #
-    #     :return: The polygon geometry of the input WKT.
-    #     :rtype: ogr.Geometry
-    #     """
-    #
-    #     out_poly = None
-    #     if GDAL_INCLUDED and self._check_ogr():
-    #         out_poly = ogr.CreateGeometryFromWkt(in_feat)
-    #
-    #     return out_poly
-
     def export_results(self, img_lst, out_fn='results.geojson'):
         # sourcery skip: extract-method, low-code-quality, merge-comparisons
         """
@@ -175,8 +156,12 @@ class Geo:
 
         if out_fn.lower() in ['geojson', 'kml', 'gml', 'shp']:
             out_fn = f'{fn}_outlines.{out_fn.lower()}'
+        elif out_fn.lower() == 'csv':
+            out_fn = f'{fn}_results.{out_fn.lower()}'
 
         if os.path.isdir(out_fn):
+            # If user only specifies a folder path, 
+            #   the output by default will be geojson
             out_fn = os.path.join(os.sep, out_fn, f"{fn}_outlines.geojson")
 
         # If the output GeoJSON exists, remove it
@@ -185,6 +170,11 @@ class Geo:
 
         ext = os.path.splitext(out_fn)[1]
         lyr_name = os.path.basename(out_fn).replace(ext, '')
+
+        if ext == '.csv':
+            res_csv = csv_util.EODMS_CSV(self.eod, out_fn)
+            res_csv.export_results(img_lst)
+            return None
 
         if GDAL_INCLUDED and self._check_ogr():
 
@@ -223,7 +213,6 @@ class Geo:
                 lyr.CreateField(field_name)
 
             for r in img_lst.get_images():
-                # record_id = r.get_record_id()
                 poly = r.get_geometry('geom')
 
                 # Create a new feature
@@ -257,7 +246,6 @@ class Geo:
                             f"'{ext_str}' format. Exporting results as a " \
                             f"GeoJSON."
 
-                # print(f"\n{warn_msg}")
                 self.eod.print_msg(warn_msg, heading='warning')
                 self.logger.warning(warn_msg)
 
@@ -267,7 +255,6 @@ class Geo:
             imgs = img_lst.get_images()
             for i in imgs:
                 mdata = i.get_metadata()
-                # self.eod.print_msg(f"export_results.mdata: {mdata}")
                 geom = mdata.get('geometry')
                 if geom:
                     f_dict = {"type": "Feature",

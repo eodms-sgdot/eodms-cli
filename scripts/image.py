@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2025
+# represented by the Minister of Natural Resources, 2026
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -11,13 +11,10 @@
 ##############################################################################
 
 import json
-# import traceback
 import os
 import copy
 import uuid
-# import re
 
-# from . import csv_util
 from . import spatial
 
 
@@ -82,7 +79,6 @@ class Image:
         :return: The Collection Id of the image.
         :rtype: str
         """
-        # print("self.metadata: %s" % self.metadata)
 
         if 'collectionId' in self.metadata:
             return self.metadata.get('collectionId')
@@ -335,19 +331,12 @@ class ImageList:
         for img in self.img_lst:
             overlap_aoi, overlap_img = geo_util.get_overlap(img, aoi)
             if overlap_aoi >= float(overlap) or overlap_img >= float(overlap):
-                # print("overlap_aoi: %s" % overlap_aoi)
-                # print("overlap_img: %s" % overlap_img)
                 filter_lst.append(img)
-
-        # print("img_lst: %s" % len(self.img_lst))
-        # print("filter_lst: %s" % len(filter_lst))
 
         self.eod.print_msg(f'Number of images found after filtering for '
                            f'overlap: {len(filter_lst)}')
 
         self.img_lst = filter_lst
-
-        # answer = input("Press enter...")
 
     def get_fields(self):
         """
@@ -493,7 +482,6 @@ class ImageList:
         for idx, i in enumerate(self.img_lst):
             img_id = i.get_record_id()
             img_coll = i.get_coll_id()
-            # item_count = o.count()
             tab_str = str('\t' * tabs)
             out_str += f"- Image #{idx + 1}: Record Id: {img_id}; " \
                         f"Collection Id: {img_coll}\n"
@@ -573,28 +561,12 @@ class ImageList:
             if img is None:
                 img = Image()
 
-            # order_id = item.get('orderId')
             item_id = item.get('itemId')
             if item_id is None:
                 item_id = item.get('ParentItemId')
 
             order_item = item
             order_item['itemId'] = item_id
-
-            # img.set_metadata(item_id, 'itemId')
-            # img.set_metadata(order_id, 'orderId')
-            # img.set_metadata(item.get('dateSubmitted'), 'dateSubmitted')
-            # img.set_metadata(item.get('userDisplayName'), 'userDisplayName')
-            # img.set_metadata(item.get('status'), 'status')
-            # img.set_metadata(item.get('orderStatus'), 'orderStatus')
-            # img.set_metadata(item.get('orderMessage'), 'orderMessage')
-            # img.set_metadata(item.get('downloaded'), 'downloaded')
-            # img.set_metadata(item.get('downloadPaths'), 'downloadPaths')
-            # img.set_metadata(item.get('priority'), 'priority')
-            # params = item.get('parameters')
-            # if params is not None:
-            #     for k, v in params.items():
-            #         img.set_metadata(v, k)
 
             order_items.append(order_item)
 
@@ -745,9 +717,6 @@ class OrderItem:
             image = Image()
             image.parse_record(in_image)
         self.image = image
-
-        # fields = self.eod.eodms_rapi.get_collections()[
-        #     self.image.get_coll_id()]['fields']
 
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
         self.metadata['imageMetadata'] = self.image.get_metadata(
@@ -1016,9 +985,6 @@ class OrderList:
 
     def add_order_item(self, res, img=None):
 
-        # print(json.dumps(json_res, indent=4, sort_keys=True))
-        # answer = input("Press enter...")
-
         if isinstance(res, OrderItem):
             res = res.get_metadata()
 
@@ -1279,8 +1245,6 @@ class OrderList:
                 
             self.parse_order_item(r, image)
 
-        # answer = input("Press enter...")
-
     def merge_ordlist(self, ord_list):
         orders = ord_list.get_orders()
 
@@ -1300,10 +1264,6 @@ class OrderList:
         if image is None:
             if self.img_lst is not None:
                 image = self.img_lst.get_image(record_id)
-        # else:
-        #     print(f"image: {image}")
-        
-        # image.set_metadata('Yes', 'orderSubmitted')
 
         # Create the OrderItem
         order_item = OrderItem(self.eod)
@@ -1338,8 +1298,6 @@ class OrderList:
         print(f"Number of orders: {len(self.order_lst)}")
 
         for o in self.order_lst:
-            # ord_id = o.get_order_id()
-            # item_count = o.count()
             o.print_items()
 
     def print_orders(self, heading=None, as_var=False, tabs=1):
@@ -1365,7 +1323,6 @@ class OrderList:
         
         for idx, o in enumerate(self.order_lst):
             ord_id = o.get_order_id()
-            # item_count = o.count()
             tab_str = str('\t' * tabs)
             out_str += f"\n- Order #{idx + 1}: Order Id: {ord_id}"
 
@@ -1455,28 +1412,17 @@ class OrderList:
         new_order.add_item(order_item)
         self.order_lst.append(new_order)
 
-    def update_downloads(self,download_items):
-
-        # print(f"self.order_lst: {self.get_raw()}")
-        # print(f"download_items: {download_items}")
-
-        # print(f"order item ids: {self.get_item_ids()}")
+    def update_downloads(self, download_items):
 
         for item in download_items:
             item_id = item.get('itemId')
 
-            # print(f"item_id: {item_id}")
-
             order_item = self.get_order_item(item_id)
-
-            # print(f"order_item: {order_item}")
 
             if order_item is None:
                 if 'parameters' in item.keys():
                     params = item['parameters']
-                    # print(f"params: {params}")
                     item_id = params.get('ParentItemId')
-                    # print(f"item_id: {item_id}")
                     order_item = self.get_order_item(item_id)
                     if order_item is None:
                         return None

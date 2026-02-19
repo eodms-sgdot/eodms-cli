@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
+# represented by the Minister of Natural Resources, 2026
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -173,42 +173,7 @@ class CollFields:
               The description (or English title) of the field.
         """
 
-        # self.fields.append(Field(eod_name=kwargs.get('eod_name'),
-        #                          rapi_id=kwargs.get('rapi_id'),
-        #                          rapi_title=kwargs.get('rapi_title'),
-        #                          ui_label=kwargs.get('ui_label'), 
-        #                          choices=kwargs.get('choices')))
         self.fields.append(Field(**kwargs))
-
-    # def add_general_fields(self):
-    #     """
-    #     Adds a set of fields that are in several collections
-    #     """
-    #
-    #     ord_key_lst = ['COSMO-SkyMed1', 'DMC', 'Gaofen-1', 'GeoEye-1',
-    #                    'IKONOS', 'IRS', 'NAPL', 'QuickBird-2', 'PlanetScope',
-    #                    'Radarsat1', 'Radarsat2', 'RCMImageProducts',
-    #                    'RapidEye', 'SGBAirPhotos', 'SPOT', 'TerraSarX',
-    #                    'WorldView-1', 'WorldView-2', 'WorldView-3']
-    #
-    #     if self.coll_id in ord_key_lst:
-    #         self.add_field(eod_name='ORDER_KEY',
-    #                        rapi_id='ARCHIVE_IMAGE.ORDER_KEY',
-    #                        rapi_title='Order Key',
-    #                        ui_label='Order Key')
-    #
-    #     px_space_lst = ['COSMO-SkyMed1', 'DMC', 'Gaofen-1', 'GeoEye-1',
-    #                     'IKONOS', 'IRS', 'QuickBird-2', 'PlanetScope',
-    #                     'Radarsat1', 'Radarsat1RawProducts', 'Radarsat2',
-    #                     'Radarsat2RawProducts', 'RCMImageProducts',
-    #                     'RCMScienceData', 'RapidEye', 'SPOT', 'TerraSarX',
-    #                     'WorldView-1', 'WorldView-2', 'WorldView-3']
-    #
-    #     if self.coll_id in px_space_lst:
-    #         self.add_field(eod_name='PIXEL_SPACING',
-    #                        rapi_id='SENSOR_BEAM.SPATIAL_RESOLUTION',
-    #                        rapi_title='Spatial Resolution',
-    #                        ui_label='Pixel Spacing (Metres)')
 
     def get_eod_fieldnames(self, sort=False, lowered=False):
         """
@@ -263,7 +228,7 @@ class EodFieldMapper:
         self.eod.check_error(collections)
 
         for coll_id in collections:
-            fields = self.rapi.get_available_fields(coll_id) #, ui_fields=True)
+            fields = self.rapi.get_available_fields(coll_id)
             fields = fields['search']
 
             coll_fields = CollFields(coll_id)

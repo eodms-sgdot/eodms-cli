@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.0 (2026-02-)
+
+- Implementation of the EODMS DDS API for ordering and downloading images using the py-eodms-dds Python package.
+- CSV results files will no longer be exported with every run, instead the user can choose to export the results as a geospatial file or CSV file.
+- Moved prompt for output file to the end of prompts. Since there's no results file anymore, the user can decide after choosing to suppress ordering to save output file.
+- Existing Processes 4 and 5 have been removed since the results files no longer exist (Process 5) and downloading orders is now done with the DDS API and not the EODMS RAPI (Process 4).
+- New Process 4 to download restored items. 
+    - Some items returned from the DDS will have the status `ItemsRestoring` which can take 12 hours or longer to restore. If items grabbed using other Processes has this status, the item will be added to a ItemsRestored.csv file in the "results" folder.
+    - The user would run Process 4 with the ItemsRestored.csv file to download the restored images at a later time.
+
 ## 3.6.3 (2025-03-04)
 
 - Enabled configuration parameter RAPI.order_check_date found in the configuration file.
@@ -33,7 +43,6 @@
 ## 3.4.1 (2023-11-14)
 
 - Added option for the output geospatial file to be a folder as well as a file.
-
 
 ## 3.4.0 (2023-11-01)
 

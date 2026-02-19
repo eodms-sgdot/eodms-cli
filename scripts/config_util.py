@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2025
+# represented by the Minister of Natural Resources, 2026
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -225,64 +225,7 @@ Options:
 
                 self._ask_input(sect_key, sect_opts)
 
-        # for section, opts in self.config_contents.items():
-        #     for opt in opts:
-        #         def_val = None
-        #         if section in self.config_info.sections():
-        #             def_val = self.config_info.get(section, opt['name'])
-        #
-        #         if def_val is None or def_val == '':
-        #             def_val = opt['default']
-        #
-        #         # Ask user for new configuration value
-        #         if opt['name'] == 'password':
-        #             val = getpass.getpass(f"\n->> {opt['desc']}: ")
-        #             if val == '':
-        #                 val = self.config_info.get(section, opt['name'])
-        #             else:
-        #                 val = base64.b64encode(val.encode("utf-8")).decode(
-        #                     "utf-8")
-        #         else:
-        #             val = input(f"\n->> {opt['desc']} [{def_val}]: ")
-        #
-        #         if val is None or val == '':
-        #             val = self.config_info.get(section, opt['name'])
-        #
-        #         if val is None or val == '':
-        #             val = opt['default']
-        #         # print(f"value: {val}")
-        #
-        #         self.config_info.set(section, opt['name'], str(val))
-
         self.write()
-
-        # out_str = self.create_config_str()
-
-        # print(f"out_str: {out_str}")
-
-        # return out_str
-
-    # def create_config_str(self):
-    #     """
-    #     Creates the configuration string with default values
-    #
-    #     :return: The configuration string
-    #     :type: str
-    #     """
-    #
-    #     os.makedirs(os.path.dirname(self.config_fn), exist_ok=True)
-    #
-    #     out_str = ''
-    #     for section, opts in self.config_contents.items():
-    #         out_str += f'[{section}]\n'
-    #         for opt in opts:
-    #             val = opt['value']
-    #             if opt['value'] is None:
-    #                 val = opt['default']
-    #             out_str += f"# {opt['desc']}\n{opt['name']} = {val}\n"
-    #         out_str += '\n'
-    #
-    #     return out_str
 
     def get_filename(self):
         """
@@ -316,13 +259,6 @@ Options:
         :return: The value in the given section and option
         :type: str
         """
-
-        # if isinstance(section, str):
-        #     section = [section]
-        #
-        # for sec in section:
-        #     if self.config_info.has_option(sec, option):
-        #         return self.config_info.get(sec, option)
 
         if section in self.config_dict.keys():
             if option in self.config_dict[section].keys():
@@ -376,11 +312,6 @@ Options:
         sr = ['Script', 'DDS']  # For backwards compatibility
         self._set_dict('DDS', 'DDS', 'concurrent_downloads')
 
-        # # If any hidden parameters exist in the current config file, keep it
-        # if self.config_info.has_section('Debug'):
-        #     if self.config_info.has_option('Debug', 'eodms_domain'):
-        #         self._set_dict('Debug', 'Debug', 'eodms_domain')
-
     def write(self):
         """
         Writes the config_dict to the config.ini file.
@@ -417,7 +348,6 @@ Options:
                 shutil.move(script_config, os.path.dirname(self.config_fn))
 
         if os.path.exists(self.config_fn):
-            # print(f"self.config_fn: {self.config_fn}")
             self.config_info.read(self.config_fn)
             self.update_dict()
 
