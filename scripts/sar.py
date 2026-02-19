@@ -1,3 +1,15 @@
+##############################################################################
+#
+# Copyright (c) His Majesty the King in Right of Canada, as
+# represented by the Minister of Natural Resources, 2026
+# 
+# Licensed under the MIT license
+# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
+# project carrying such notice may not be copied, modified, or distributed 
+# except according to those terms.
+# 
+##############################################################################
+
 import json
 import logging
 import urllib.request
@@ -74,8 +86,6 @@ def create_table(title, rows):
 
     cols_lens = [max(c) for c in col_lengths]
 
-    # print(f"cols_lens: {cols_lens}")
-
     total_lens = sum([c + 3 for c in cols_lens])
     title_str = title.center(total_lens-1)
 
@@ -144,41 +154,13 @@ class Parameter:
         in_subs = param_info.get('sub_params')
         self.multiple = multiple
 
-        # print(f"\nParameter Values:")
-        # print(f"  Parameter Id: {self.param_id}")
-        # print(f"  Label: {self.label}")
-        # print(f"  Date Type: {self.data_type}")
-        # print(f"  Default: {self.default}")
-        # print(f"  Display Order: {self.display_order}")
-        # print(f"  Constants Key: {self.constants_key}")
-        # print(f"  Multiple Values: {self.multiple}")
-
-        # # self.display_order = display_order
-        # self.sub_args = []
-        # s_args = kwargs.get('sub_arg')
-        # if not isinstance(s_args, list) and s_args:
-        #     self.sub_args = [s_args]
-        # else:
-        #     self.sub_args = s_args
-        # self.constants = kwargs.get('constants')
-        # self.default = kwargs.get('default')
-        # self.multiple = kwargs.get('multiple')
-        # self.required = kwargs.get('required')
-        # self.ignore = True if kwargs.get('ignore') else False
-
-        # if self.data_type == bool:
-        #     self.default = False
-
         self.sub_params = None
         if in_subs:
             self.sub_params = list()
             for param in in_subs:
                 self.sub_params.append(Parameter(self.st, param))
 
-        # print(f"self.param_id: {self.param_id}")
-        # print(f"self.constants_key: {self.constants_key}")
         self.const_vals = self.st.constants.get(self.constants_key)
-        # print(f"self.const_vals: {self.const_vals}")
 
         if self.const_vals and not self.default:
             for c in self.const_vals:
@@ -190,15 +172,12 @@ class Parameter:
         self.value = None
         if self.default:
             if self.const_vals:
-                # print(f"self.default: {self.default}")
                 available_vals = [c for c in self.const_vals 
                                    if c.get('id') == int(self.default)]
                 if len(available_vals) > 0:
                     self.value = available_vals[0].get('id')
             else:
                 self.value = self.default
-
-        # print(f"self.const_vals 2: {self.const_vals}")
 
     def get_data_type(self):
         """
@@ -313,7 +292,6 @@ class Parameter:
                 return "on"
             return "off"
         
-        # print(f"self.constants: {self.constants}")
         if self.const_vals:
             ids = [c.get('id') for c in self.const_vals 
                     if c.get('label') == self.value]
@@ -324,7 +302,6 @@ class Parameter:
                     if with_idx:
                         return f"{id_val} - {out_value}"
                     return out_value
-                # print(f"id_val: {id_val}")
                 return id_val
             
         return out_value
@@ -446,7 +423,6 @@ class Method:
 
         if self.products:
             dict_lst = [p.as_dict() for p in self.products]
-            # print(f"dict_lst: {dict_lst}")
             ordered_dicts = sorted(dict_lst, key=lambda d: d['display_order'])
             return [self.get_product_by_id(d.get('id')) for d in ordered_dicts]
     
@@ -622,16 +598,11 @@ class SARToolbox:
         
         self.eod = eod
 
-        # schema_url = "https://github.com/eodms-sgdot/eodms-cli/blob/" \
-        #             "development/schemas/SAR_Toolbox_Schema.json?raw=true"
         schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/" \
                     "sar-toolbox-schema.json"
         with urllib.request.urlopen(schema_url) as response:
             self.schema_json = json.loads(response.read())
 
-        # if record_ids:
-        #     self.coll_id, rec_ids = record_ids.split(':')
-        #     self.record_ids = rec_ids.split('|')
         self.record_ids = record_ids
         
         self.constants = self.schema_json.get('constants')
@@ -700,21 +671,6 @@ class SARToolbox:
             return [f"{c.name} ({c.id})" for c in self.categories]
 
         return [c.name for c in self.categories]
-    
-    # def get_method_names(self):
-    #     return [m.name for m in self.category.get_methods()]
-    
-    # def get_methods(self):
-    #     if self.category:
-    #         return self.category.get_methods()
-        
-    # def get_arguments(self):
-    #     if self.method:
-    #         return self.method.get_arguments()
-
-    # def get_products(self):
-    #     if self.method:
-    #         return self.method.get_products()
 
     def get_constants(self, const_key, include_inactive=False):
         """
@@ -778,8 +734,6 @@ class SARToolbox:
                 "collectionId": self.coll_id,
                 "recordId": rec_id,
                 "parameters": {}
-                #     "NOTIFICATION_EMAIL_ADDRESS": ""
-                # }
             }
             items.append(item)
 
@@ -791,7 +745,6 @@ class SARToolbox:
             for method in cat.get_method_runs():
                 method_id = method.get_id()
                 method_key = f"method-{method_id}-1"
-                # label_name = method.name
                 method_json = {
                     "Category": str(cat_id),
                     "Method": str(method_id)
@@ -822,7 +775,6 @@ class SARToolbox:
                         value = param.get_value(True)
                     if not value or value == 'off':
                         continue
-                    # if not param.ignore:
                     if not param_key == "OutputPixSpacing":
                         method_json[param_key] = value
 
@@ -871,12 +823,6 @@ class SARToolbox:
                 json.dump(self.full_request, f, ensure_ascii=False, indent=4)
 
         return self.full_request
-    
-    # def set_category(self, name):
-    #     available_cats = [c for c in self.categories if c.name == name]
-
-    #     if len(available_cats) > 0:
-    #         self.category = available_cats[0]
 
     def _get_latitude(self):
         """
@@ -954,20 +900,6 @@ class SARToolbox:
         """
 
         self.out_fn = fn
-
-    # def set_products(self, in_prods):
-    #     """
-        
-    #     """
-
-    #     if isinstance(in_prods, str):
-    #         self.product_choices = []
-    #         for prod in self.method.get_products():
-    #             for in_prod in in_prods:
-    #                 if in_prod.name == prod.name:
-    #                     self.product_choices.append(prod)
-    #     else:
-    #         self.product_choices = in_prods
         
     def _add_categories(self):
         """

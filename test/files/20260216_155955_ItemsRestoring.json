@@ -1,0 +1,13 @@
+[
+    {
+        "code": 202,
+        "request_id": "c192a961-1bef-4617-990b-0ed095f5b619",
+        "order_id": "0730959e-4178-8b66-b8c6-3259202030d0",
+        "last_update": "2026-02-16T20:51:18.086882",
+        "status": "ItemsRestoring",
+        "format": "Zip",
+        "suggested_retry_interval": 85816,
+        "image_uuid": "caf0c1d7-ad78-4841-a891-8c992334808f",
+        "collection_id": "Radarsat1"
+    }
+]

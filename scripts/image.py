@@ -1,7 +1,7 @@
 ##############################################################################
 #
 # Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2025
+# represented by the Minister of Natural Resources, 2026
 # 
 # Licensed under the MIT license
 # (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
@@ -11,12 +11,10 @@
 ##############################################################################
 
 import json
-# import traceback
 import os
 import copy
-# import re
+import uuid
 
-# from . import csv_util
 from . import spatial
 
 
@@ -57,6 +55,13 @@ class Image:
         self.geometry = {'array': None,
                          'geom': None,
                          'wkt': None}
+        
+        # Create a unique identifier for the Image
+        unique_id = uuid.uuid4()
+        self.uuid = str(unique_id)
+
+    def get_uuid(self):
+        return self.uuid
 
     def get_record_id(self):
         """
@@ -65,7 +70,7 @@ class Image:
         Returns:
             str or int: The Record Id of the image.
         """
-        return self.metadata['recordId']
+        return self.metadata.get('recordId')
 
     def get_coll_id(self):
         """
@@ -74,8 +79,11 @@ class Image:
         :return: The Collection Id of the image.
         :rtype: str
         """
-        # print("self.metadata: %s" % self.metadata)
-        return self.metadata['collectionId']
+
+        if 'collectionId' in self.metadata:
+            return self.metadata.get('collectionId')
+        elif 'collection_id' in self.metadata:
+            return self.metadata.get('collection_id')
 
     def get_title(self):
         """
@@ -84,7 +92,7 @@ class Image:
         :return: The Title of the image.
         :rtype: str
         """
-        return self.metadata['title']
+        return self.metadata.get('title')
 
     def get_coll_title(self):
         """
@@ -93,7 +101,7 @@ class Image:
         :return: The Collection Title of the image.
         :rtype: str
         """
-        return self.metadata['collectionTitle']
+        return self.metadata.get('collectionTitle')
 
     def get_date(self):
         """
@@ -118,7 +126,13 @@ class Image:
         :return: The URL of the image.
         :rtype: str
         """
-        return self.metadata['thisRecordUrl']
+        return self.metadata.get('thisRecordUrl')
+    
+    def get_image_uuid(self):
+        if 'archiveId' in self.metadata:
+            return self.metadata.get('archiveId')
+        elif 'image_uuid' in self.metadata:
+            return self.metadata.get('image_uuid')
 
     def get_metadata(self, entry=None):
         """
@@ -137,7 +151,7 @@ class Image:
         if entry not in self.metadata.keys():
             return None
 
-        return self.metadata[entry]
+        return self.metadata.get(entry)
 
     def set_metadata(self, val, entry=None):
         """
@@ -210,8 +224,8 @@ class Image:
             elif k == 'geometry':
                 self.metadata['geometry'] = v
                 coords = v['coordinates']
-                self.metadata['wkt'] = geo_util.convert_image_geom(
-                    coords, 'wkt')
+                self.metadata['wkt'] = geo_util.convert_image_geom(coords,
+                                                                   'wkt')
             elif k == 'metadata':
                 if isinstance(v, list):
                     for m in v:
@@ -317,19 +331,12 @@ class ImageList:
         for img in self.img_lst:
             overlap_aoi, overlap_img = geo_util.get_overlap(img, aoi)
             if overlap_aoi >= float(overlap) or overlap_img >= float(overlap):
-                # print("overlap_aoi: %s" % overlap_aoi)
-                # print("overlap_img: %s" % overlap_img)
                 filter_lst.append(img)
-
-        # print("img_lst: %s" % len(self.img_lst))
-        # print("filter_lst: %s" % len(filter_lst))
 
         self.eod.print_msg(f'Number of images found after filtering for '
                            f'overlap: {len(filter_lst)}')
 
         self.img_lst = filter_lst
-
-        # answer = input("Press enter...")
 
     def get_fields(self):
         """
@@ -432,8 +439,15 @@ class ImageList:
         for r in results:
             if 'errors' in r.keys():
                 continue
-            rec_id = r.get('recordId')
-            if rec_id in img_ids:
+
+            if 'archiveId' in r:
+                unique_id = r.get('archiveId')
+            elif 'image_uuid' in r:
+                unique_id = r.get('image_uuid')
+            elif 'recordId' in r:
+                unique_id = r.get('recordId')
+            
+            if unique_id in img_ids:
                 continue
 
             image = Image()
@@ -442,7 +456,7 @@ class ImageList:
             else:
                 image.parse_record(r)
             self.img_lst.append(image)
-            img_ids.append(rec_id)
+            img_ids.append(unique_id)
 
     def print_images(self, heading=None, as_var=False, tabs=1):
         """
@@ -468,7 +482,6 @@ class ImageList:
         for idx, i in enumerate(self.img_lst):
             img_id = i.get_record_id()
             img_coll = i.get_coll_id()
-            # item_count = o.count()
             tab_str = str('\t' * tabs)
             out_str += f"- Image #{idx + 1}: Record Id: {img_id}; " \
                         f"Collection Id: {img_coll}\n"
@@ -521,6 +534,13 @@ class ImageList:
 
             self.img_lst = new_imgs
 
+    def update_images(self, imgs):
+
+        for idx, img in enumerate(self.img_lst):
+            for i in imgs:
+                if i.get_uuid() == img.get_uuid():
+                    self.img_lst[idx] = i
+
     def update_downloads(self, download_items):
         """
         Updates the download information of a list of specific Images.
@@ -541,7 +561,6 @@ class ImageList:
             if img is None:
                 img = Image()
 
-            # order_id = item.get('orderId')
             item_id = item.get('itemId')
             if item_id is None:
                 item_id = item.get('ParentItemId')
@@ -549,25 +568,9 @@ class ImageList:
             order_item = item
             order_item['itemId'] = item_id
 
-            # img.set_metadata(item_id, 'itemId')
-            # img.set_metadata(order_id, 'orderId')
-            # img.set_metadata(item.get('dateSubmitted'), 'dateSubmitted')
-            # img.set_metadata(item.get('userDisplayName'), 'userDisplayName')
-            # img.set_metadata(item.get('status'), 'status')
-            # img.set_metadata(item.get('orderStatus'), 'orderStatus')
-            # img.set_metadata(item.get('orderMessage'), 'orderMessage')
-            # img.set_metadata(item.get('downloaded'), 'downloaded')
-            # img.set_metadata(item.get('downloadPaths'), 'downloadPaths')
-            # img.set_metadata(item.get('priority'), 'priority')
-            # params = item.get('parameters')
-            # if params is not None:
-            #     for k, v in params.items():
-            #         img.set_metadata(v, k)
-
             order_items.append(order_item)
 
         img.set_metadata(order_items, 'orderItems')
-
 
 class OrderItem:
     """
@@ -714,9 +717,6 @@ class OrderItem:
             image = Image()
             image.parse_record(in_image)
         self.image = image
-
-        # fields = self.eod.eodms_rapi.get_collections()[
-        #     self.image.get_coll_id()]['fields']
 
         self.metadata['imageUrl'] = self.image.get_metadata('thisRecordUrl')
         self.metadata['imageMetadata'] = self.image.get_metadata(
@@ -985,9 +985,6 @@ class OrderList:
 
     def add_order_item(self, res, img=None):
 
-        # print(json.dumps(json_res, indent=4, sort_keys=True))
-        # answer = input("Press enter...")
-
         if isinstance(res, OrderItem):
             res = res.get_metadata()
 
@@ -1154,10 +1151,18 @@ class OrderList:
         :rtype: Order
         """
 
+        order_items = []
         for o in self.order_lst:
             o_item = o.get_item(item_id)
             if o_item:
-                return o_item
+                order_items.append(o_item)
+
+        if len(order_items) == 0:
+            return None
+        elif len(order_items) == 1:
+            return order_items[0]
+        
+        return order_items
             
     def get_item_by_rec_id(self, record_id):
         """
@@ -1240,8 +1245,6 @@ class OrderList:
                 
             self.parse_order_item(r, image)
 
-        # answer = input("Press enter...")
-
     def merge_ordlist(self, ord_list):
         orders = ord_list.get_orders()
 
@@ -1261,10 +1264,6 @@ class OrderList:
         if image is None:
             if self.img_lst is not None:
                 image = self.img_lst.get_image(record_id)
-        # else:
-        #     print(f"image: {image}")
-        
-        # image.set_metadata('Yes', 'orderSubmitted')
 
         # Create the OrderItem
         order_item = OrderItem(self.eod)
@@ -1299,8 +1298,6 @@ class OrderList:
         print(f"Number of orders: {len(self.order_lst)}")
 
         for o in self.order_lst:
-            # ord_id = o.get_order_id()
-            # item_count = o.count()
             o.print_items()
 
     def print_orders(self, heading=None, as_var=False, tabs=1):
@@ -1326,7 +1323,6 @@ class OrderList:
         
         for idx, o in enumerate(self.order_lst):
             ord_id = o.get_order_id()
-            # item_count = o.count()
             tab_str = str('\t' * tabs)
             out_str += f"\n- Order #{idx + 1}: Order Id: {ord_id}"
 
@@ -1416,28 +1412,17 @@ class OrderList:
         new_order.add_item(order_item)
         self.order_lst.append(new_order)
 
-    def update_downloads(self,download_items):
-
-        # print(f"self.order_lst: {self.get_raw()}")
-        # print(f"download_items: {download_items}")
-
-        # print(f"order item ids: {self.get_item_ids()}")
+    def update_downloads(self, download_items):
 
         for item in download_items:
             item_id = item.get('itemId')
 
-            # print(f"item_id: {item_id}")
-
             order_item = self.get_order_item(item_id)
-
-            # print(f"order_item: {order_item}")
 
             if order_item is None:
                 if 'parameters' in item.keys():
                     params = item['parameters']
-                    # print(f"params: {params}")
                     item_id = params.get('ParentItemId')
-                    # print(f"item_id: {item_id}")
                     order_item = self.get_order_item(item_id)
                     if order_item is None:
                         return None
