@@ -3,7 +3,7 @@ EODMS Command-line Interface (EODMS-CLI)
 
 ## Overview
 
-The **EODMS-CLI** script is used to search, order and download imagery from the EODMS using the REST API (RAPI) service.
+The **EODMS-CLI** is used to search, order and download imagery from the EODMS using API interfaces.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ The EODMS-CLI was designed using **Python 3.10**.
 | Package Name    | Use                                                       | URL                                         |
 |-----------------|-----------------------------------------------------------|---------------------------------------------|
 | py-eodms-rapi   | The EODMS RAPI Python package.                            | https://pypi.org/project/py-eodms-rapi/     |
-| py-eodms-dds    | The EODMS DDS API Python package.                         | https://github.com/eodms-sgdot/py-eodms-dds |
+| eodms-py        | The EODMS DDS API Python package.                         | https://github.com/eodms-sgdot/eodms-py     |
 | Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/          |
 | dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/        |
 | geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/            |
