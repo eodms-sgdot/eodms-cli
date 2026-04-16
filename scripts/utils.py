@@ -240,7 +240,7 @@ class EodmsUtils:
 
         dmc_map = ["RCMImageProducts", "SGBAirPhotos", "RapidEye", "ALOS-2",
 	                "WorldView-3", "Radarsat2",
-                    "Radarsat-2_Tropical_Rain_Forest_Products", "WorldView-1",
+                    "Radarsat-2_Tropical_Forest_Products", "WorldView-1",
                     "WorldView-2", "WorldView-4", "Radarsat1", "QuickBird-2",
 	                "TerraSarX", "Pleiades", "GeoEye-1", "IRS", "Gaofen-1",
 	                "DMC", "SPOT", "COSMO-SkyMed1", "PlanetScope", "IKONOS",
