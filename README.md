@@ -9,22 +9,23 @@ The **EODMS-CLI** script is used to search, order and download imagery from the 
 
 ### Python
 
-The EODMS-CLI was designed using **Python 3.7** however it has been tested successfully in Python 3.6.10. Using a version prior to Python 3.6 is not recommended as the script will not work properly.
+The EODMS-CLI was designed using **Python 3.10**.
 
 ### Python Packages
 
-| Package Name    | Use                                                       | URL                                       |
-|-----------------|-----------------------------------------------------------|-------------------------------------------|
-| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://pypi.org/project/py-eodms-rapi/   |
-| Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/        |
-| dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/      |
-| geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/          |
-| click           | Used for the command-line input.                          | https://pypi.org/project/click/           |
-| shapely         | Used to determine the percentage of overlap with the AOI. | https://pypi.org/project/Shapely/         |
-| python-dateutil | Used to parse dates.                                      | https://pypi.org/project/python-dateutil/ |
-| tqdm            | Used to access the RAPI and download files.               | https://pypi.org/project/tqdm/            |
-| numpy           | Used to close polygons.                                   | https://pypi.org/project/numpy/           |
-| GDAL            | (Optional) Only required when using AOI shapefiles.       | https://pypi.org/project/GDAL/            |
+| Package Name    | Use                                                       | URL                                         |
+|-----------------|-----------------------------------------------------------|---------------------------------------------|
+| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://pypi.org/project/py-eodms-rapi/     |
+| py-eodms-dds    | The EODMS DDS API Python package.                         | https://github.com/eodms-sgdot/py-eodms-dds |
+| Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/          |
+| dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/        |
+| geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/            |
+| click           | Used for the command-line input.                          | https://pypi.org/project/click/             |
+| shapely         | Used to determine the percentage of overlap with the AOI. | https://pypi.org/project/Shapely/           |
+| python-dateutil | Used to parse dates.                                      | https://pypi.org/project/python-dateutil/   |
+| tqdm            | Used to access the RAPI and download files.               | https://pypi.org/project/tqdm/              |
+| numpy           | Used to close polygons.                                   | https://pypi.org/project/numpy/             |
+| GDAL            | (Optional) Only required when using AOI shapefiles.       | https://pypi.org/project/GDAL/              |
 
 ## Setup
 
@@ -38,7 +39,7 @@ The EODMS-CLI was designed using **Python 3.7** however it has been tested succe
 
 	```bash
 	> cd eodms-cli
-	> pip install -r requirements.txt
+	> pip install -r requirements.txt --upgrade
 	```
 	
 3. Run the script using Python
