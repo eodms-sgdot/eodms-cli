@@ -39,7 +39,7 @@ The EODMS-CLI was designed using **Python 3.10**.
 
 	```bash
 	> cd eodms-cli
-	> pip install -r requirements.txt
+	> pip install -r requirements.txt --upgrade
 	```
 	
 3. Run the script using Python

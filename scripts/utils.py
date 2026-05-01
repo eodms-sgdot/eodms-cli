@@ -2471,6 +2471,114 @@ class EodmsProcess(EodmsUtils):
 
         self._finish_process(query_imgs)
 
+    def download_available(self, params):
+        """
+        Downloads order items that have status AVAILABLE_FOR_DOWNLOAD.
+
+        :return:
+        """
+
+        # Log the parameters
+        self.log_parameters(params)
+
+        self.order_items = params.get('orderitems')
+        self.max_downloads = params.get('maximum')
+        self.output = params.get('output')
+
+        # Create info folder, if it doesn't exist, to store CSV files
+        start_str = self._set_result_fn()
+
+        self.logger.info(f"Process start time: {start_str}")
+
+        dtstart = None
+        dtend = None
+        if self.order_check_date:
+            dtstart = self.order_check_date
+            dtend = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+
+            if any(word in dtstart for word in self.time_words):
+                print(f"\nGetting orders from the last {dtstart} "
+                      f"(from entry RAPI.order_check_date set in the "
+                      f"configuration file).\n")
+            else:
+                print(f"\nGetting orders since {dtstart} "
+                      f"(from entry RAPI.order_check_date set in the "
+                      f"configuration file).\n")
+
+        ################################################
+        # Get Existing Orders
+        ################################################
+        orders = image.OrderList(self)
+        if self.order_items is not None and not self.order_items == '':
+            # Parse orders and order items
+            oi_split = self.order_items.split('|')
+
+            order_ids = []
+            item_ids = []
+            for i in oi_split:
+                if i.find('order') > -1:
+                    ids = [id for id in i.split(':')[1].split(',')]
+                    order_ids += ids
+                elif i.find('item') > -1:
+                    ids =[id for id in i.split(':')[1].split(',')]
+                    item_ids += ids
+
+            # orders = []
+            for id in order_ids:
+                order = self.eodms_rapi.get_order(id)
+                if order is not None:
+                    imgs = self.get_image_from_order(order)
+                    orders.ingest_results(order, imgs)
+                    # orders += order
+
+            for id in item_ids:
+                item = self.eodms_rapi.get_order_item(id)
+                if item is not None and not isinstance(item, QueryError):
+                    # orders += item['items']
+                    imgs = self.get_image_from_order(item['items'])
+                    orders.ingest_results(item['items'], imgs)
+
+        elif self.max_downloads is not None and not self.max_downloads == '':
+            ord_res = self.eodms_rapi.get_orders(max_orders=self.max_downloads,
+                                                dtstart=dtstart, dtend=dtend,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+            imgs = self.get_image_from_order(ord_res)
+            orders.ingest_results(ord_res, imgs)
+        else:
+            max_orders = 250
+            ord_res = None
+            # Cycle through until orders have been returned
+            while ord_res is None and max_orders > 0:
+                ord_res = self.eodms_rapi.get_orders(max_orders=max_orders,
+                                                dtstart=dtstart, dtend=dtend,
+                                                status='AVAILABLE_FOR_DOWNLOAD')
+                imgs = self.get_image_from_order(ord_res)
+                orders.ingest_results(ord_res, imgs)
+                max_orders -= 50
+
+        if orders is None or orders.count() == 0:
+            msg = "No orders were returned."
+            self.logger.error(msg)
+            # self.print_support(msg)
+            self.print_msg(msg, heading='error')
+            self.exit_cli(1)
+
+        msg = f"Number of order items with status " \
+              f"AVAILABLE_FOR_DOWNLOAD: {orders.count_items()}"
+        print(f"\n{msg}")
+        self.logger.info(msg)
+
+        ########################################################################
+
+        # Download images using the EODMSRAPI
+        self._download_items(orders)
+
+        # Get ImageList from orders
+        query_imgs = orders.get_images()
+
+        self.cur_res = query_imgs
+        self._finish_process(orders)
+
     def order_st(self, sar_toolbox, params):
         """
         Submit a SAR Toolbox order to the RAPI.
