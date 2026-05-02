@@ -45,6 +45,7 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
+from .search_backend import RapiSearchBackend, StacSearchBackend
 
 class EodmsUtils:
 
@@ -81,6 +82,12 @@ class EodmsUtils:
         self.password = kwargs.get('password')
 
         self.dds_api = None
+        self.search_backend = None
+        self.search_backend_type = 'stac'
+        if kwargs.get('search_backend') is not None:
+            backend_type = str(kwargs.get('search_backend')).strip().lower()
+            if backend_type in ['rapi', 'stac']:
+                self.search_backend_type = backend_type
 
         self.logger = logging.getLogger('eodms')
 
@@ -362,10 +369,64 @@ class EodmsUtils:
         :rtype: dict
         """
 
+        if coll_id is None:
+            coll_id = self.coll_id
+
+        if self.search_backend_type == 'stac':
+            return self._parse_stac_filters(filters, coll_id)
+
+        return self._parse_rapi_filters(filters, coll_id)
+
+    def _parse_stac_filters(self, filters, coll_id):
+        out_filters = {}
+        av_fields = self.get_available_fields(coll_id, 'title')
+        if av_fields is None:
+            return out_filters
+
+        stac_fields = av_fields.get('results', {})
+        field_map = {k.lower(): k for k in stac_fields.keys()}
+
+        for filt in filters:
+            if all(x not in filt for x in self.operators):
+                print(f"Filter '{filt}' entered incorrectly.")
+                continue
+
+            ops = [x for x in self.operators if x in filt]
+            filt_split = ''
+            op = ''
+            for cur_op in ops:
+                filt_split = filt.split(cur_op)
+                op = cur_op
+
+            key = filt_split[0].strip()
+            if key.lower() not in field_map:
+                err = f"Filter '{key}' is not available for Collection " \
+                      f"'{coll_id}'."
+                self.print_msg(err, heading='warning')
+                self.logger.warning(err)
+                continue
+
+            fld_id = field_map[key.lower()]
+            val = filt_split[1].strip().replace('"', '').replace("'", '')
+
+            if val is None or val == '':
+                err = f"No value specified for Filter ID '{key}'."
+                self.print_msg(err, heading='warning')
+                self.logger.warning(err)
+                continue
+
+            vals = [v.strip() for v in val.split('|') if v.strip() != '']
+            if len(vals) == 0:
+                continue
+
+            out_filters[fld_id] = (op, vals)
+
+        return out_filters
+
+    def _parse_rapi_filters(self, filters, coll_id):
         out_filters = {}
 
         for filt in filters:
-
             if all(x not in filt for x in self.operators):
                 print(f"Filter '{filt}' entered incorrectly.")
                 continue
@@ -374,20 +435,16 @@ class EodmsUtils:
 
             filt_split = ''
             op = ''
-            for o in ops:
-                filt_split = filt.split(o)
-                op = o
+            for cur_op in ops:
+                filt_split = filt.split(cur_op)
+                op = cur_op
 
-            if coll_id is None:
-                coll_id = self.coll_id
-
-            # Convert the input field for EODMS_RAPI
             key = filt_split[0].strip()
             coll_fields = self.field_mapper.get_fields(coll_id)
 
             if key.lower() not in coll_fields.get_eod_fieldnames(lowered=True):
                 err = f"Filter '{key}' is not available for Collection " \
-                          f"'{coll_id}'."
+                      f"'{coll_id}'."
                 self.print_msg(err, heading='warning')
                 self.logger.warning(err)
                 continue
@@ -395,7 +452,6 @@ class EodmsUtils:
             fld = coll_fields.get_field(key)
             fld_id = fld.get_rapi_id()
 
-            # Modified operator if maximum or minimum
             if key.lower().find('maximum') > -1 and \
                 fld_id.lower().find('maximum') == -1:
                 op = "<="
@@ -412,10 +468,9 @@ class EodmsUtils:
                 self.logger.warning(err)
                 continue
 
-            # Check if val is a valid entry for the filter
             vals = val.split('|')
             choices = fld.get_choices(True)
-            
+
             if choices is not None:
                 rep_vals = []
                 for v_str in vals:
@@ -423,7 +478,7 @@ class EodmsUtils:
                     if new_val is None:
                         choices_str = ', '.join(list(filter(None, choices)))
                         err = f"{v_str} is not a valid choice for filter " \
-                                f"'{key}'. Valid choices are: {choices_str}"
+                              f"'{key}'. Valid choices are: {choices_str}"
                         self.print_msg(err, heading='warning')
                         self.logger.warning(err)
                         continue
@@ -929,10 +984,12 @@ class EodmsUtils:
 
     def check_error(self, item):
 
+        backend_label = 'RAPI' if self.search_backend_type == 'rapi' else 'STAC'
+
         if item is None:
             if self.eodms_rapi.auth_err:
                 msg = "\nAn authentication error has occurred while " \
-                    "trying to access the EODMS RAPI. Please ensure " \
+                    f"trying to access the EODMS {backend_label}. Please ensure " \
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html. Once your account is ready, you can " \
@@ -947,7 +1004,7 @@ class EodmsUtils:
             err_msg = item.get_msgs(True)
             if err_msg.find('401 Client Error') > -1:
                 msg = "An authentication error has occurred while " \
-                    "trying to access the EODMS RAPI.\n\nPlease ensure " \
+                    f"trying to access the EODMS {backend_label}.\n\nPlease ensure " \
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html."
@@ -966,14 +1023,14 @@ class EodmsUtils:
         filters = self.rapi_search_args.get('filters')
         features = self.rapi_search_args.get('features')
         dates = self.rapi_search_args.get('dates')
-        result_fields = self.rapi_search_args.get('resultFields')
         max_res = self.rapi_search_args.get('maxResults')
+        backend = self._get_search_backend()
 
         # Get hit count
         print(f"\nGetting hit count...")
-        hit_count_res = self.eodms_rapi.search(self.coll_id, filters, features, 
-                                           dates, result_fields, max_res, 
-                                           hit_count=True)
+        hit_count_res = backend.search(self.coll_id, filters, features,
+                           dates, max_res,
+                           hit_count=True)
         
         if isinstance(hit_count_res, QueryError):
             err_msg = hit_count_res.get_msgs(True)
@@ -1071,6 +1128,10 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
+        if self.search_backend_type == 'rapi':
+            self.search_backend = RapiSearchBackend(self.eodms_rapi)
+        else:
+            self.search_backend = None
 
         environment = 'prod'
         if self.eodms_domain is not None:
@@ -1088,7 +1149,22 @@ class EodmsUtils:
                                                 f"EODMSCLI/{self.version}", 
                                                 True)
 
-        self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
+        if self.search_backend_type == 'rapi':
+            self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
+        else:
+            self.field_mapper = None
+
+    def _get_search_backend(self):
+        if self.search_backend is None:
+            if self.search_backend_type == 'stac':
+                environment = 'staging' if self.eodms_domain else 'prod'
+                aaa_api = getattr(self.dds_api, 'aaa', None)
+                self.search_backend = StacSearchBackend(
+                    aaa_api=aaa_api,
+                    environment=environment)
+            else:
+                self.search_backend = RapiSearchBackend(self.eodms_rapi)
+        return self.search_backend
 
     def download_aws(self, aws_imgs):
         """
@@ -1262,7 +1338,13 @@ class EodmsUtils:
         if isinstance(in_title, list):
             in_title = in_title[0]
 
-        for k, v in self.eodms_rapi.get_collections().items():
+        collections = self.get_collections()
+        if isinstance(collections, list):
+            collections = {c['id']: {'title': c.get('title', c['id']),
+                                     'aliases': c.get('aliases', [])}
+                           for c in collections}
+
+        for k, v in collections.items():
             if v['title'].find(in_title) > -1:
                 return k
 
@@ -1274,6 +1356,26 @@ class EodmsUtils:
         """
 
         return self.eodms_rapi
+
+    def get_collections(self, as_list=False):
+        """Returns collections from the configured search backend."""
+        backend = self._get_search_backend()
+
+        if hasattr(backend, 'get_collections'):
+            return backend.get_collections(as_list)
+
+        if as_list:
+            return self.eodms_rapi.get_collections(True, opt='both')
+        return self.eodms_rapi.get_collections()
+
+    def get_available_fields(self, coll_id, field_type='title'):
+        """Returns available fields from the configured search backend."""
+        backend = self._get_search_backend()
+
+        if hasattr(backend, 'get_available_fields'):
+            return backend.get_available_fields(coll_id, field_type)
+
+        return self.eodms_rapi.get_available_fields(coll_id, field_type)
 
     def get_colour(self, **kwargs): 
         """
@@ -1322,7 +1424,12 @@ class EodmsUtils:
         :rtype: str
         """
 
-        collections = self.eodms_rapi.get_collections()
+        collections = self.get_collections()
+        if isinstance(collections, list):
+            collections = {c['id']: {'title': c.get('title', c['id']),
+                                     'aliases': c.get('aliases', [])}
+                           for c in collections}
+
         for k, v in collections.items():
             if k.find(coll_id) > -1 or v['title'].find(coll_id) > -1:
                 return k
@@ -1353,13 +1460,15 @@ class EodmsUtils:
 
         if not isinstance(order_keys, list):
             order_keys = [order_keys]
+
+        backend = self._get_search_backend()
         
         record_ids = []
         for ok in order_keys:
             filters = {'Order Key': ('=', ok)}
-            self.eodms_rapi.search(coll_id, filters)
+            backend.search(coll_id, filters)
 
-            res = self.eodms_rapi.get_results()
+            res = backend.get_results()
             if len(res) > 0:
                 record_ids = [r.get('recordId') for r in res]
 
@@ -1667,6 +1776,7 @@ class EodmsUtils:
             feats = [('INTERSECTS', aoi)]
 
         all_res = []
+        backend = self._get_search_backend()
         for coll in collections:
 
             # Get the full Collection ID
@@ -1685,70 +1795,60 @@ class EodmsUtils:
             else:
                 filt_parse = {}
 
-            result_fields = []
-            if filt_parse is not None:
-                av_fields = self.eodms_rapi.get_available_fields(self.coll_id,
-                                                                 'title')
-
-                if av_fields is None:
-                    return None
-
-                result_fields.extend(k for k in filt_parse.keys() 
-                    if k in av_fields['results'])
-
             # Create search method arguments dictionary:
             self.rapi_search_args = {
                 "filters": filt_parse, 
                 "features": feats, 
                 "dates": dates, 
-                "resultFields": result_fields, 
                 "maxResults": max_images
             }
 
-            # Send a query to the EODMSRAPI object
-            print(f"\nSending query to EODMSRAPI with the following "
+            backend_label = 'EODMSRAPI' if self.search_backend_type == 'rapi' \
+                else 'STAC'
+            print(f"\nSending query to {backend_label} with the following "
                   f"parameters:")
             for k, v in self.rapi_search_args.items():
                 print(f"  {k}: {v}")
 
-            # Check hit count for the search
-            hit_count = self.check_hit_count()
+            if self.search_backend_type == 'rapi':
+                # Check hit count for the search
+                hit_count = self.check_hit_count()
 
-            if hit_count is None or hit_count == 0:
-                if hit_count is None:
-                    msg = "Could not determine the hit count of images."
-                else:
-                    msg = "Sorry, no results found for given AOI or filters."
-                self.print_msg(msg, heading="error")
-                self.logger.error(msg)
-                self.exit_cli()
+                if hit_count is None or hit_count == 0:
+                    if hit_count is None:
+                        msg = "Could not determine the hit count of images."
+                    else:
+                        msg = "Sorry, no results found for given AOI or filters."
+                    self.print_msg(msg, heading="error")
+                    self.logger.error(msg)
+                    self.exit_cli()
 
-            if max_images is None or max_images == '' or max_images > hit_count:
-                max_images = hit_count
+                if max_images is None or max_images == '' or max_images > hit_count:
+                    max_images = hit_count
 
-            if max_images > 1500:
-                msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 
+                if max_images > 1500:
+                    msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 
 Please separate your searches into separate commands, narrowing your searches with other filters (such as adding a date range(s)).
 Example:
 {self.prompter.cli_syntax} -d <yymmddThhmmss>-<yymmddThhmmss>"""
-                self.print_msg(msg, indent=False, heading='warning', 
-                               wrap_text=False)
+                    self.print_msg(msg, indent=False, heading='warning', 
+                                   wrap_text=False)
 
-                ask_msg = "Would you like to continue with the 1500 latest " \
-                    "results returned from RAPI?"
-                answer = self.prompter.get_input(ask_msg, required=False, 
-                                                 default='n', 
-                                                 options=['Yes', 'No'])
+                    ask_msg = "Would you like to continue with the 1500 latest " \
+                        "results returned from RAPI?"
+                    answer = self.prompter.get_input(ask_msg, required=False, 
+                                                     default='n', 
+                                                     options=['Yes', 'No'])
 
-                if answer.lower().find('n') > -1:
-                    sys.exit()
+                    if answer.lower().find('n') > -1:
+                        sys.exit()
 
-                max_images = 1500
+                    max_images = 1500
 
-            self.eodms_rapi.search(self.coll_id, filt_parse, feats, dates,
-                                   result_fields, max_images)
+            backend.search(self.coll_id, filt_parse, feats, dates,
+                           max_images)
 
-            res = self.eodms_rapi.get_results()
+            res = backend.get_results()
 
             # Add this collection's results to all results
             all_res += res
@@ -1812,7 +1912,11 @@ Example:
         :rtype: str or boolean
         """
 
-        colls = self.eodms_rapi.get_collections()
+        colls = self.get_collections()
+        if isinstance(colls, list):
+            colls = {c['id']: {'title': c.get('title', c['id']),
+                               'aliases': c.get('aliases', [])}
+                     for c in colls}
 
         aliases = [v['aliases'] for v in colls.values()]
 
@@ -1983,9 +2087,43 @@ Example:
             self.logger.error(err_msg)
             return False
 
-        # Check if filter name is valid
-        coll_fields = self.field_mapper.get_fields(coll_id)
+        if self.search_backend_type == 'stac':
+            return self._validate_stac_filters(filt_items, coll_id)
 
+        return self._validate_rapi_filters(filt_items, coll_id)
+
+    def _validate_stac_filters(self, filt_items, coll_id):
+        av_fields = self.get_available_fields(coll_id, 'title')
+        if av_fields is None:
+            err_msg = f"Could not retrieve available fields for " \
+                      f"collection '{coll_id}'."
+            self.print_msg(err_msg, heading='error')
+            self.logger.error(err_msg)
+            return False
+
+        field_map = {k.lower(): k for k in av_fields.get('results', {})}
+        filts = filt_items.split(',')
+
+        for f in filts:
+            ops = [x for x in self.operators if x in f]
+            if len(ops) == 0:
+                err_msg = f"Filter '{f}' entered incorrectly."
+                self.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                return False
+
+            key = f.split(ops[0])[0].strip()
+            if key.lower() not in field_map:
+                err_msg = f"Filter '{f}' is not available for collection " \
+                          f"'{coll_id}'."
+                self.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                return False
+
+        return filt_items
+
+    def _validate_rapi_filters(self, filt_items, coll_id):
+        coll_fields = self.field_mapper.get_fields(coll_id)
         filts = filt_items.split(',')
 
         for f in filts:

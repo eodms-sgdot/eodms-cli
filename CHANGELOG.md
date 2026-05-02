@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.1.0 (2026-05-15)
+
+- Migration of search functionality from py-eodms-rapi, to eodms-py/STAC.
+
 ## 4.0.0 (2026-02-19)
 
 - Implementation of the EODMS DDS API for ordering and downloading images using the py-eodms-dds Python package.
