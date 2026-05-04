@@ -798,6 +798,10 @@ class EodmsUtils:
                               f"again for download link...")
             
             print(f"\nThread {thread_idx} - Downloading item")
+
+            if not os.path.exists(self.download_path):
+                os.makedirs(self.download_path)
+
             download_dest = self.dds_api.download_item(self.download_path)
             img.set_metadata(download_dest, 'downloadDestination')
 
