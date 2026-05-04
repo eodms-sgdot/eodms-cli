@@ -2449,7 +2449,9 @@ class EodmsProcess(EodmsUtils):
         # Download Images
         self._download_items(orders, query_imgs)
 
-        self._finish_process(orders)
+        query_imgs = orders.get_images()
+
+        self._finish_process(query_imgs)
 
     def download_restored_items(self, params):
         """
@@ -2577,7 +2579,7 @@ class EodmsProcess(EodmsUtils):
         query_imgs = orders.get_images()
 
         self.cur_res = query_imgs
-        self._finish_process(orders)
+        self._finish_process(query_imgs)
 
     def order_st(self, sar_toolbox, params):
         """
@@ -2670,4 +2672,7 @@ class EodmsProcess(EodmsUtils):
 
         orders.print_orders("Download results")
 
-        self._finish_process(orders)
+        # Get ImageList from orders
+        query_imgs = orders.get_images()
+
+        self._finish_process(query_imgs)
