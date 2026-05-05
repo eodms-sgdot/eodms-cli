@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service and DDS API service.'
-__version__ = '4.0.0'
+__version__ = '4.1.0'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -80,6 +80,11 @@ proc_choices = {'full': {
                 'order_st': {
                     'name': 'Submit Order to SAR Toolbox',
                     'desc': 'Submit order to the SAR Toolbox'
+                },
+                'download_available': {
+                    'name': 'Download Available SAR Toolbox Order Items',
+                    'desc': 'Downloads Order Items with status '
+                            'AVAILABLE_FOR_DOWNLOAD for SAR Toolbox orders only.'
                 }
             }
 
@@ -692,6 +697,29 @@ class Prompter:
                                                      order_limit]))
 
         return maximum
+
+    def ask_orderitems(self, orderitems):
+        """
+        Asks the user for a list Order IDs or Order Item IDs.
+
+        :param orderitems
+
+        """
+
+        if orderitems is None:
+            if not self.eod.silent:
+                self.print_header("Order/Order Item IDs")
+
+                msg = "\nEnter a list of Order IDs and/or Order Item IDs, " \
+                      "separating each ID with a comma and separating Order " \
+                      "IDs and Order Items with a vertical line " \
+                      "(ex: 'orders:<order_id>,<order_id>|items:" \
+                      "<order_item_id>,...')"
+                def_msg = "leave blank to skip"
+                orderitems = self.get_input(msg, required=False, 
+                                            def_msg=def_msg)
+
+        return orderitems
 
     def ask_order(self, no_order):
         """
@@ -1311,6 +1339,7 @@ class Prompter:
         output = self.params.get('output')
         aws = self.params.get('aws')
         overlap = self.params.get('overlap')
+        orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
         search_backend = self.params.get('search_backend')
@@ -1531,6 +1560,27 @@ class Prompter:
             # Run the order_csv process
             self.eod.order_csv(self.params)
 
+        elif self.process == 'download_available':
+            self.logger.info("Downloading existing order items with status"
+                             "AVAILABLE_FOR_DOWNLOAD.")
+
+            orderitems = self.ask_orderitems(orderitems)
+            self.params['orderitems'] = orderitems
+
+            if orderitems is None or orderitems == '':
+                # Get the maximum(s)
+                maximum = self.ask_maximum(maximum, 'download')
+                self.params['maximum'] = maximum
+
+            # Get the output geospatial filename
+            output = self.ask_output(output)
+            self.params['output'] = output
+
+            # Print command-line syntax for future processes
+            self.print_syntax()
+
+            # Run the download_available process
+            self.eod.download_available(self.params)
 
         elif self.process == 'record_id':
             # Order and download a single or set of images using Record IDs
@@ -1606,6 +1656,7 @@ class Prompter:
 
                 sar_tb = self.ask_st()
 
+            # self.params['st_request'] = sar_tb.out_fn
             # Print command-line syntax for future processes
             self.print_syntax()
 
@@ -1788,6 +1839,10 @@ eodmsrapi_recent = get_latest_version()
 @click.option('--overlap', '-ov', default=None,
               help='The minimum percentage of overlap between AOI and images '
                    '(if no AOI specified, this parameter is ignored).')
+@click.option('--orderitems', '-oid', default=None,
+              help="For Process 4, a set of Order IDs and/or Order Item IDs. "
+                   "This example specifies Order IDs and Order Item IDs: "
+                   "'order:151873,151872|item:1706113,1706111'")
 @click.option('--no_order', '-nord', is_flag=True, default=None,
               help='If set, no ordering and downloading will occur.')
 @click.option('--downloads', '-dn', default=None,
@@ -1804,8 +1859,8 @@ eodmsrapi_recent = get_latest_version()
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
 def cli(username, password, input_val, collections, process, filters, dates,
-        maximum, priority, output, aws, overlap, no_order,
-    downloads, search_backend, st_request, silent, version, configure):
+        maximum, priority, output, aws, overlap, orderitems, no_order,
+        downloads, search_backend, st_request, silent, version, configure):
     """
     Search & Order EODMS products.
     """
@@ -1919,7 +1974,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   # 'csv_fields': csv_fields,
                   'aws': aws,
                   'overlap': overlap,
-                  # 'orderitems': orderitems,
+                  'orderitems': orderitems,
                   'no_order': no_order,
                   'downloads': downloads,
                   'search_backend': search_backend,
