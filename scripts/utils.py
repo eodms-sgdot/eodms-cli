@@ -31,7 +31,7 @@ import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 from eodms_rapi import QueryError
 
-from eodms_dds import dds, aaa
+from eodms import dds, aaa
 
 try:
     import dateparser
