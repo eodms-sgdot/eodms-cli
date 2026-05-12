@@ -155,6 +155,7 @@ class TestResultShape(unittest.TestCase):
 
 
 class TestSessionSetup(unittest.TestCase):
+    """Verify backend-specific session initialization behavior in EodmsUtils."""
 
     @patch('scripts.utils.field.EodFieldMapper')
     @patch('scripts.utils.dds.DDS_API')
@@ -195,6 +196,7 @@ class TestSessionSetup(unittest.TestCase):
 
 
 class TestStacFilterHelpers(unittest.TestCase):
+    """Exercise STAC-only filter parsing/validation and dispatch wiring."""
 
     def _make_eod(self):
         eod = EodmsUtils(search_backend='stac')
@@ -260,6 +262,7 @@ class TestStacFilterHelpers(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestAvailableFields(unittest.TestCase):
+    """Ensure both backends expose available fields in a compatible shape."""
 
     def test_rapi_available_fields_has_results_key(self):
         backend = _make_rapi_backend([])
@@ -285,6 +288,7 @@ class TestAvailableFields(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestNormalizeStacItem(unittest.TestCase):
+    """Validate STAC item normalization into the CLI's internal record shape."""
 
     def test_id_becomes_record_id(self):
         result = _normalize_stac_item(STAC_ITEM)
@@ -317,6 +321,7 @@ class TestNormalizeStacItem(unittest.TestCase):
 
 
 class TestStacFeatureToBbox(unittest.TestCase):
+    """Check spatial feature conversion helper behavior for STAC queries."""
 
     def test_none_features_returns_none(self):
         self.assertIsNone(_stac_feature_to_bbox(None))
@@ -334,6 +339,7 @@ class TestStacFeatureToBbox(unittest.TestCase):
 
 
 class TestParseDatesToStac(unittest.TestCase):
+    """Verify legacy CLI date inputs are transformed into STAC datetime ranges."""
 
     def test_none_returns_none(self):
         self.assertIsNone(_parse_dates_to_stac(None))
@@ -355,6 +361,7 @@ class TestParseDatesToStac(unittest.TestCase):
 
 
 class TestLegacyCliDateToIso(unittest.TestCase):
+    """Cover date normalization edge cases for RAPI/STAC interoperability."""
 
     def test_legacy_cli_format_converts_correctly(self):
         self.assertEqual(_rapi_date_to_iso('20260502_000000'),
