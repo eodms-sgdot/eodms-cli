@@ -413,35 +413,20 @@ class Prompter:
                             fields_str = ', '.join(avail_fields)
                             print(self.wrap_text(fields_str, init_indent='  '))
 
-                        print(self.wrap_text(f"\nFilters must be entered in " \
-                              f"the format of {self.eod.var_colour}" \
-                              f"[field_id]=[value]|[value]|" \
-                              f"{self.eod.reset_colour}... "
-                              f"(field IDs are not case sensitive); "
-                              f"separate each filter with a comma."
-                              f"\n\nExample: beamMode=SC50MA|SC100,"
-                              f"incidenceAngle>=20"))
+                        print(self.wrap_text(
+                              f"\nEnter a CQL2 text filter string. "
+                              f"Field names are case-sensitive."
+                              f"\n\nExamples:"
+                              f"\n  beamMode = 'SC50MA'"
+                              f"\n  beamMode IN ('SC50MA', 'SC100') "
+                              f"AND incidenceAngle >= 20"))
 
-                        msg = "Enter the filters you would like to apply " \
-                              "to the search"
-                        def_msg = "leave blank for no fields"
+                        msg = "Enter the CQL2 filter to apply to the search"
+                        def_msg = "leave blank for no filter"
                         filt_items = self.get_input(msg, required=False,
                                                     def_msg=def_msg)
 
-                        if filt_items == '':
-                            filt_dict[coll_id] = []
-                        else:
-                            filt_items = self.eod.validate_filters(filt_items,
-                                                                   coll_id)
-
-                            if not filt_items:
-                                self.eod.exit_cli(1)
-
-                            filt_items = filt_items.split(',')
-                            filt_items = [f.split('.')[1]
-                                          if f.find('.') > -1
-                                          else f for f in filt_items]
-                            filt_dict[coll_id] = filt_items
+                        filt_dict[coll_id] = filt_items if filt_items else ''
                     else:
                         coll_fields = self.eod.field_mapper.get_fields(coll_id)
 

@@ -1800,9 +1800,14 @@ class EodmsUtils:
 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
-                    filt_parse = self._parse_filters(coll_filts)
-                    if isinstance(filt_parse, str):
-                        filt_parse = {}
+                    # For STAC, a raw CQL2 string is passed straight through.
+                    if self.search_backend_type == 'stac' \
+                            and isinstance(coll_filts, str):
+                        filt_parse = coll_filts
+                    else:
+                        filt_parse = self._parse_filters(coll_filts)
+                        if isinstance(filt_parse, str):
+                            filt_parse = {}
                 else:
                     filt_parse = {}
             else:

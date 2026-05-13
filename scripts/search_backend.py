@@ -292,30 +292,7 @@ class StacSearchBackend(SearchBackend):
         
         limit = int(max_results) if max_results else 1000
 
-        # Build CQL2 filter string from the filters dict if provided
-        cql2_filter = None
-        if filters:
-            clauses = []
-            for field, condition in filters.items():
-                if isinstance(condition, (list, tuple)) and len(condition) == 2:
-                    op, val = condition
-                    if isinstance(val, list):
-                        sub_clauses = []
-                        for v in val:
-                            if isinstance(v, str):
-                                sub_clauses.append(f"{field} {op} '{v}'")
-                            else:
-                                sub_clauses.append(f"{field} {op} {v}")
-                        if len(sub_clauses) == 1:
-                            clauses.append(sub_clauses[0])
-                        elif len(sub_clauses) > 1:
-                            clauses.append(f"({' OR '.join(sub_clauses)})")
-                    elif isinstance(val, str):
-                        clauses.append(f"{field} {op} '{val}'")
-                    else:
-                        clauses.append(f"{field} {op} {val}")
-            if clauses:
-                cql2_filter = ' AND '.join(clauses)
+        cql2_filter = filters.strip() if isinstance(filters, str) and filters.strip() else None
 
         search_kwargs: Dict[str, Any] = {}
         if cql2_filter:
