@@ -61,6 +61,9 @@ class RapiSearchBackend(SearchBackend):
             return self.rapi_client.get_collections(True, opt='both')
         return self.rapi_client.get_collections()
 
+    def print_queryables(self, coll_id):
+        return False
+
 
 def _stac_feature_to_bbox(features):
     """Convert an INTERSECTS feature list to a flat bbox list.
@@ -358,6 +361,10 @@ class StacSearchBackend(SearchBackend):
         except Exception:
             return None
 
+    def print_queryables(self, coll_id):
+        """Print STAC queryables using eodms-py's Search_API helper."""
+        return self._search_api.print_queryables(self._search_api.client.get_collection(coll_id))
+        
     def get_collections(self, as_list=False):
         """Return STAC collections in a shape compatible with existing CLI."""
         collections = []

@@ -1381,6 +1381,15 @@ class EodmsUtils:
 
         return self.eodms_rapi.get_available_fields(coll_id, field_type)
 
+    def print_queryables(self, coll_id):
+        """Prints queryables for a collection when supported by backend."""
+        backend = self._get_search_backend()
+
+        if hasattr(backend, 'print_queryables'):
+            return backend.print_queryables(coll_id)
+
+        return False
+
     def get_colour(self, **kwargs): 
         """
         Gets a colour value for colorama

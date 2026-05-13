@@ -407,9 +407,11 @@ class Prompter:
                             self.eod.exit_cli(1)
 
                         print(f"\nAvailable fields for '{coll}' (STAC):")
-                        avail_fields = sorted(av_fields.get('results', {}).keys())
-                        fields_str = ', '.join(avail_fields)
-                        print(self.wrap_text(fields_str, init_indent='  '))
+                        printed_queryables = self.eod.print_queryables(coll_id)
+                        if not printed_queryables:
+                            avail_fields = sorted(av_fields.get('results', {}).keys())
+                            fields_str = ', '.join(avail_fields)
+                            print(self.wrap_text(fields_str, init_indent='  '))
 
                         print(self.wrap_text(f"\nFilters must be entered in " \
                               f"the format of {self.eod.var_colour}" \
