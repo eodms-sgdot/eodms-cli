@@ -26,12 +26,14 @@ import time
 import threading
 import copy
 import traceback
+from typing import Any, Dict
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
 from eodms_rapi import QueryError
 
 from eodms import dds, aaa
+from eodms.search import Search_API
 
 try:
     import dateparser
@@ -45,7 +47,146 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
-from .search_backend import RapiSearchBackend, StacSearchBackend
+
+
+def _stac_feature_to_bbox(features):
+    """Convert an INTERSECTS feature list to a flat bbox list."""
+    if not features:
+        return None
+
+    try:
+        from shapely import wkt as shapely_wkt
+        from shapely.geometry import shape
+
+        logger = logging.getLogger('eodms')
+
+        geom_str = None
+        if isinstance(features, (list, tuple)):
+            if len(features) > 0:
+                first_item = features[0]
+                if isinstance(first_item, (list, tuple)) and len(first_item) >= 2:
+                    geom_str = first_item[1]
+                elif isinstance(first_item, dict):
+                    geom_str = first_item
+                elif isinstance(first_item, str):
+                    geom_str = first_item
+        else:
+            geom_str = features
+
+        if geom_str is None:
+            logger.warning("Could not extract geometry from features")
+            return None
+
+        if isinstance(geom_str, str) and os.path.isfile(geom_str):
+            try:
+                with open(geom_str, 'r', encoding='utf-8') as fh:
+                    geom_str = json.load(fh)
+            except Exception as file_err:
+                logger.error(f"Failed to load geometry file '{geom_str}': {file_err}")
+                return None
+
+        geom = None
+        try:
+            if isinstance(geom_str, str):
+                geom = shapely_wkt.loads(geom_str)
+            else:
+                raise ValueError("Not a string, skip WKT")
+        except Exception:
+            try:
+                if isinstance(geom_str, str):
+                    geom_obj = json.loads(geom_str)
+                else:
+                    geom_obj = geom_str
+
+                if isinstance(geom_obj, dict) and geom_obj.get('type') == 'FeatureCollection':
+                    from shapely.ops import unary_union
+                    geometries = []
+                    for feature in geom_obj.get('features', []):
+                        if feature.get('geometry'):
+                            geometries.append(shape(feature['geometry']))
+                    if geometries:
+                        geom = unary_union(geometries)
+                    else:
+                        logger.error("FeatureCollection has no valid geometries")
+                        return None
+                elif isinstance(geom_obj, dict) and geom_obj.get('type') == 'Feature':
+                    feature_geom = geom_obj.get('geometry')
+                    if feature_geom is None:
+                        logger.error("GeoJSON Feature has no geometry")
+                        return None
+                    geom = shape(feature_geom)
+                else:
+                    geom = shape(geom_obj)
+            except Exception:
+                logger.error("Failed to parse feature as WKT or GeoJSON")
+                return None
+
+        return list(geom.bounds)
+    except Exception as err:
+        logger = logging.getLogger('eodms')
+        logger.error(f"Unexpected error in _stac_feature_to_bbox: {err}", exc_info=True)
+        return None
+
+
+def _parse_dates_to_stac(dates):
+    """Convert CLI dates list to ISO 8601 datetime range string."""
+    if not dates:
+        return None
+
+    try:
+        first = dates[0]
+        start = _rapi_date_to_iso(first.get('start')) or '..'
+        end = _rapi_date_to_iso(first.get('end')) or '..'
+        return f"{start}/{end}"
+    except Exception:
+        return None
+
+
+def _rapi_date_to_iso(date_str):
+    """Convert legacy CLI date string to ISO 8601 format."""
+    if not date_str or date_str == '..':
+        return date_str
+
+    s = date_str.replace('_', 'T')
+    if '-' in s:
+        return s if s.endswith('Z') else s + 'Z'
+
+    if len(s) >= 15 and s[8] == 'T':
+        dp = s[:8]
+        tp = s[9:15]
+        return (f"{dp[:4]}-{dp[4:6]}-{dp[6:8]}"
+                f"T{tp[:2]}:{tp[2:4]}:{tp[4:6]}Z")
+
+    return s
+
+
+def _normalize_stac_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Map a raw STAC item dict to the internal EODMS-CLI record schema."""
+    props = item.get('properties', {})
+
+    record_id = props.get('eodms:recordId') or props.get('recordId') \
+        or item.get('id')
+    collection_id = item.get('collection') or props.get('collectionId') or ''
+    archive_id = props.get('eodms:archiveId') or props.get('archiveId') \
+        or props.get('uuid') or item.get('id')
+
+    normalized = {
+        'recordId': record_id,
+        'collectionId': collection_id,
+        'archiveId': archive_id,
+        'title': props.get('title') or item.get('id', ''),
+        'collectionTitle': collection_id,
+        'thisRecordUrl': next(
+            (lnk.get('href') for lnk in item.get('links', [])
+             if lnk.get('rel') == 'self'), None),
+        'geometry': item.get('geometry'),
+    }
+
+    for k, v in props.items():
+        if k not in normalized:
+            normalized[k] = v
+
+    return normalized
 
 class EodmsUtils:
 
@@ -82,7 +223,7 @@ class EodmsUtils:
         self.password = kwargs.get('password')
 
         self.dds_api = None
-        self.search_backend = None
+        self.search_api = None
         self.search_backend_type = 'stac'
         if kwargs.get('search_backend') is not None:
             backend_type = str(kwargs.get('search_backend')).strip().lower()
@@ -1023,32 +1164,7 @@ class EodmsUtils:
         """
         Checks the hit count for a specified search
         """
-
-        filters = self.rapi_search_args.get('filters')
-        features = self.rapi_search_args.get('features')
-        dates = self.rapi_search_args.get('dates')
-        max_res = self.rapi_search_args.get('maxResults')
-        backend = self._get_search_backend()
-
-        # Get hit count
-        print(f"\nGetting hit count...")
-        hit_count_res = backend.search(self.coll_id, filters, features,
-                           dates, max_res,
-                           hit_count=True)
-        
-        if isinstance(hit_count_res, QueryError):
-            err_msg = hit_count_res.get_msgs(True)
-            self.print_msg(err_msg, heading='warning')
-            self.logger.warning(err_msg)
-            return None
-        elif isinstance(hit_count_res, dict):
-            hit_count = hit_count_res.get('hitCount')
-
-            msg = f"Hit Count for Search: {hit_count}"
-            print(f"\n{msg}")
-            self.logger.info(msg)
-
-            return hit_count
+        return None
 
     def cleanup_folders(self):
         """
@@ -1132,10 +1248,6 @@ class EodmsUtils:
         self.username = username
         self.password = password
         self.eodms_rapi = EODMSRAPI(username, password)
-        if self.search_backend_type == 'rapi':
-            self.search_backend = RapiSearchBackend(self.eodms_rapi)
-        else:
-            self.search_backend = None
 
         environment = 'prod'
         if self.eodms_domain is not None:
@@ -1146,6 +1258,7 @@ class EodmsUtils:
 
         aaa_api = aaa.AAA_API(username, password, environment=environment)
         self.dds_api = dds.DDS_API(aaa_api, environment=environment)
+        self.search_api = Search_API(aaa_api=aaa_api, environment=environment)
 
         # Add CLI version info to User-Agent in header
         if 'rapi_session' in dir(self.eodms_rapi):
@@ -1158,17 +1271,40 @@ class EodmsUtils:
         else:
             self.field_mapper = None
 
-    def _get_search_backend(self):
-        if self.search_backend is None:
-            if self.search_backend_type == 'stac':
-                environment = 'staging' if self.eodms_domain else 'prod'
-                aaa_api = getattr(self.dds_api, 'aaa', None)
-                self.search_backend = StacSearchBackend(
-                    aaa_api=aaa_api,
-                    environment=environment)
-            else:
-                self.search_backend = RapiSearchBackend(self.eodms_rapi)
-        return self.search_backend
+    def _get_search_api(self):
+        if self.search_api is None:
+            environment = 'staging' if self.eodms_domain else 'prod'
+            aaa_api = getattr(self.dds_api, 'aaa', None)
+            self.search_api = Search_API(aaa_api=aaa_api,
+                                         environment=environment)
+        return self.search_api
+
+    def _search_stac(self, coll_id, filters=None, features=None, dates=None,
+                     max_results=None):
+        """Runs a STAC search and returns normalized records."""
+        search_api = self._get_search_api()
+
+        bbox = _stac_feature_to_bbox(features)
+        datetime_str = _parse_dates_to_stac(dates)
+        limit = int(max_results) if max_results else 1000
+
+        cql2_filter = filters.strip() if isinstance(filters, str) \
+            and filters.strip() else None
+
+        search_kwargs = {}
+        if cql2_filter:
+            search_kwargs['filter'] = cql2_filter
+            search_kwargs['filter_lang'] = 'cql2-text'
+
+        items = search_api.stac_search(
+            collections=[coll_id],
+            bbox=bbox,
+            datetime=datetime_str,
+            limit=limit,
+            **search_kwargs,
+        )
+
+        return [_normalize_stac_item(it) for it in items]
 
     def download_aws(self, aws_imgs):
         """
@@ -1362,33 +1498,50 @@ class EodmsUtils:
         return self.eodms_rapi
 
     def get_collections(self, as_list=False):
-        """Returns collections from the configured search backend."""
-        backend = self._get_search_backend()
+        """Returns collections from Search_API/STAC."""
+        search_api = self._get_search_api()
 
-        if hasattr(backend, 'get_collections'):
-            return backend.get_collections(as_list)
+        collections = []
+        for coll in search_api.client.get_collections():
+            collections.append({
+                'id': coll.id,
+                'title': getattr(coll, 'title', None) or coll.id,
+                'aliases': []
+            })
 
         if as_list:
-            return self.eodms_rapi.get_collections(True, opt='both')
-        return self.eodms_rapi.get_collections()
+            return collections
+
+        return {c['id']: {'title': c['title'], 'aliases': c['aliases']}
+                for c in collections}
 
     def get_available_fields(self, coll_id, field_type='title'):
-        """Returns available fields from the configured search backend."""
-        backend = self._get_search_backend()
+        """Returns available queryables for a collection."""
+        search_api = self._get_search_api()
 
-        if hasattr(backend, 'get_available_fields'):
-            return backend.get_available_fields(coll_id, field_type)
-
-        return self.eodms_rapi.get_available_fields(coll_id, field_type)
+        try:
+            collection = search_api.client.get_collection(coll_id)
+            if collection is None:
+                return None
+            queryables = collection.get_queryables()
+            props = queryables.get('properties', {}) \
+                if isinstance(queryables, dict) else {}
+            fields = {k: v for k, v in props.items()}
+            return {'results': fields, 'query': fields}
+        except Exception:
+            return None
 
     def print_queryables(self, coll_id):
-        """Prints queryables for a collection when supported by backend."""
-        backend = self._get_search_backend()
-
-        if hasattr(backend, 'print_queryables'):
-            return backend.print_queryables(coll_id)
-
-        return False
+        """Prints queryables for a collection using Search_API."""
+        search_api = self._get_search_api()
+        try:
+            coll = search_api.client.get_collection(coll_id)
+            if coll is None:
+                return False
+            search_api.print_queryables(coll)
+            return True
+        except Exception:
+            return False
 
     def get_colour(self, **kwargs): 
         """
@@ -1473,15 +1626,11 @@ class EodmsUtils:
 
         if not isinstance(order_keys, list):
             order_keys = [order_keys]
-
-        backend = self._get_search_backend()
         
         record_ids = []
         for ok in order_keys:
-            filters = {'Order Key': ('=', ok)}
-            backend.search(coll_id, filters)
-
-            res = backend.get_results()
+            filters = f"\"Order Key\" = '{ok}'"
+            res = self._search_stac(coll_id, filters=filters)
             if len(res) > 0:
                 record_ids = [r.get('recordId') for r in res]
 
@@ -1789,7 +1938,6 @@ class EodmsUtils:
             feats = [('INTERSECTS', aoi)]
 
         all_res = []
-        backend = self._get_search_backend()
         for coll in collections:
 
             # Get the full Collection ID
@@ -1828,45 +1976,8 @@ class EodmsUtils:
             for k, v in self.rapi_search_args.items():
                 print(f"  {k}: {v}")
 
-            if self.search_backend_type == 'rapi':
-                # Check hit count for the search
-                hit_count = self.check_hit_count()
-
-                if hit_count is None or hit_count == 0:
-                    if hit_count is None:
-                        msg = "Could not determine the hit count of images."
-                    else:
-                        msg = "Sorry, no results found for given AOI or filters."
-                    self.print_msg(msg, heading="error")
-                    self.logger.error(msg)
-                    self.exit_cli()
-
-                if max_images is None or max_images == '' or max_images > hit_count:
-                    max_images = hit_count
-
-                if max_images > 1500:
-                    msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 
-Please separate your searches into separate commands, narrowing your searches with other filters (such as adding a date range(s)).
-Example:
-{self.prompter.cli_syntax} -d <yymmddThhmmss>-<yymmddThhmmss>"""
-                    self.print_msg(msg, indent=False, heading='warning', 
-                                   wrap_text=False)
-
-                    ask_msg = "Would you like to continue with the 1500 latest " \
-                        "results returned from RAPI?"
-                    answer = self.prompter.get_input(ask_msg, required=False, 
-                                                     default='n', 
-                                                     options=['Yes', 'No'])
-
-                    if answer.lower().find('n') > -1:
-                        sys.exit()
-
-                    max_images = 1500
-
-            backend.search(self.coll_id, filt_parse, feats, dates,
-                           max_images)
-
-            res = backend.get_results()
+            res = self._search_stac(self.coll_id, filt_parse, feats, dates,
+                                    max_images)
 
             # Add this collection's results to all results
             all_res += res

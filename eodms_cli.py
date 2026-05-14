@@ -413,15 +413,7 @@ class Prompter:
                             fields_str = ', '.join(avail_fields)
                             print(self.wrap_text(fields_str, init_indent='  '))
 
-                        print(self.wrap_text(
-                              f"\nEnter a CQL2 text filter string. "
-                              f"Field names are case-sensitive."
-                              f"\n\nExamples:"
-                              f"\n  beamMode = 'SC50MA'"
-                              f"\n  beamMode IN ('SC50MA', 'SC100') "
-                              f"AND incidenceAngle >= 20"))
-
-                        msg = "Enter the CQL2 filter to apply to the search"
+                        msg = "Enter the CQL2 filter to apply to the search e.g. beam_mnemonic LIKE 'SC30M%' AND relative_orbit = 10"
                         def_msg = "leave blank for no filter"
                         filt_items = self.get_input(msg, required=False,
                                                     def_msg=def_msg)
@@ -1151,11 +1143,17 @@ class Prompter:
                 if flag == '-f':
                     filt_lst = []
                     for k, v_lst in pv.items():
-                        for v in v_lst:
-                            if v is None or v == '':
-                                continue
-                            v = v.replace('"', '').replace("'", '')
-                            filt_lst.append(f"{k}.{v}")
+                        if isinstance(v_lst, str):
+                            v = v_lst.strip()
+                            if v != '':
+                                v = v.replace('"', '').replace("'", '')
+                                filt_lst.append(f"{k}.{v}")
+                        else:
+                            for v in v_lst:
+                                if v is None or v == '':
+                                    continue
+                                v = v.replace('"', '').replace("'", '')
+                                filt_lst.append(f"{k}.{v}")
                     if len(filt_lst) == 0:
                         continue
                     pv = '"%s"' % ','.join(filt_lst)
