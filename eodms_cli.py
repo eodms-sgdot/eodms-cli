@@ -59,13 +59,12 @@ from scripts import sar
 # from utils import geo
 
 proc_choices = {'full': {
-                    'name': 'Search, order and/or download',
-                    'desc': 'Search, order and/or download images using an AOI '
-                            'and/or filters'
+                    'name': 'Search and/or download',
+                    'desc': 'Search and/or download images'
                 },
                 'order_csv': {
                     'name': 'EODMS UI Ordering',
-                    'desc': 'Order & download images using EODMS UI search '
+                    'desc': 'Download images using EODMS UI search '
                             'results (CSV file)'
                 },
                 'record_id': {
