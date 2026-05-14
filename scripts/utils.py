@@ -26,7 +26,6 @@ import time
 import threading
 import copy
 import traceback
-from typing import Any, Dict
 
 import eodms_rapi as rapi
 from eodms_rapi import EODMSRAPI
@@ -47,146 +46,6 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
-
-
-def _stac_feature_to_bbox(features):
-    """Convert an INTERSECTS feature list to a flat bbox list."""
-    if not features:
-        return None
-
-    try:
-        from shapely import wkt as shapely_wkt
-        from shapely.geometry import shape
-
-        logger = logging.getLogger('eodms')
-
-        geom_str = None
-        if isinstance(features, (list, tuple)):
-            if len(features) > 0:
-                first_item = features[0]
-                if isinstance(first_item, (list, tuple)) and len(first_item) >= 2:
-                    geom_str = first_item[1]
-                elif isinstance(first_item, dict):
-                    geom_str = first_item
-                elif isinstance(first_item, str):
-                    geom_str = first_item
-        else:
-            geom_str = features
-
-        if geom_str is None:
-            logger.warning("Could not extract geometry from features")
-            return None
-
-        if isinstance(geom_str, str) and os.path.isfile(geom_str):
-            try:
-                with open(geom_str, 'r', encoding='utf-8') as fh:
-                    geom_str = json.load(fh)
-            except Exception as file_err:
-                logger.error(f"Failed to load geometry file '{geom_str}': {file_err}")
-                return None
-
-        geom = None
-        try:
-            if isinstance(geom_str, str):
-                geom = shapely_wkt.loads(geom_str)
-            else:
-                raise ValueError("Not a string, skip WKT")
-        except Exception:
-            try:
-                if isinstance(geom_str, str):
-                    geom_obj = json.loads(geom_str)
-                else:
-                    geom_obj = geom_str
-
-                if isinstance(geom_obj, dict) and geom_obj.get('type') == 'FeatureCollection':
-                    from shapely.ops import unary_union
-                    geometries = []
-                    for feature in geom_obj.get('features', []):
-                        if feature.get('geometry'):
-                            geometries.append(shape(feature['geometry']))
-                    if geometries:
-                        geom = unary_union(geometries)
-                    else:
-                        logger.error("FeatureCollection has no valid geometries")
-                        return None
-                elif isinstance(geom_obj, dict) and geom_obj.get('type') == 'Feature':
-                    feature_geom = geom_obj.get('geometry')
-                    if feature_geom is None:
-                        logger.error("GeoJSON Feature has no geometry")
-                        return None
-                    geom = shape(feature_geom)
-                else:
-                    geom = shape(geom_obj)
-            except Exception:
-                logger.error("Failed to parse feature as WKT or GeoJSON")
-                return None
-
-        return list(geom.bounds)
-    except Exception as err:
-        logger = logging.getLogger('eodms')
-        logger.error(f"Unexpected error in _stac_feature_to_bbox: {err}", exc_info=True)
-        return None
-
-
-def _parse_dates_to_stac(dates):
-    """Convert CLI dates list to ISO 8601 datetime range string."""
-    if not dates:
-        return None
-
-    try:
-        first = dates[0]
-        start = _rapi_date_to_iso(first.get('start')) or '..'
-        end = _rapi_date_to_iso(first.get('end')) or '..'
-        return f"{start}/{end}"
-    except Exception:
-        return None
-
-
-def _rapi_date_to_iso(date_str):
-    """Convert legacy CLI date string to ISO 8601 format."""
-    if not date_str or date_str == '..':
-        return date_str
-
-    s = date_str.replace('_', 'T')
-    if '-' in s:
-        return s if s.endswith('Z') else s + 'Z'
-
-    if len(s) >= 15 and s[8] == 'T':
-        dp = s[:8]
-        tp = s[9:15]
-        return (f"{dp[:4]}-{dp[4:6]}-{dp[6:8]}"
-                f"T{tp[:2]}:{tp[2:4]}:{tp[4:6]}Z")
-
-    return s
-
-
-def _normalize_stac_item(item: Dict[str, Any]) -> Dict[str, Any]:
-    """Map a raw STAC item dict to the internal EODMS-CLI record schema."""
-    props = item.get('properties', {})
-
-    record_id = props.get('eodms:recordId') or props.get('recordId') \
-        or item.get('id')
-    collection_id = item.get('collection') or props.get('collectionId') or ''
-    archive_id = props.get('eodms:archiveId') or props.get('archiveId') \
-        or props.get('uuid') or item.get('id')
-
-    normalized = {
-        'recordId': record_id,
-        'collectionId': collection_id,
-        'archiveId': archive_id,
-        'title': props.get('title') or item.get('id', ''),
-        'collectionTitle': collection_id,
-        'thisRecordUrl': next(
-            (lnk.get('href') for lnk in item.get('links', [])
-             if lnk.get('rel') == 'self'), None),
-        'geometry': item.get('geometry'),
-    }
-
-    for k, v in props.items():
-        if k not in normalized:
-            normalized[k] = v
-
-    return normalized
 
 class EodmsUtils:
 
@@ -685,91 +544,21 @@ class EodmsUtils:
         csv_res = eodms_csv.import_eodms_csv()
 
         ##################################################
-        self.print_heading("Retrieving Record IDs for the list of "
-                           "entries in the CSV file")
+        self.print_heading("Retrieving download candidates from CSV file")
+              
         ##################################################
-
-        # Group all records into different collections
-        sat_recs = {}
 
         if max_images is not None and max_images != '':
             csv_res = csv_res[:max_images]
-
-        # Group by satellite
-        for rec in csv_res:
-
-            # Get the collection ID for the image
-            satellite = rec.get('satellite')
-
-            if satellite is None:
-                satellite = rec.get('title')
-
-            rec_lst = []
-            if satellite in sat_recs:
-                rec_lst = sat_recs[satellite]
-
-            rec_lst.append(rec)
-
-            sat_recs[satellite] = rec_lst
-
-        all_res = []
-
-        counter = 0
-        total = len(csv_res)
-        for sat, recs in sat_recs.items():
-
-            self.print_msg(f"Getting images for {sat}:", indent=False)
-
-            for idx, rec in enumerate(recs):
-                self.print_msg(f"Getting image {counter + 1} of {total}", False)
-
-                counter += 1
-
-                # If no satellite given, the record is an aerial image
-                if sat is None or sat == '':
-                    if 'photo number' in rec.keys():
-                        sat = 'NAPL'
-                    elif 'photo name' in rec.keys():
-                        sat = 'sgap'
-
-                res = []
-                if 'sequence id' in rec.keys():
-                    # If Sequence Id is in the CSV file
-                    rec_id = rec.get('sequence id')
-                    if rec_id is None:
-                        rec_id = rec.get('sequence id')
-                    colls = self._get_collection(sat)
-
-                    if rec_id == '':
-                        continue
-
-                    # Get the results
-                    for coll in colls:
-                        res = self.eodms_rapi.get_record(coll, rec_id)
-                        
-                        if 'errors' in res and \
-                                res.get('errors').find('404') > -1:
-                            continue
-
-                        if len(res) > 0:
-                            break
-
-                else:
-                    msg = "Could not determine a unique field from the " \
-                                      "CSV results."
-                    self.print_msg(msg, heading='warning')
-                    self.logger.warning(msg)
-                    self.results = image.ImageList(self)
-                    return self.results
-
-                if isinstance(res, list):
-                    all_res += res
-                else:
-                    all_res.append(res)
-
-        # Convert results to ImageList
+        # Convert CSV records to ImageList directly for DDS download.
         self.results = image.ImageList(self)
-        self.results.ingest_results(all_res)
+        self.results.ingest_csv(csv_res)
+
+        if self.results.count() == 0:
+            msg = "Could not determine any images from CSV rows. Ensure " \
+                  "the CSV contains 'Archive ID' values."
+            self.print_msg(msg, heading='warning')
+            self.logger.warning(msg)
 
         return self.results
 
@@ -2524,11 +2313,12 @@ class EodmsProcess(EodmsUtils):
         self.cur_res = query_imgs
 
         if no_order:
+            print("\nNo order option selected. Exporting results and ending process.")
             self.eodms_geo.export_results(query_imgs, self.output)
             self.exit_cli()
 
         #############################################
-        # Order Images
+        # Download Images
         #############################################
 
         # Parse out AWS
