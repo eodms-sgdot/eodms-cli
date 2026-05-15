@@ -2420,6 +2420,79 @@ class EodmsProcess(EodmsUtils):
 
         self._finish_process(eodms_imgs)
 
+    def order_uuids(self, params):
+        """
+        Orders and downloads a single or set of images using UUID(s).
+        Uses the search API to validate UUIDs instead of RAPI.
+
+        :param params: A dictionary containing the arguments and values.
+        :type  params: dict
+        """
+
+        coll_id = params.get('collection')
+        uuid_list = params.get('uuid')
+        self.output = params.get('output')
+        no_order = params.get('no_order')
+
+        # Log the parameters
+        self.log_parameters(params)
+
+        # Create info folder, if it doesn't exist, to store CSV files
+        start_str = self._set_result_fn()
+
+        self.logger.info(f"Process start time: {start_str}")
+
+        #############################################
+        # Search for Items by UUID
+        #############################################
+
+        search_api = self._get_search_api()
+        
+        # Parse UUIDs
+        uuids = [u.strip() for u in uuid_list.split(',')]
+        
+        imageList = []
+        for uuid_val in uuids:
+            # Build a minimal record that ImageList/DDS pipeline accepts.
+            imageList.append({
+                'archiveId': uuid_val,
+                'image_uuid': uuid_val,
+                'recordId': uuid_val,
+                'collectionId': coll_id,
+                'title': uuid_val
+            })
+
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(imageList)
+
+        if no_order:
+            self.eodms_geo.export_results(query_imgs, self.output)
+            self.exit_cli()
+
+        # Update the self.cur_res for output results
+        self.cur_res = query_imgs
+
+        # Check for AWS downloads (if applicable)
+        aws_download = params.get('aws')
+        if aws_download:
+            eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
+        else:
+            eodms_imgs = query_imgs
+            aws_imgs = None
+
+        ###############################################
+        # Get Items and Download from DDS API
+        ###############################################
+
+        aws_downloads = None
+        if aws_imgs:
+            aws_downloads = self.download_aws(aws_imgs)
+            eodms_imgs.add_images(aws_downloads)
+
+        self._get_dds_images(eodms_imgs)
+
+        self._finish_process(eodms_imgs)
+
     def download_aoi(self, params):
         """
         Runs a query and downloads images from existing orders.

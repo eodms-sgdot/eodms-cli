@@ -29,7 +29,6 @@ import requests
 # import argparse
 import click
 import traceback
-import getpass
 import datetime
 import textwrap
 # from geomet import wkt
@@ -67,10 +66,10 @@ proc_choices = {'full': {
                     'desc': 'Download images using EODMS UI search '
                             'results (CSV file)'
                 },
-                'record_id': {
-                    'name': 'Record IDs',
+                'uuid': {
+                    'name': 'UUID',
                     'desc': 'Order and download a single or set of images '
-                            'using Record IDs'
+                            'using UUID(s)'
                 },
                 'download_restored_items': {
                     'name': 'Download Restored Items',
@@ -94,7 +93,7 @@ class Prompter:
     Class used to prompt the user for all inputs.
     """
 
-    def __init__(self, eod, config_util, params, in_click, testing=False):
+    def __init__(self, eod, config_util, params, testing=False):
         """
         Initializer for the Prompter class.
         
@@ -112,7 +111,6 @@ class Prompter:
         self.config_util = config_util
         self.config_info = config_util.get_info()
         self.params = params
-        self.click = in_click
         self.process = None
         self.testing = testing
 
@@ -223,13 +221,7 @@ class Prompter:
                 msg = "For images that have an AWS link, would you like to " \
                       "download the GeoTIFFs from the repository instead of " \
                       "submitting an order to the EODMS?"
-                aws = self.get_input(msg, required=False, default='y', 
-                                     options=['Yes', 'No'])
-
-                if aws.lower().find('y') > -1:
-                    aws = True
-                else:
-                    aws = False
+                aws = click.confirm(msg, default=True)
 
         return aws
 
@@ -712,13 +704,7 @@ class Prompter:
                 self.print_header("Suppress Ordering")
 
                 msg = "Would you like to only search and not order?"
-                no_order = self.get_input(msg, required=False,
-                                          options=['Yes', 'No'], default='n')
-
-                if no_order.lower().find('y') > -1:
-                    no_order = True
-                else:
-                    no_order = False
+                no_order = click.confirm(msg, default=False)
 
         return no_order
 
@@ -888,6 +874,76 @@ class Prompter:
                     self.eod.exit_cli(1)
 
         return ids
+
+    def ask_uuid(self, coll_id=None, uuid_val=None):
+        """
+        Asks the user for UUID(s) using click prompts for collection and items.
+        
+        :param coll_id: The collection ID if already set by the command-line.
+        :type  coll_id: str
+        :param uuid_val: The UUID(s) if already set by the command-line.
+        :type  uuid_val: str
+        
+        :return: A tuple containing (collection_id, uuid_list)
+        :rtype: tuple
+        """
+        
+        if coll_id is None or coll_id == '':
+            if not self.eod.silent:
+                self.print_header("Select Collection")
+                
+                # Get available collections
+                coll_lst = self.eod.get_collections(True)
+                coll_lst = sorted(coll_lst, key=lambda x: x['title'])
+                
+                # Display collections
+                coll_choices = {str(idx + 1): c for idx, c in enumerate(coll_lst)}
+                for idx, c in enumerate(coll_lst):
+                    print(f"{idx + 1}. {c['title']} ({c['id']})")
+                
+                # Use click to prompt for collection selection
+                choice_str = click.prompt("Enter the number of the collection")
+                
+                try:
+                    choice_idx = int(choice_str) - 1
+                    if choice_idx < 0 or choice_idx >= len(coll_lst):
+                        raise ValueError()
+                    coll_id = coll_lst[choice_idx]['id']
+                except (ValueError, IndexError):
+                    err_msg = "Invalid collection selection."
+                    self.eod.print_msg(err_msg, heading='error')
+                    self.logger.error(err_msg)
+                    self.eod.exit_cli(1)
+            else:
+                err_msg = "Collection must be specified."
+                self.eod.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                self.eod.exit_cli(1)
+        
+        if uuid_val is None or uuid_val == '':
+            if not self.eod.silent:
+                self.print_header("Enter UUID(s)")
+                
+                # Use click to prompt for UUIDs
+                msg = "Enter one or more UUID(s), separated by commas"
+                uuid_val = click.prompt(msg)
+                
+                if not uuid_val or uuid_val.strip() == '':
+                    err_msg = "At least one UUID must be specified."
+                    self.eod.print_msg(err_msg, heading='error')
+                    self.logger.error(err_msg)
+                    self.eod.exit_cli(1)
+            else:
+                err_msg = "UUID must be specified."
+                self.eod.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                self.eod.exit_cli(1)
+        
+        # Parse UUIDs (comma-separated)
+        uuids = [u.strip() for u in uuid_val.split(',')]
+        
+        return coll_id, uuids
+
 
     def ask_st_images(self, ids):
 
@@ -1127,7 +1183,15 @@ class Prompter:
             if p == 'eodms_rapi':
                 continue
 
-            flag = flags[p][1]
+            opts = flags.get(p)
+            if not opts:
+                continue
+
+            # Prefer short flag when available, otherwise use the only option.
+            if len(opts) > 1:
+                flag = opts[1]
+            else:
+                flag = opts[0]
 
             if isinstance(pv, list):
                 if flag == '-d':
@@ -1201,38 +1265,46 @@ class Prompter:
         :rtype: str
         """
 
-        if password:
-            # If the argument is for password entry, hide entry
-            print(f"{msg}:")
-            in_val = getpass.getpass(prompt=f'{self.add_arrow()} ')
-        else:
-            opt_str = ''
-            if options is not None:
-                opt_join = '/'.join(options)
-                opt_str = f" ({self.eod.var_colour}{opt_join}" \
-                        f"{self.eod.reset_colour})"
+        opt_str = ''
+        if options is not None:
+            opt_join = '/'.join(options)
+            opt_str = f" ({self.eod.var_colour}{opt_join}" \
+                    f"{self.eod.reset_colour})"
 
-            def_str = ''
-            if default is not None:
-                def_str = f" {self.eod.def_colour}[{default}]" \
-                    f"{self.eod.reset_colour}"
-            
-            if def_msg is not None:
-                def_str = f" {self.eod.def_colour}[{def_msg}]" \
-                    f"{self.eod.reset_colour}"
+        def_str = ''
+        if default is not None:
+            def_str = f" {self.eod.def_colour}[{default}]" \
+                f"{self.eod.reset_colour}"
+        
+        if def_msg is not None:
+            def_str = f" {self.eod.def_colour}[{def_msg}]" \
+                f"{self.eod.reset_colour}"
 
-            output = f"\n{msg}{opt_str}{def_str}: "
-            if msg.endswith('\n'):
-                msg_strp = msg.strip('\n')
-                output = f"\n{msg_strp}{opt_str}{def_str}:\n"
-            try:
-                # output = self.wrap_text(output)
-                print(self.wrap_text(output))
-                in_val = input(f"\n{self.add_arrow()} ")
-            except EOFError as error:
-                # Output expected EOFErrors.
-                self.logger.error(error)
-                eod_util.EodmsProcess().exit_cli(1)
+        output = f"\n{msg}{opt_str}{def_str}"
+        if msg.endswith('\n'):
+            msg_strp = msg.strip('\n')
+            output = f"\n{msg_strp}{opt_str}{def_str}\n"
+        
+        # Strip ANSI color codes for click.prompt display
+        output_display = output
+        output_display = output_display.replace(self.eod.var_colour, '')
+        output_display = output_display.replace(self.eod.def_colour, '')
+        output_display = output_display.replace(self.eod.reset_colour, '')
+        
+        wrapped_output = self.wrap_text(output_display)
+
+        # click.prompt requires a default to accept an empty response.
+        prompt_default = default
+        if not required and prompt_default is None:
+            prompt_default = ''
+        
+        try:
+            in_val = click.prompt(wrapped_output, default=prompt_default, 
+                                  hide_input=password, show_default=False)
+        except EOFError as error:
+            # Output expected EOFErrors.
+            self.logger.error(error)
+            eod_util.EodmsProcess().exit_cli(1)
 
         if required and in_val == '':
             # eod_util.EodmsProcess().print_support(True, err_msg)
@@ -1241,9 +1313,6 @@ class Prompter:
             eod_util.EodmsProcess().print_msg(err_msg, heading='error')
             self.logger.error(err_msg)
             eod_util.EodmsProcess().exit_cli(1)
-
-        if in_val == '' and default is not None and not default == '':
-            in_val = default
 
         if self.testing:
             print(f"FOR TESTING - Value entered: {in_val}")
@@ -1319,15 +1388,15 @@ class Prompter:
         filters = self.params.get('filters')
         dates = self.params.get('dates')
         maximum = self.params.get('maximum')
-        # priority = self.params.get('priority')
         output = self.params.get('output')
         aws = self.params.get('aws')
         overlap = self.params.get('overlap')
         orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
-        search_backend = self.params.get('search_backend')
         st_request = self.params.get('st_request')
+        uuid = self.params.get('uuid')
+        collection = self.params.get('collection')
         silent = self.params.get('silent')
         version = self.params.get('version')
 
@@ -1411,7 +1480,9 @@ class Prompter:
                        'maximum': maximum,
                        'process': process,
                        'downloads': downloads,
-                       'search_backend': search_backend}
+                       'search_backend': search_backend,
+                       'uuid': uuid,
+                       'collection': collection}
 
         print()
         coll_dict = self.eod.get_collections(True)
@@ -1566,19 +1637,17 @@ class Prompter:
             # Run the download_available process
             self.eod.download_available(self.params)
 
-        elif self.process == 'record_id':
-            # Order and download a single or set of images using Record IDs
+        elif self.process == 'uuid':
+            # Order and download a single or set of images using UUIDs
 
-            self.logger.info("Ordering and downloading images using "
-                             "Record IDs")
+            self.logger.info("Ordering and downloading images using UUIDs")
 
-            inputs = self.ask_record_ids(input_val)
-            self.params['input_val'] = inputs
-
-            # If Radarsat-1, ask user if they want to download from AWS
-            if 'Radarsat1' in inputs:
-                aws = self.ask_aws(aws)
-                self.params['aws'] = aws
+            coll_id = self.params.get('collection')
+            uuid_val = self.params.get('uuid')
+            
+            coll_id, uuids = self.ask_uuid(coll_id, uuid_val)
+            self.params['collection'] = coll_id
+            self.params['uuid'] = ','.join(uuids)
 
             # Ask user if they'd like to order and download
             no_order = self.ask_order(no_order)
@@ -1591,8 +1660,8 @@ class Prompter:
             # Print command-line syntax for future processes
             self.print_syntax()
 
-            # Run the order_csv process
-            self.eod.order_ids(self.params)
+            # Run the order by uuid process
+            self.eod.order_uuids(self.params)
 
         elif self.process == 'download_restored_items':
             self.logger.info("Downloading previous requests with status ItemsRestoring")
@@ -1802,7 +1871,7 @@ eodmsrapi_recent = get_latest_version()
                    'of Record IDs. Valid AOI formats are GeoJSON, KML or '
                    'Shapefile (Shapefile requires the GDAL Python '
                    'package).')
-@click.option('--collections', '-c', default=None,
+@click.option('--collections', default=None,
               help='The collection of the images being ordered (separate '
                    'multiple collections with a comma).')
 @click.option('--filters', '-f', default=None,
@@ -1832,9 +1901,6 @@ eodmsrapi_recent = get_latest_version()
 @click.option('--downloads', '-dn', default=None,
               help='The path where the images will be downloaded. Overrides '
                    'the downloads parameter in the configuration file.')
-@click.option('--search_backend', '-sb', default=None,
-            help='Search backend to use for querying products '
-                '(default: stac, options: rapi, stac).')
 @click.option('--st_request', '-st', default=None,
               help='The path of a file containing the JSON request for a ' 
               'SAR Toolbox order.')
@@ -1842,9 +1908,15 @@ eodmsrapi_recent = get_latest_version()
               help='Sets process to silent which suppresses all questions.')
 @click.option('--version', '-v', is_flag=True, default=None,
               help='Prints the version of the script.')
+@click.option('--uuid', default=None,
+              help='The UUID(s) of the items to order and download. Use with '
+                   '--collection for Process 3.')
+@click.option('--collection', '-c', default=None,
+              help='The collection ID for UUID-based ordering (Process 3). '
+                   'Use with --uuid.')
 def cli(username, password, input_val, collections, process, filters, dates,
         maximum, priority, output, aws, overlap, orderitems, no_order,
-        downloads, search_backend, st_request, silent, version, configure):
+        downloads, st_request, silent, version, configure, uuid, collection):
     """
     Search & Order EODMS products.
     """
@@ -1884,10 +1956,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     order_check_date = config_params['order_check_date']
     download_attempts = config_params['download_attempts']
     concurrent_downloads = config_params['concurrent_downloads']
-    config_search_backend = config_params['search_backend']
-
-    if search_backend is None or str(search_backend).strip() == '':
-        search_backend = config_search_backend
+    search_backend = config_params['search_backend']
 
     if search_backend is None or str(search_backend).strip() == '':
         search_backend = 'stac'
@@ -1964,7 +2033,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'search_backend': search_backend,
                   'st_request': st_request,
                   'silent': silent,
-                  'version': version}
+                  'version': version,
+                  'uuid': uuid,
+                  'collection': collection}
 
         fn_col = eod_util.EodmsProcess(colourize=colourize).path_colour
         reset = eod_util.EodmsProcess(colourize=colourize).reset_colour
@@ -2004,7 +2075,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         # Get authentication if not specified
         #########################################
 
-        prmpt = Prompter(eod, conf_util, params, click)
+        prmpt = Prompter(eod, conf_util, params)
 
         prmpt.prompt()
 

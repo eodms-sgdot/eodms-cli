@@ -103,7 +103,7 @@ class TestEodmsCli(unittest.TestCase):
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts)
 
-        prmpt = eodms_cli.Prompter(eod, conf_util, params, click, testing=True)
+        prmpt = eodms_cli.Prompter(eod, conf_util, params, testing=True)
 
         return prmpt
 

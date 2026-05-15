@@ -45,7 +45,7 @@ jobs:
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -c RCMImageProducts,Radarsat2 -d 20190101-20220527 -i test/files/NCR_AOI.geojson -max 2 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o test/files/test1_auto.geojson -dn test/downloads -s
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD --collections RCMImageProducts,Radarsat2 -d 20190101-20220527 -i test/files/NCR_AOI.geojson -max 2 -prc full -ov 30 -f "RCMImageProducts.beam_mnemonic like 16M%%,RCMImageProducts.product_type=SLC,Radarsat2.beam_mnemonic like EH%%,Radarsat2.transmit_polarization=H" -o test/files/test1_auto.geojson -dn test/downloads -s
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI - Process 2
@@ -59,7 +59,7 @@ jobs:
         env:
           EODMS_USER: ${{ secrets.EODMS_USER }}
           EODMS_PASSWORD: ${{ secrets.EODMS_PWD }}
-        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD -i "RCMImageProducts:13531983|13531917,Radarsat2:13532412,Radarsat1:5053934" -prc record_id -a  -o test/files/test3_auto.geojson -s
+        run: python eodms_cli.py -u $EODMS_USER -p $EODMS_PASSWORD --collection RCMImageProducts --uuid "13531983,13531917" -prc uuid -o test/files/test3_auto.geojson -s
 
       # Runs a single command using the runners shell
       - name: Run EODMS-CLI - Process 4

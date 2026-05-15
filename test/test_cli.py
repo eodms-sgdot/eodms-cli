@@ -94,7 +94,7 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 1")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-c', 'RCMImageProducts,Radarsat2',
+                   '--collections', 'RCMImageProducts,Radarsat2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
                    '-max', '2',
@@ -138,10 +138,9 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Process 3")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-i', 'RCMImageProducts:13531983,RCMImageProducts:13531917,'
-                         'Radarsat2:13532412,Radarsat1:5053934',
-                   '-prc', 'record_id',
-                   '-a',
+                   '--collection', 'RCMImageProducts',
+                   '--uuid', '13531983,13531917',
+                   '-prc', 'uuid',
                    '-o', 'files/test3_output.geojson',
                    '-s']
 
@@ -190,7 +189,7 @@ class TestEodmsCli(unittest.TestCase):
         self._print_header("Search Only")
 
         self.command = ["python", "../eodms_cli.py",
-                   '-c', 'RCMImageProducts,Radarsat2',
+                   '--collections', 'RCMImageProducts,Radarsat2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
                    '-prc', 'full',
