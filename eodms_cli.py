@@ -387,103 +387,28 @@ class Prompter:
                 for coll in self.params['collections']:
                     coll_id = self.eod.get_full_collid(coll)
 
-                    if self.eod.search_backend_type == 'stac':
-                        av_fields = self.eod.get_available_fields(coll_id,
-                                                                   'title')
-                        if av_fields is None:
-                            err_msg = f"Could not retrieve available fields " \
-                                      f"for '{coll_id}'."
-                            self.eod.print_msg(err_msg, heading='error')
-                            self.logger.error(err_msg)
-                            self.eod.exit_cli(1)
+                    av_fields = self.eod.get_available_fields(coll_id,
+                                                               'title')
+                    if av_fields is None:
+                        err_msg = f"Could not retrieve available fields " \
+                                  f"for '{coll_id}'."
+                        self.eod.print_msg(err_msg, heading='error')
+                        self.logger.error(err_msg)
+                        self.eod.exit_cli(1)
 
-                        print(f"\nAvailable fields for '{coll}' (STAC):")
-                        printed_queryables = self.eod.print_queryables(coll_id)
-                        if not printed_queryables:
-                            avail_fields = sorted(av_fields.get('results', {}).keys())
-                            fields_str = ', '.join(avail_fields)
-                            print(self.wrap_text(fields_str, init_indent='  '))
+                    print(f"\nAvailable fields for '{coll}' (STAC):")
+                    printed_queryables = self.eod.print_queryables(coll_id)
+                    if not printed_queryables:
+                        avail_fields = sorted(av_fields.get('results', {}).keys())
+                        fields_str = ', '.join(avail_fields)
+                        print(self.wrap_text(fields_str, init_indent='  '))
 
-                        msg = "Enter the CQL2 filter to apply to the search e.g. beam_mnemonic LIKE 'SC30M%' AND relative_orbit = 10"
-                        def_msg = "leave blank for no filter"
-                        filt_items = self.get_input(msg, required=False,
-                                                    def_msg=def_msg)
+                    msg = "Enter the CQL2 filter to apply to the search e.g. beam_mnemonic LIKE 'SC30M%' AND relative_orbit = 10"
+                    def_msg = "leave blank for no filter"
+                    filt_items = self.get_input(msg, required=False,
+                                                def_msg=def_msg)
 
-                        filt_dict[coll_id] = filt_items if filt_items else ''
-                    else:
-                        coll_fields = self.eod.field_mapper.get_fields(coll_id)
-
-                        if coll_id in self.eod.field_mapper.get_colls():
-
-                            print(f"\nAvailable fields for '{coll}':")
-
-                            avail_fields = coll_fields.get_eod_fieldnames(True)
-                            fields_str = ', '.join(avail_fields)
-                            print(self.wrap_text(fields_str, init_indent='  '))
-
-                            print(self.wrap_text(f"\nFilters must be entered in " \
-                                  f"the format of {self.eod.var_colour}" \
-                                  f"[field_id]=[value]|[value]|" \
-                                  f"{self.eod.reset_colour}... "
-                                  f"(field IDs are not case sensitive); "
-                                  f"separate each filter with a comma.\nTo see "
-                                  f"a list of field choices, enter '" \
-                                  f"{self.eod.var_colour}? [field_id]" \
-                                  f"{self.eod.reset_colour}'."
-                                  f"\n\nExample: BEAM_MNEMONIC=16M4|16M7,"
-                                  f"PIXEL_SPACING<=20"))
-
-                            msg = "Enter the filters you would like to apply " \
-                                  "to the search"
-
-                            filt_items = '?'
-
-                            while filt_items.find('?') > -1:
-                                def_msg = "leave blank for no fields"
-                                filt_items = self.get_input(msg, required=False,
-                                                            def_msg=def_msg)
-
-                                if filt_items.find('?') > -1:
-                                    field_val = filt_items.replace('?', '').strip()
-
-                                    field_obj = coll_fields.get_field(field_val)
-                                    field_title = field_obj.get_rapi_title()
-
-                                    if field_title is None:
-                                        print("Not a valid field.")
-                                        continue
-
-                                    field_choices = self.eod.eodms_rapi. \
-                                        get_field_choices(coll_id, field_title)
-
-                                    if isinstance(field_choices, dict):
-                                        field_choices = f'any %s value' % \
-                                                        field_choices['data_type']
-                                    else:
-                                        field_choices = ', '.join(field_choices)
-
-                                    print(f"\nAvailable choices for "
-                                          f"'{field_val}': {field_choices}")
-
-                            if filt_items == '':
-                                filt_dict[coll_id] = []
-                            else:
-
-                                # -------------------------------
-                                # Check validity of filter input
-                                # -------------------------------
-                                filt_items = self.eod.validate_filters(
-                                    filt_items, coll_id)
-
-                                if not filt_items:
-                                    self.eod.exit_cli(1)
-
-                                filt_items = filt_items.split(',')
-                                # In case the user put collections in filters
-                                filt_items = [f.split('.')[1]
-                                              if f.find('.') > -1
-                                              else f for f in filt_items]
-                                filt_dict[coll_id] = filt_items
+                    filt_dict[coll_id] = filt_items if filt_items else ''
 
         else:
             # User specified in command-line
@@ -1467,11 +1392,6 @@ class Prompter:
         if eodms_domain and eodms_domain.find('staging'):
             print("\n**** RUNNING IN STAGING ENVIRONMENT ****\n")
 
-        # Configure retry attempts for RAPI queries only.
-        if search_backend == 'rapi':
-            self.eod.set_attempts(self.config_util.get('RAPI',
-                                                       'access_attempts'))
-
         self.eod.create_session(username, password)
 
         self.params = {'collections': collections,
@@ -1480,7 +1400,6 @@ class Prompter:
                        'maximum': maximum,
                        'process': process,
                        'downloads': downloads,
-                       'search_backend': search_backend,
                        'uuid': uuid,
                        'collection': collection}
 
@@ -1793,8 +1712,6 @@ def get_configuration_values(config_util, download_path):
     config_params['keep_downloads'] = config_util.get('Script',
                                                       'keep_downloads')
     config_params['colourize'] = config_util.get('Script', 'colourize')
-    config_params['search_backend'] = config_util.get('Script',
-                                                      'search_backend')
 
     # Get the total number of results per query
     config_params['max_results'] = config_util.get('RAPI', 'max_results')
@@ -1956,18 +1873,6 @@ def cli(username, password, input_val, collections, process, filters, dates,
     order_check_date = config_params['order_check_date']
     download_attempts = config_params['download_attempts']
     concurrent_downloads = config_params['concurrent_downloads']
-    search_backend = config_params['search_backend']
-
-    if search_backend is None or str(search_backend).strip() == '':
-        search_backend = 'stac'
-
-    search_backend = str(search_backend).strip().lower()
-    if search_backend not in ['rapi', 'stac']:
-        err_msg = f"The search backend '{search_backend}' is invalid. " \
-                  f"Valid options are: rapi, stac."
-        eod_util.EodmsProcess(colourize=colourize).print_msg(err_msg,
-                                                              heading='error')
-        eod_util.EodmsProcess().exit_cli(1)
 
 
     eodms_domain = os.getenv('EODMS_STAGING_DOMAIN')
@@ -2030,7 +1935,6 @@ def cli(username, password, input_val, collections, process, filters, dates,
                   'orderitems': orderitems,
                   'no_order': no_order,
                   'downloads': downloads,
-                  'search_backend': search_backend,
                   'st_request': st_request,
                   'silent': silent,
                   'version': version,
@@ -2066,8 +1970,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
                                     order_check_date=order_check_date,
                                     download_attempts=download_attempts,
                                     eodms_domain=eodms_domain,
-                                    concurrent_downloads=concurrent_downloads,
-                                    search_backend=search_backend)
+                                    concurrent_downloads=concurrent_downloads)
 
         eod.cleanup_folders()
 

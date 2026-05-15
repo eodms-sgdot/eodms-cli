@@ -66,10 +66,7 @@ class ConfigUtils:
                                  "keep_downloads": '', 
                                  "# Determines whether to use colours in the "
                                  "CLI output": None, 
-                                 "colourize": 'True',
-                                 "# Search backend for product queries "
-                                 "(default: stac, options: rapi, stac)": None,
-                                 "search_backend": 'stac'},
+                                 "colourize": 'True'},
                             "Credentials":
                                 {"# Username of the eodms account used to "
                                  "access the rapi": None,

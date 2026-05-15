@@ -8,7 +8,7 @@ import json
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.search_backend import _stac_feature_to_bbox
+from scripts.utils import _stac_feature_to_bbox
 
 # Test 1: Features as tuple format [('INTERSECTS', geojson)]
 print("Test 1: Features as tuple with GeoJSON dict")

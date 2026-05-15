@@ -83,11 +83,6 @@ class EodmsUtils:
 
         self.dds_api = None
         self.search_api = None
-        self.search_backend_type = 'stac'
-        if kwargs.get('search_backend') is not None:
-            backend_type = str(kwargs.get('search_backend')).strip().lower()
-            if backend_type in ['rapi', 'stac']:
-                self.search_backend_type = backend_type
 
         self.logger = logging.getLogger('eodms')
 
@@ -372,10 +367,7 @@ class EodmsUtils:
         if coll_id is None:
             coll_id = self.coll_id
 
-        if self.search_backend_type == 'stac':
-            return self._parse_stac_filters(filters, coll_id)
-
-        return self._parse_rapi_filters(filters, coll_id)
+        return self._parse_stac_filters(filters, coll_id)
 
     def _parse_stac_filters(self, filters, coll_id):
         out_filters = {}
@@ -918,12 +910,10 @@ class EodmsUtils:
 
     def check_error(self, item):
 
-        backend_label = 'RAPI' if self.search_backend_type == 'rapi' else 'STAC'
-
         if item is None:
             if self.eodms_rapi.auth_err:
                 msg = "\nAn authentication error has occurred while " \
-                    f"trying to access the EODMS {backend_label}. Please ensure " \
+                    f"trying to access the EODMS STAC. Please ensure " \
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html. Once your account is ready, you can " \
@@ -1054,11 +1044,6 @@ class EodmsUtils:
             self.eodms_rapi.rapi_session.add_header('User-Agent', 
                                                 f"EODMSCLI/{self.version}", 
                                                 True)
-
-        if self.search_backend_type == 'rapi':
-            self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
-        else:
-            self.field_mapper = None
 
     def _get_search_api(self):
         if self.search_api is None:
@@ -1738,8 +1723,7 @@ class EodmsUtils:
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
                     # For STAC, a raw CQL2 string is passed straight through.
-                    if self.search_backend_type == 'stac' \
-                            and isinstance(coll_filts, str):
+                    if isinstance(coll_filts, str):
                         filt_parse = coll_filts
                     else:
                         filt_parse = self._parse_filters(coll_filts)
@@ -1758,9 +1742,7 @@ class EodmsUtils:
                 "maxResults": max_images
             }
 
-            backend_label = 'EODMSRAPI' if self.search_backend_type == 'rapi' \
-                else 'STAC'
-            print(f"\nSending query to {backend_label} with the following "
+            print(f"\nSending query to STAC with the following "
                   f"parameters:")
             for k, v in self.rapi_search_args.items():
                 print(f"  {k}: {v}")
@@ -2005,10 +1987,7 @@ class EodmsUtils:
             self.logger.error(err_msg)
             return False
 
-        if self.search_backend_type == 'stac':
-            return self._validate_stac_filters(filt_items, coll_id)
-
-        return self._validate_rapi_filters(filt_items, coll_id)
+        return self._validate_stac_filters(filt_items, coll_id)
 
     def _validate_stac_filters(self, filt_items, coll_id):
         av_fields = self.get_available_fields(coll_id, 'title')
