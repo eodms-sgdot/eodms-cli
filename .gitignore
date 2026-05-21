@@ -71,3 +71,4 @@ log/
 *.zip
 *.xml
 /.vscode
+/data
