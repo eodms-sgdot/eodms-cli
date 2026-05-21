@@ -3,12 +3,13 @@ Lightweight EODMS CLI v2 focused on eodms-py STAC/DDS workflows.
 
 This script ports the core STAC/DDS search flow from test/stac_dds_test.py
 and includes focused ports of legacy process options:
-- Option 5: Submit order to SAR Toolbox (`order-st`)
-- Option 6: Download AVAILABLE_FOR_DOWNLOAD order items (`download-available`)
+- Option 5: Submit order to SAR Toolbox (`process`)
+- Option 6: Download AVAILABLE_FOR_DOWNLOAD order items (`download`)
 """
 
 import json
 import os
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import click
@@ -17,6 +18,15 @@ from shapely.geometry import shape
 
 from eodms import aaa, dds, search
 from eodms_rapi import EODMSRAPI, QueryError
+
+
+class OrderedHelpGroup(click.Group):
+    """Group that prints commands in a custom help order."""
+
+    def list_commands(self, ctx):
+        preferred = ["search", "process", "download"]
+        remaining = sorted(name for name in self.commands if name not in preferred)
+        return [name for name in preferred if name in self.commands] + remaining
 
 
 def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
@@ -174,7 +184,13 @@ def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], downl
         click.echo("Download request submitted.")
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+def _default_last_month_range() -> Tuple[str, str]:
+    end_dt = datetime.utcnow()
+    start_dt = end_dt - timedelta(days=30)
+    return start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+
+
+@click.group(cls=OrderedHelpGroup, context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
     """EODMS CLI v2: STAC/DDS-first with targeted legacy ports."""
 
@@ -182,8 +198,9 @@ def cli():
 @cli.command("search")
 @click.option("--username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "-p", required=False, help="EODMS password.")
-@click.option("--collection", "-c", required=True, help="Collection name.")
-@click.option("--uuid", required=False, default=None, help="Download UUID directly and skip STAC search.")
+@click.option("--collection", "-c", required=False, help="Collection name.")
+@click.option("--list", "list_collections", is_flag=True,
+              help="List available STAC collections and exit.")
 @click.option("--datetime", "datetime_range", required=False, default=None,
               help='Temporal filter as ISO 8601 string/range (example: "2023-01-01/2023-12-31").')
 @click.option("--bbox", "-b", required=False, default=None,
@@ -200,13 +217,11 @@ def cli():
               help="Output GeoJSON file for search results.")
 @click.option("--env", "-e", required=False, default="prod",
               help='Environment (default: "prod").')
-@click.option("--download-dir", "-dl", required=False, default=".",
-              help="Destination directory for downloads.")
 def search_cmd(
     username: Optional[str],
     password: Optional[str],
-    collection: str,
-    uuid: Optional[str],
+    collection: Optional[str],
+    list_collections: bool,
     datetime_range: Optional[str],
     bbox: Optional[str],
     limit: int,
@@ -215,19 +230,34 @@ def search_cmd(
     aoi: Optional[str],
     output: Optional[str],
     env: str,
-    download_dir: str,
 ):
-    """Search STAC and optionally download first result via DDS."""
+    """Search STAC and optionally write results to GeoJSON."""
 
     bbox_list = parse_bbox(bbox)
 
     aaa_api = make_aaa(username, password, env)
-    dds_api = make_dds(aaa_api, env)
 
-    if uuid:
-        click.echo(f"Downloading UUID: {uuid}")
-        download_dds_item(dds_api, collection, uuid, download_dir)
+    if list_collections:
+        search_api = make_search(aaa_api, env)
+        collections = []
+        for coll in search_api.client.get_collections():
+            coll_title = getattr(coll, "title", None) or coll.id
+            collections.append((coll.id, coll_title))
+
+        if not collections:
+            click.echo("No collections found.")
+            return
+
+        click.echo(f"Found {len(collections)} collection(s):")
+        for coll_id, coll_title in collections:
+            if coll_title == coll_id:
+                click.echo(f"- {coll_id}")
+            else:
+                click.echo(f"- {coll_id}: {coll_title}")
         return
+
+    if not collection:
+        raise click.ClickException("--collection is required unless --list is used.")
 
     s_intersect_list: List[Dict[str, Any]] = []
     if aoi:
@@ -261,41 +291,106 @@ def search_cmd(
     if output:
         save_items_geojson(items, output)
 
-    if username and password:
-        first_uuid = items[0].get("id")
-        if first_uuid:
-            click.echo(f"Downloading first result UUID: {first_uuid}")
-            download_dds_item(dds_api, collection, first_uuid, download_dir)
-    else:
-        click.echo("Credentials not provided; skipping download.")
 
-
-@cli.command("order-st")
+@cli.command("process")
 @click.option("--username", "-u", required=True, help="EODMS username.")
 @click.option("--password", "-p", required=True, help="EODMS password.")
-@click.option("--request-json", required=True, type=click.Path(exists=True),
+@click.option("--list", "list_orders", is_flag=True,
+              help="List orders and exit.")
+@click.option("--maximum", "-m", required=False, default=100, type=int,
+              help="Maximum orders to retrieve when using --list.")
+@click.option("--dtstart", required=False, default=None,
+              help="Optional start datetime filter for order listing (default: last month).")
+@click.option("--dtend", required=False, default=None,
+              help="Optional end datetime filter for order listing (default: today).")
+@click.option("--sar-toolbox-request-json", required=False, type=click.Path(exists=True),
               help="Path to SAR Toolbox JSON order request payload.")
-@click.option("--priority", required=False, default="Medium",
-              type=click.Choice(["Low", "Medium", "High", "Urgent"], case_sensitive=False),
-              help="Order priority.")
 @click.option("--download-dir", "-dl", required=False, default=".",
               help="Destination directory for downloads.")
 def order_st_cmd(
     username: str,
     password: str,
-    request_json: str,
-    priority: str,
+    list_orders: bool,
+    maximum: int,
+    dtstart: Optional[str],
+    dtend: Optional[str],
+    sar_toolbox_request_json: Optional[str],
     download_dir: str,
 ):
     """Port of legacy option 5: submit SAR Toolbox order and download available items."""
 
-    with open(request_json, "r", encoding="utf-8") as req_file:
-        payload = json.load(req_file)
-
     rapi_api = EODMSRAPI(username, password)
 
+    if list_orders:
+        if not dtstart and not dtend:
+            dtstart, dtend = _default_last_month_range()
+
+        payload = _safe_rapi_call(
+            rapi_api.get_orders,
+            max_orders=maximum,
+            dtstart=dtstart,
+            dtend=dtend,
+        )
+
+        orders: List[Dict[str, Any]] = []
+        if isinstance(payload, list):
+            for entry in payload:
+                if isinstance(entry, dict):
+                    orders.append(entry)
+        elif isinstance(payload, dict):
+            if isinstance(payload.get("results"), list):
+                for entry in payload["results"]:
+                    if isinstance(entry, dict):
+                        orders.append(entry)
+            else:
+                orders.append(payload)
+
+        if not orders:
+            click.echo("No orders found.")
+            return
+
+        click.echo(f"Found {len(orders)} order(s):")
+        if dtstart or dtend:
+            click.echo(f"Listing window: {dtstart or 'open'} to {dtend or 'open'}")
+        for order in orders:
+            order_id = order.get("orderId") or order.get("id") or "unknown"
+            status = order.get("status") or "UNKNOWN"
+            created = order.get("dateSubmitted") or order.get("submissionDate") or ""
+            item_count = (
+                order.get("itemCount")
+                or order.get("numItems")
+                or (len(order.get("items")) if isinstance(order.get("items"), list) else None)
+            )
+            collection = (
+                order.get("collection")
+                or order.get("collectionId")
+                or order.get("dataset")
+                or "unknown"
+            )
+            process_name = order.get("processName") or order.get("orderType") or order.get("type")
+            updated = order.get("dateUpdated") or order.get("lastUpdated") or ""
+
+            details: List[str] = [f"status={status}", f"collection={collection}"]
+            if item_count is not None:
+                details.append(f"items={item_count}")
+            if process_name:
+                details.append(f"type={process_name}")
+            if created:
+                details.append(f"submitted={created}")
+            if updated:
+                details.append(f"updated={updated}")
+
+            click.echo(f"- {order_id} | " + " | ".join(details))
+        return
+
+    if not sar_toolbox_request_json:
+        raise click.ClickException("--sar-toolbox-request-json is required unless --list is used.")
+
+    with open(sar_toolbox_request_json, "r", encoding="utf-8") as req_file:
+        payload = json.load(req_file)
+
     click.echo("Submitting SAR Toolbox order JSON to RAPI.")
-    order_res = _safe_rapi_call(rapi_api.order_json, payload, priority.capitalize())
+    order_res = _safe_rapi_call(rapi_api.order_json, payload, "Medium")
 
     if not isinstance(order_res, list) or len(order_res) == 0:
         raise click.ClickException("Unexpected SAR Toolbox order response from RAPI.")
@@ -311,9 +406,15 @@ def order_st_cmd(
     _download_rapi_items(rapi_api, items, download_dir)
 
 
-@cli.command("download-available")
+@cli.command("download")
 @click.option("--username", "-u", required=True, help="EODMS username.")
 @click.option("--password", "-p", required=True, help="EODMS password.")
+@click.option("--uuid", required=False, default=None,
+              help="Download UUID directly via DDS.")
+@click.option("--collection", "-c", required=False, default=None,
+              help="Collection for --uuid DDS download.")
+@click.option("--env", "-e", required=False, default="prod",
+              help='Environment for DDS download (default: "prod").')
 @click.option("--order-items", required=False, default=None,
               help="Legacy selector syntax: order:id1,id2|item:id3,id4")
 @click.option("--maximum", "-m", required=False, default=100, type=int,
@@ -322,11 +423,16 @@ def order_st_cmd(
               help="Optional start datetime filter for order retrieval.")
 @click.option("--dtend", required=False, default=None,
               help="Optional end datetime filter for order retrieval.")
-@click.option("--download-dir", "-dl", required=False, default=".",
+@click.option("--dl_dir", "download_dir", required=False, default=".",
+              help="Destination directory for downloads.")
+@click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
 def download_available_cmd(
     username: str,
     password: str,
+    uuid: Optional[str],
+    collection: Optional[str],
+    env: str,
     order_items: Optional[str],
     maximum: int,
     dtstart: Optional[str],
@@ -334,6 +440,16 @@ def download_available_cmd(
     download_dir: str,
 ):
     """Port of legacy option 6: download order items with AVAILABLE_FOR_DOWNLOAD status."""
+
+    if uuid:
+        if not collection:
+            raise click.ClickException("--collection is required when using --uuid.")
+
+        aaa_api = make_aaa(username, password, env)
+        dds_api = make_dds(aaa_api, env)
+        click.echo(f"Downloading UUID: {uuid}")
+        download_dds_item(dds_api, collection, uuid, download_dir)
+        return
 
     rapi_api = EODMSRAPI(username, password)
     downloadable_items: List[Dict[str, Any]] = []

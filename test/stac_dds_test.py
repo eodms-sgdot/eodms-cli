@@ -77,6 +77,7 @@ def run(
     collection,
     env,
     download_dir,
+    list_collections=False,
     datetime_range=None,
     bbox=None,
     uuid=None,
@@ -88,6 +89,22 @@ def run(
 ):
     # Create shared AAA instance
     aaa_api = aaa.AAA_API(eodms_user, eodms_pwd, env) if eodms_user and eodms_pwd else None
+
+    if list_collections:
+        search_api = search.Search_API(aaa_api, env)
+        collections = list(search_api.client.get_collections())
+        if not collections:
+            print("No collections found.")
+            return
+
+        print(f"Found {len(collections)} collection(s):")
+        for coll in collections:
+            coll_title = getattr(coll, 'title', None) or coll.id
+            if coll_title == coll.id:
+                print(f"- {coll.id}")
+            else:
+                print(f"- {coll.id}: {coll_title}")
+        return
 
     dds_api = dds.DDS_API(aaa_api, env)
 
@@ -140,6 +157,8 @@ def run(
 @click.option('--username', '-u', required=False, help='The EODMS username.')
 @click.option('--password', '-p', required=False, help='The EODMS password.')
 @click.option('--collection', '-c', required=False, help='The collection name.', default=None)
+@click.option('--list', 'list_collections', is_flag=True,
+              help='List available STAC collections and exit.')
 @click.option('--uuid', required=False, default=None, help='The UUID of the image to download (skips search).')
 @click.option('--datetime', '-d', required=False, default=None,
               help='Temporal filter as ISO 8601 string or range (e.g., "2023-01-01/2023-12-31").')
@@ -158,7 +177,7 @@ def run(
 @click.option('--env', '-e', required=False, default='prod', help='Defaults to "prod". If "staging", define `EODMS_STAGING_DOMAIN` env variable.')
 @click.option('--download_dir', '-dl', required=False, default='.',
               help='The download directory.')
-def cli(username, password, collection, uuid, datetime, bbox, limit, filter_text, s_intersect, aoi, output, env, download_dir):
+def cli(username, password, collection, list_collections, uuid, datetime, bbox, limit, filter_text, s_intersect, aoi, output, env, download_dir):
     """
     Search and Download images from EODMS STAC catalog and DDS.
     
@@ -219,6 +238,7 @@ def cli(username, password, collection, uuid, datetime, bbox, limit, filter_text
         collection,
         env,
         download_dir,
+        list_collections,
         datetime,
         bbox_list,
         uuid,
