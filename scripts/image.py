@@ -65,12 +65,12 @@ class Image:
 
     def get_record_id(self):
         """
-        Gets the Record Id of the image.
+        Gets the unique archive ID of the image.
         
         Returns:
-            str or int: The Record Id of the image.
+            str: The archive ID (unique identifier).
         """
-        return self.metadata.get('recordId')
+        return self.metadata.get('archiveId')
 
     def get_coll_id(self):
         """
@@ -129,12 +129,14 @@ class Image:
         return self.metadata.get('thisRecordUrl')
     
     def get_image_uuid(self):
-        if 'archiveId' in self.metadata:
-            return self.metadata.get('archiveId')
-        elif 'archive id' in self.metadata:
-            return self.metadata.get('archive id')
-        elif 'image_uuid' in self.metadata:
-            return self.metadata.get('image_uuid')
+        """Get the unique archive ID.
+        
+        Records are normalized at ingest time to use archiveId.
+        
+        :return: The unique image identifier
+        :rtype: str
+        """
+        return self.metadata.get('archiveId')
 
     def get_metadata(self, entry=None):
         """
@@ -437,26 +439,25 @@ class ImageList:
         :type  is_csv: list
         """
 
+        from scripts.utils import _normalize_record
+        
         img_ids = []
         for r in results:
             if 'errors' in r.keys():
                 continue
 
-            if 'archiveId' in r:
-                unique_id = r.get('archiveId')
-            elif 'image_uuid' in r:
-                unique_id = r.get('image_uuid')
-            elif 'recordId' in r:
-                unique_id = r.get('recordId')
+            # Normalize record to standard format
+            r_norm = _normalize_record(r)
+            unique_id = r_norm.get('archiveId')
             
-            if unique_id in img_ids:
+            if not unique_id or unique_id in img_ids:
                 continue
 
             image = Image()
             if is_csv:
-                image.parse_row(r)
+                image.parse_row(r_norm)
             else:
-                image.parse_record(r)
+                image.parse_record(r_norm)
             self.img_lst.append(image)
             img_ids.append(unique_id)
 
@@ -465,24 +466,18 @@ class ImageList:
 
         Expected CSV headers are lower-cased by csv_util.import_eodms_csv().
         """
+        from scripts.utils import _normalize_record
 
         img_ids = []
         for rec in records:
             if not isinstance(rec, dict):
                 continue
 
-            rec_norm = copy.deepcopy(rec)
-
-            # Normalize UUID and collection keys for downstream DDS download.
-            archive_id = rec_norm.get('archiveId') or \
-                rec_norm.get('archive id') or rec_norm.get('archiveid')
-            if archive_id:
-                rec_norm['archiveId'] = archive_id
-
-            coll_id = rec_norm.get('collectionId') or \
-                rec_norm.get('collection id') or rec_norm.get('collectionid')
-
+            # Normalize to standard format
+            rec_norm = _normalize_record(rec)
+            
             # Fall back to deriving collection from satellite/title when needed.
+            coll_id = rec_norm.get('collectionId')
             if not coll_id and self.eod is not None:
                 coll_hint = rec_norm.get('satellite') or rec_norm.get('title')
                 if coll_hint:
@@ -491,22 +486,12 @@ class ImageList:
                         coll_id = mapped[0] if len(mapped) > 0 else None
                     else:
                         coll_id = mapped
+                    if coll_id:
+                        rec_norm['collectionId'] = coll_id
 
-            if coll_id:
-                rec_norm['collectionId'] = coll_id
+            unique_id = rec_norm.get('archiveId')
 
-            rec_id = rec_norm.get('recordId') or \
-                rec_norm.get('record id') or rec_norm.get('recordid')
-            if rec_id:
-                rec_norm['recordId'] = rec_id
-
-            unique_id = rec_norm.get('archiveId') or rec_norm.get('image_uuid') \
-                or rec_norm.get('recordId')
-
-            if not unique_id:
-                continue
-
-            if unique_id in img_ids:
+            if not unique_id or unique_id in img_ids:
                 continue
 
             image = Image()

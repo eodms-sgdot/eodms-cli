@@ -735,7 +735,7 @@ class Prompter:
                       f" {self.eod.var_colour}.shp{self.eod.reset_colour}; " \
                       f"for a list, use {self.eod.var_colour}." \
                       f"csv{self.eod.reset_colour}"
-                if self.params['no_order']:
+                if self.params.get('no_order', False):
                     msg += " (NOTE: ordering is suppressed so no results information will be available without an output file)"
                 def_msg = "default is no output file"
                 output = self.get_input(msg, required=False, 

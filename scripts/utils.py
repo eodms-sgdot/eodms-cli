@@ -115,45 +115,69 @@ def _parse_dates_to_stac(dates):
     return parts[0] if len(parts) == 1 else ','.join(parts)
 
 
-def _normalize_stac_item(item):
+def _normalize_record(item):
     """
-    Normalizes a pystac Item (or plain dict) into a record dict compatible
-    with image.Image.parse_record().
+    Normalizes any record format (STAC item, RAPI record, or CSV row) to a
+    standard format with guaranteed field: archiveId, collectionId.
+    This is the single normalization point for all ingestion paths.
+    
+    :param item: A STAC Item (dict or pystac), RAPI record, or CSV row dict
+    :return: Normalized record dict with standard fields
     """
-    if isinstance(item, dict):
-        props = item.get('properties', {})
-        item_id = item.get('id', '')
-        geometry = item.get('geometry')
-        collection = item.get('collection', '')
-        links = {lnk.get('rel'): lnk.get('href')
-                 for lnk in item.get('links', [])
-                 if isinstance(lnk, dict)}
-    else:
-        # pystac Item object
+    if not isinstance(item, dict):
+        # Handle pystac Item objects
         props = dict(item.properties) if item.properties else {}
         item_id = item.id
         geometry = item.geometry
         collection = getattr(item, 'collection_id', '') or ''
         links = {lnk.rel: lnk.href for lnk in getattr(item, 'links', [])}
-
-    record = {}
-    record['archiveId'] = item_id
-    record['recordId'] = item_id
-    record['collectionId'] = collection
-    record['title'] = props.get('title', item_id)
-
-    self_href = links.get('self', '')
-    record['thisRecordUrl'] = self_href
-
-    if geometry:
-        record['geometry'] = geometry
-
-    # Flatten remaining properties into the record
-    for k, v in props.items():
-        if k not in record:
-            record[k] = v
-
+        record = {}
+        record['archiveId'] = item_id
+        record['collectionId'] = collection
+        if geometry:
+            record['geometry'] = geometry
+        record.update(props)
+        return record
+    
+    # Handle dict records (STAC items, RAPI, CSV, etc.)
+    record = dict(item)  # Preserve original fields
+    
+    # Determine if this is a STAC item (has 'properties' key)
+    if 'properties' in record:
+        props = record.get('properties', {})
+        item_id = record.get('id', '')
+        collection = record.get('collection', '')
+        # Merge properties into record at top level
+        for k, v in props.items():
+            if k not in record:
+                record[k] = v
+    else:
+        # RAPI or CSV format: normalize case-insensitive lookups
+        item_id = record.get('id') or record.get('ID')
+        collection = record.get('collectionId') or record.get('collection_id') or \
+                     record.get('collection') or record.get('Collection')
+    
+    # Normalize unique identifier to archiveId (try all known field names)
+    archive_id = record.get('archiveId') or record.get('archive_id') or \
+                 record.get('archiveid') or record.get('image_uuid') or \
+                 record.get('image id') or record.get('recordId') or \
+                 record.get('record_id') or record.get('recordid') or item_id
+    
+    # Set standard fields
+    if archive_id:
+        record['archiveId'] = archive_id
+    if collection:
+        record['collectionId'] = collection
+    
     return record
+
+
+def _normalize_stac_item(item):
+    """
+    Deprecated: use _normalize_record instead.
+    Kept for backwards compatibility.
+    """
+    return _normalize_record(item)
 
 
 class EodmsUtils:
@@ -2320,8 +2344,8 @@ class EodmsProcess(EodmsUtils):
             from . import image
             norm = None
             try:
-                from scripts.utils import _normalize_stac_item
-                norm = _normalize_stac_item
+                from scripts.utils import _normalize_record
+                norm = _normalize_record
             except ImportError:
                 pass
             if norm:
