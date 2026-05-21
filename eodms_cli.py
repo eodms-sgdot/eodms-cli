@@ -31,6 +31,7 @@ import click
 import traceback
 import datetime
 import textwrap
+from typing import List, Dict, Any
 # from geomet import wkt
 # import json
 # import configparser
@@ -45,6 +46,14 @@ from colorama import Fore, Back, Style
 from packaging import version as pack_v
 # import unicodedata
 import eodms_rapi
+from shapely.geometry import shape
+from shapely.ops import unary_union
+from eodms.search import Search_API
+
+try:
+    import fiona
+except Exception:
+    fiona = None
 
 # from eodms_rapi import EODMSRAPI
 
@@ -88,6 +97,40 @@ proc_choices = {'full': {
 
 min_rapi_version = '1.9.0'
 
+def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
+    """
+    Read polygon features from a GeoJSON, shapefile, or geopackage and return WKT strings.
+    
+    :param aoi_file: Path to an AOI geospatial file.
+    :type  aoi_file: str
+    
+    :return: List of dicts with 'name' and 'wkt' keys.
+    :rtype: List[Dict[str, Any]]
+    
+    :raises ValueError: If file cannot be opened or contains no valid polygons.
+    """
+    try:
+        with fiona.open(aoi_file) as src:
+            features = list(src)
+    except Exception as e:
+        raise ValueError(f"Could not open AOI file '{aoi_file}': {e}")
+
+    polygons = []
+    for feature in features:
+        geom = feature.get('geometry')
+        if geom is None or geom.get('type') not in ('Polygon', 'MultiPolygon'):
+            continue
+        name = (feature.get('properties') or {}).get('name')
+        polygons.append({'name': name, 'wkt': shape(geom).wkt})
+
+    if not polygons:
+        raise ValueError("No polygon geometries found in AOI file.")
+    if len(polygons) > 5:
+        raise ValueError(f"AOI file contains {len(polygons)} polygons; maximum is 5.")
+
+    print(f"Loaded {len(polygons)} polygon(s) from AOI file.")
+    return polygons
+
 class Prompter:
     """
     Class used to prompt the user for all inputs.
@@ -116,6 +159,49 @@ class Prompter:
 
         self.logger = logging.getLogger('eodms')
 
+    def _parse_aoi_file(self, input_fn):
+        """
+        Parse an AOI geospatial file using Fiona and return WKT.
+
+        :param input_fn: Path to an AOI file.
+        :type  input_fn: str
+
+        :return: WKT geometry string or None if invalid.
+        :rtype: str or None
+        """
+
+        if fiona is None:
+            err_msg = "Cannot open AOI geospatial files without Fiona. " \
+                      "Please install the Fiona Python package."
+            self.eod.print_msg(err_msg, heading='warning')
+            self.logger.warning(err_msg)
+            return None
+
+        try:
+            aoi_data = parse_aoi_file(input_fn)
+            if aoi_data and len(aoi_data) > 0:
+                aoi_names = [d.get('name', 'unnamed') for d in aoi_data]
+                if len(aoi_data) > 1:
+                    info_msg = f"Loaded {len(aoi_data)} AOI(s): " \
+                              f"{', '.join(aoi_names)}"
+                    self.eod.print_msg(info_msg, heading='note')
+                    self.logger.info(info_msg)
+                    # Return the list of AOI dicts for multiple AOIs
+                    return aoi_data
+                else:
+                    # Return the WKT string for a single AOI
+                    return aoi_data[0]['wkt']
+            err_msg = f"Could not parse AOI file {input_fn}. " \
+                      f"No valid polygons found."
+            self.eod.print_msg(err_msg, heading='warning')
+            self.logger.warning(err_msg)
+            return None
+        except ValueError as e:
+            err_msg = f"Error parsing AOI file {input_fn}: {str(e)}"
+            self.eod.print_msg(err_msg, heading='warning')
+            self.logger.warning(err_msg)
+            return None
+
     def ask_aoi(self, input_fn):
         """
         Asks the user for the geospatial input filename.
@@ -124,7 +210,7 @@ class Prompter:
                 command-line.
         :type  input_fn: str
         
-        :return: The geospatial filename entered by the user.
+        :return: The geospatial filename entered by the user or WKT string.
         :rtype: str
         """
 
@@ -152,22 +238,6 @@ class Prompter:
             return None
 
         if os.path.exists(input_fn):
-            if input_fn.find('.shp') > -1:
-                try:
-                    import osgeo.ogr as ogr
-                    import osgeo.osr as osr
-                except ImportError:
-                    try:
-                        import ogr
-                        import osr
-                    except ImportError:
-                        err_msg = "Cannot open a Shapefile without GDAL. " \
-                                  "Please install the GDAL Python package if " \
-                                  "you'd like to use a Shapefile for your AOI."
-                        self.eod.print_msg(err_msg, heading='warning')
-                        self.logger.warning(err_msg)
-                        return None
-
             input_fn = input_fn.strip()
             input_fn = input_fn.strip("'")
             input_fn = input_fn.strip('"')
@@ -180,6 +250,14 @@ class Prompter:
 
             if not input_fn:
                 return None
+
+            # For AOI files, return the file path (not parsed data).
+            # Parsing happens later in search_order_download.
+            if any(input_fn.lower().endswith(ext)
+                   for ext in self.eod.aoi_extensions):
+                # Validate by parsing, but return the file path
+                self._parse_aoi_file(input_fn)
+                return input_fn
 
         elif any(s in input_fn for s in self.eod.aoi_extensions):
             err_msg = f"Input file {os.path.abspath(input_fn)} does not exist."
@@ -1099,6 +1177,7 @@ class Prompter:
         for p in cmd_params:
             flags[p['name']] = p['opts']
 
+
         syntax_params = []
         for p, pv in self.params.items():
             if pv is None or pv == '':
@@ -1120,14 +1199,13 @@ class Prompter:
 
             if isinstance(pv, list):
                 if flag == '-d':
-                    pv = '-'.join(['"%s"' % i if i.find(' ') > -1 else i
+                    pv = '-'.join(['"%s"' % i if isinstance(i, str) and i.find(' ') > -1 else str(i)
                                    for i in pv])
                 else:
-                    pv = ','.join(['"%s"' % i if i.find(' ') > -1 else i
+                    pv = ','.join(['"%s"' % i if isinstance(i, str) and i.find(' ') > -1 else str(i)
                                    for i in pv])
 
             elif isinstance(pv, dict):
-
                 if flag == '-f':
                     filt_lst = []
                     for k, v_lst in pv.items():

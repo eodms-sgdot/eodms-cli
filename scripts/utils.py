@@ -47,6 +47,115 @@ from . import image
 from . import spatial
 from . import field
 
+
+def _stac_feature_to_bbox(features):
+    """
+    Converts a features list (e.g. [('INTERSECTS', wkt_or_geojson)]) to a
+    STAC bbox [west, south, east, north], or None if no features provided.
+    """
+    if not features:
+        return None
+
+    import shapely.wkt
+    import shapely.geometry
+
+    geoms = []
+    for feat in features:
+        # feat is a tuple like ('INTERSECTS', geometry_string_or_dict)
+        geom_val = feat[1] if isinstance(feat, (list, tuple)) and len(feat) > 1 else feat
+        if isinstance(geom_val, dict):
+            geoms.append(shapely.geometry.shape(geom_val))
+        elif isinstance(geom_val, str):
+            try:
+                geoms.append(shapely.wkt.loads(geom_val))
+            except Exception:
+                import json as _json
+                geoms.append(shapely.geometry.shape(_json.loads(geom_val)))
+        else:
+            geoms.append(geom_val)
+
+    if not geoms:
+        return None
+
+    from shapely.ops import unary_union
+    union = unary_union(geoms)
+    minx, miny, maxx, maxy = union.bounds
+    return [minx, miny, maxx, maxy]
+
+
+def _parse_dates_to_stac(dates):
+    """
+    Converts a dates list from _parse_dates (list of {'start': ..., 'end': ...}
+    dicts with format 'YYYYMMDD_HHMMSS') to a STAC ISO 8601 datetime string.
+    Returns None if no dates provided.
+    """
+    if not dates:
+        return None
+
+    def _fmt(date_str):
+        """Convert '20200105_045034' to '2020-01-05T04:50:34Z'."""
+        date_str = date_str.replace('_', 'T')
+        try:
+            dt = datetime.strptime(date_str, '%Y%m%dT%H%M%S')
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:
+            return date_str
+
+    parts = []
+    for d in dates:
+        if isinstance(d, dict):
+            start = _fmt(d.get('start', ''))
+            end = _fmt(d.get('end', ''))
+            parts.append(f"{start}/{end}")
+        elif isinstance(d, str):
+            # Time interval string (e.g. "24 hours") — not directly
+            # expressible as STAC datetime; pass through as-is
+            parts.append(d)
+
+    return parts[0] if len(parts) == 1 else ','.join(parts)
+
+
+def _normalize_stac_item(item):
+    """
+    Normalizes a pystac Item (or plain dict) into a record dict compatible
+    with image.Image.parse_record().
+    """
+    if isinstance(item, dict):
+        props = item.get('properties', {})
+        item_id = item.get('id', '')
+        geometry = item.get('geometry')
+        collection = item.get('collection', '')
+        links = {lnk.get('rel'): lnk.get('href')
+                 for lnk in item.get('links', [])
+                 if isinstance(lnk, dict)}
+    else:
+        # pystac Item object
+        props = dict(item.properties) if item.properties else {}
+        item_id = item.id
+        geometry = item.geometry
+        collection = getattr(item, 'collection_id', '') or ''
+        links = {lnk.rel: lnk.href for lnk in getattr(item, 'links', [])}
+
+    record = {}
+    record['archiveId'] = item_id
+    record['recordId'] = item_id
+    record['collectionId'] = collection
+    record['title'] = props.get('title', item_id)
+
+    self_href = links.get('self', '')
+    record['thisRecordUrl'] = self_href
+
+    if geometry:
+        record['geometry'] = geometry
+
+    # Flatten remaining properties into the record
+    for k, v in props.items():
+        if k not in record:
+            record[k] = v
+
+    return record
+
+
 class EodmsUtils:
 
     def __init__(self, **kwargs):
@@ -2119,16 +2228,39 @@ class EodmsProcess(EodmsUtils):
         aws_download = params.get('aws')
         no_order = params.get('no_order')
 
-        # Validate AOI
+        # Validate AOI and handle single vs multiple AOIs
+        multiple_aois = False
+        aoi_list = None
+        
         if aoi is not None:
-            if os.path.exists(aoi):
-                aoi_check = self.validate_file(aoi, True)
-                if not aoi_check:
-                    msg = "The provided input file is not a valid AOI file."
+            # Check if aoi is a file path
+            if isinstance(aoi, str) and os.path.exists(aoi):
+                # Parse the AOI file
+                try:
+                    from eodms_cli import parse_aoi_file
+                    aoi_list = parse_aoi_file(aoi)
+                    if aoi_list and len(aoi_list) > 1:
+                        multiple_aois = True
+                        # For single AOI, extract the WKT
+                    elif aoi_list and len(aoi_list) == 1:
+                        aoi = aoi_list[0]['wkt']
+                        aoi_list = None
+                    else:
+                        msg = "No valid polygons found in AOI file."
+                        self.print_msg(msg, heading="warning")
+                        self.logger.warning(msg)
+                        aoi = None
+                except Exception as e:
+                    msg = f"Error parsing AOI file: {str(e)}"
                     self.print_msg(msg, heading="warning")
                     self.logger.warning(msg)
                     aoi = None
-            else:
+            elif isinstance(aoi, list):
+                # Multiple AOIs already parsed
+                multiple_aois = True
+                aoi_list = aoi
+            elif isinstance(aoi, str):
+                # Assume it's a WKT string
                 if not self.eodms_geo.is_wkt(aoi):
                     msg = "The provided WKT feature is not valid."
                     self.print_msg(msg, heading="warning")
@@ -2155,10 +2287,52 @@ class EodmsProcess(EodmsUtils):
         if not isinstance(dates, list):
             dates = self._parse_dates(dates)
 
-        # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters,
-                                        aoi=aoi, dates=dates,
-                                        max_images=max_images)
+        # Search logic for multiple AOIs
+        if multiple_aois and aoi_list:
+            # Only support one collection for multi-AOI search
+            if len(collections) != 1:
+                msg = "Multiple AOI search only supports a single collection."
+                self.print_msg(msg, heading="error")
+                self.logger.error(msg)
+                self.exit_cli(1)
+            collection = collections[0]
+            # Prepare args for search_multiple_geometries
+            search_api = Search_API()
+            # Dates: convert to ISO 8601 if needed
+            datetime_range = None
+            if dates:
+                from scripts.utils import _parse_dates_to_stac
+                datetime_range = _parse_dates_to_stac(dates)
+            # Filters: get for this collection
+            filter_text = None
+            if filters and collection in filters:
+                filter_text = filters[collection]
+            # Call search_multiple_geometries
+            results = search_api.search_multiple_geometries(
+                s_intersect_list=aoi_list,
+                collection=collection,
+                datetime_range=datetime_range,
+                bbox=None,
+                limit=max_images if max_images else 100,
+                filter_text=filter_text
+            )
+            # Normalize results to ensure required keys for ingest_results
+            from . import image
+            norm = None
+            try:
+                from scripts.utils import _normalize_stac_item
+                norm = _normalize_stac_item
+            except ImportError:
+                pass
+            if norm:
+                results = [norm(r) for r in results]
+            query_imgs = image.ImageList(self)
+            query_imgs.ingest_results(results)
+        else:
+            # Single AOI: use existing logic
+            query_imgs = self.query_entries(collections, filters=filters,
+                                            aoi=aoi, dates=dates,
+                                            max_images=max_images)
 
         if overlap is not None \
                 and not overlap == '' \

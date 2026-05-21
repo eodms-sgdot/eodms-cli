@@ -4,6 +4,9 @@
 import sys
 import os
 import json
+import fiona
+from shapely.geometry import shape, mapping
+from shapely.ops import unary_union
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,21 +51,34 @@ print()
 # Test 4: Load from actual file
 print("Test 4: Load from actual ottawa.geojson file")
 geojson_file = os.path.join(os.path.dirname(__file__), 'ottawa.geojson')
+file_geoms = []
 if os.path.exists(geojson_file):
-    with open(geojson_file, 'r') as f:
-        fc = json.load(f)
-    # Try with first feature's geometry
-    geom = fc['features'][0]['geometry']
-    features = [('INTERSECTS', geom)]
-    result = _stac_feature_to_bbox(features)
-    print(f"  Geometry type: {geom['type']}")
-    print(f"  Output bbox: {result}")
+    with fiona.open(geojson_file, 'r') as src:
+        for feat in src:
+            geom = feat.get('geometry') if isinstance(feat, dict) \
+                else getattr(feat, 'geometry', None)
+            if geom:
+                file_geoms.append(shape(geom))
+
+    if file_geoms:
+        # Try with first feature's geometry converted back to GeoJSON-like dict
+        first_geom = file_geoms[0]
+        features = [('INTERSECTS', mapping(first_geom))]
+        result = _stac_feature_to_bbox(features)
+        print(f"  Geometry type: {first_geom.geom_type}")
+        print(f"  Output bbox: {result}")
+    else:
+        print("  No valid geometries found in file")
 else:
     print(f"  File not found: {geojson_file}")
 print()
 
-# Test 5: Try with FeatureCollection
-print("Test 5: Features with FeatureCollection")
-features = [('INTERSECTS', fc)]
-result = _stac_feature_to_bbox(features)
-print(f"  Output: {result}")
+# Test 5: Try with unioned shapely geometry from Fiona read
+print("Test 5: Features with Fiona+Shapely union geometry")
+if file_geoms:
+    merged = unary_union(file_geoms)
+    features = [('INTERSECTS', merged)]
+    result = _stac_feature_to_bbox(features)
+    print(f"  Output: {result}")
+else:
+    print("  Skipped (no file geometries loaded)")
