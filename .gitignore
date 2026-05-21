@@ -70,3 +70,4 @@ log/
 *.pdf
 *.zip
 *.xml
+/.vscode

@@ -1,0 +1,16 @@
+{
+    "inputs": {
+        "uuid": "83865389-3adf-4265-83b8-c981a7f7e1a0",
+        "start_time": "2007-08-25T10:49:21.026000Z",
+        "stop_time":  "2007-08-25T10:49:37.903000Z",
+        "lookup_table": "mixed"
+    },
+    "outputs": {
+        "Radarsat1CEOSL1SLC-response": {
+            "format": {
+                "mediaType": "application/json"
+            }
+        }
+    },
+    "mode": "async"
+}

@@ -2,21 +2,20 @@
 Lightweight EODMS CLI v2 focused on eodms-py STAC/DDS workflows.
 
 This script ports the core STAC/DDS search flow from test/stac_dds_test.py
-and includes focused ports of legacy process options:
-- Option 5: Submit order to SAR Toolbox (`process`)
-- Option 6: Download AVAILABLE_FOR_DOWNLOAD order items (`download`)
+and includes focused command flows:
+- `process`: OGC Processes list/inspect/submit/job workflows
+- `download`: DDS UUID download plus legacy RAPI order-item downloads
 """
 
 import json
 import os
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import fiona
 from shapely.geometry import shape
 
-from eodms import aaa, dds, search
+from eodms import Processes_API, aaa, dds, search
 from eodms_rapi import EODMSRAPI, QueryError
 
 
@@ -98,6 +97,13 @@ def make_search(aaa_api, environment: str):
         return search.Search_API(aaa_api=aaa_api, environment=environment)
     except TypeError:
         return search.Search_API(aaa_api, environment)
+
+
+def make_processes(aaa_api, environment: str):
+    try:
+        return Processes_API(aaa_api=aaa_api, environment=environment)
+    except TypeError:
+        return Processes_API(aaa_api, environment)
 
 
 def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: str) -> Optional[Dict[str, Any]]:
@@ -184,10 +190,112 @@ def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], downl
         click.echo("Download request submitted.")
 
 
-def _default_last_month_range() -> Tuple[str, str]:
-    end_dt = datetime.utcnow()
-    start_dt = end_dt - timedelta(days=30)
-    return start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]:
+    if raw is None:
+        return None
+
+    candidate = raw.strip()
+    if not candidate:
+        return None
+
+    if os.path.exists(candidate):
+        with open(candidate, "r", encoding="utf-8") as src:
+            return json.load(src)
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(
+            f"Invalid {label} JSON. Provide either a valid JSON string or a file path."
+        ) from exc
+
+
+def _print_process_summary(processes_json: Dict[str, Any]) -> None:
+    all_processes = processes_json.get("processes", [])
+    click.echo(f"Found {len(all_processes)} processes")
+    for process_obj in all_processes:
+        process_id = process_obj.get("id", "N/A")
+        title = process_obj.get("title", "N/A")
+        version = process_obj.get("version", "N/A")
+        description = process_obj.get("description") or process_obj.get("abstract") or "N/A"
+        click.echo(
+            f"  - id={process_id} | title={title} | version={version}\n"
+            f"    description={description}"
+        )
+
+
+def _example_scalar_from_schema(schema: Dict[str, Any], input_name: str) -> Any:
+    if not isinstance(schema, dict):
+        return "example"
+
+    if "default" in schema:
+        return schema["default"]
+
+    enum_vals = schema.get("enum")
+    if isinstance(enum_vals, list) and enum_vals:
+        return enum_vals[0]
+
+    schema_type = schema.get("type")
+    schema_format = schema.get("format")
+
+    if schema_type == "boolean":
+        return True
+    if schema_type in ("integer", "number"):
+        return 1
+    if schema_type == "array":
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            return [_example_scalar_from_schema(item_schema, input_name)]
+        return ["example"]
+    if schema_type == "object":
+        return {}
+
+    if schema_format == "date-time":
+        return "2000-01-01T00:00:00Z"
+
+    lower_name = input_name.lower()
+    if lower_name in ("uuid", "id", "segment_id"):
+        return "00000000-0000-0000-0000-000000000000"
+    if lower_name in ("start_time", "stop_time"):
+        return "2000-01-01T00:00:00Z"
+
+    return "example"
+
+
+def _example_value_from_input_def(input_name: str, input_def: Dict[str, Any]) -> Any:
+    if not isinstance(input_def, dict):
+        return "example"
+
+    if "default" in input_def:
+        return input_def["default"]
+
+    for schema_key in ("schema", "valueSchema"):
+        schema_obj = input_def.get(schema_key)
+        if isinstance(schema_obj, dict):
+            return _example_scalar_from_schema(schema_obj, input_name)
+
+    return _example_scalar_from_schema(input_def, input_name)
+
+
+def _build_sample_payload(process_id: str, process_json: Dict[str, Any]) -> Dict[str, Any]:
+    input_defs = process_json.get("inputs", {})
+    sample_inputs: Dict[str, Any] = {}
+
+    if isinstance(input_defs, dict):
+        for input_name, input_def in input_defs.items():
+            sample_inputs[input_name] = _example_value_from_input_def(str(input_name), input_def)
+
+    sample_outputs = {
+        f"{process_id}-response": {
+            "format": {"mediaType": "application/json"}
+        }
+    }
+
+    return {
+        "inputs": sample_inputs,
+        "outputs": sample_outputs,
+        "mode": "async",
+    }
 
 
 @click.group(cls=OrderedHelpGroup, context_settings={"help_option_names": ["-h", "--help"]})
@@ -293,117 +401,154 @@ def search_cmd(
 
 
 @cli.command("process")
-@click.option("--username", "-u", required=True, help="EODMS username.")
-@click.option("--password", "-p", required=True, help="EODMS password.")
-@click.option("--list", "list_orders", is_flag=True,
-              help="List orders and exit.")
-@click.option("--maximum", "-m", required=False, default=100, type=int,
-              help="Maximum orders to retrieve when using --list.")
-@click.option("--dtstart", required=False, default=None,
-              help="Optional start datetime filter for order listing (default: last month).")
-@click.option("--dtend", required=False, default=None,
-              help="Optional end datetime filter for order listing (default: today).")
-@click.option("--sar-toolbox-request-json", required=False, type=click.Path(exists=True),
-              help="Path to SAR Toolbox JSON order request payload.")
-@click.option("--download-dir", "-dl", required=False, default=".",
-              help="Destination directory for downloads.")
+@click.option("--username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "-p", required=False, help="EODMS password.")
+@click.option("--env", "-e", required=False, default="prod",
+              help='Environment (default: "prod").')
+@click.option("--process_id", "-pi", required=False, default=None,
+              help="Processing service ID.")
+@click.option("--list_processes/--no-list_processes", default=True,
+              help="List available processes (default behavior).")
+@click.option("--input-structure", "input_structure", is_flag=True,
+              help="Print process input structure and sample payload.")
+@click.option("--submit", is_flag=True,
+              help="Submit a processing job (requires auth).")
+@click.option("--inputs_json", required=False, default=None,
+              help="JSON string or path to JSON file for submit inputs.")
+@click.option("--outputs_json", required=False, default=None,
+              help="JSON string or path to JSON file for generic submit outputs.")
+@click.option("--mode", required=False, default="async",
+              help="Execution mode for generic submit (default: async).")
+@click.option("--job_id", "-j", required=False, default=None,
+              help="Existing job ID to check, poll, retrieve results, or download outputs.")
+@click.option("--wait", is_flag=True,
+              help="Poll job status until terminal state.")
+@click.option("--interval", required=False, default=30, type=int,
+              help="Polling interval seconds for --wait (default: 30).")
+@click.option("--timeout", required=False, default=600, type=int,
+              help="Polling timeout seconds for --wait (default: 600).")
+@click.option("--show_results", is_flag=True,
+              help="Print job results JSON.")
+@click.option("--download_dir", "-dl", required=False, default=None,
+              help="Download all job result files to this folder.")
+@click.option("--skip_existing/--no-skip_existing", default=True,
+              help="Skip existing local files when downloading results (default: enabled).")
+@click.option("--output", "-o", required=False, default=None,
+              help="Write JSON response (process details or submit response) to file.")
 def order_st_cmd(
-    username: str,
-    password: str,
-    list_orders: bool,
-    maximum: int,
-    dtstart: Optional[str],
-    dtend: Optional[str],
-    sar_toolbox_request_json: Optional[str],
-    download_dir: str,
+    username: Optional[str],
+    password: Optional[str],
+    env: str,
+    process_id: Optional[str],
+    list_processes: bool,
+    input_structure: bool,
+    submit: bool,
+    inputs_json: Optional[str],
+    outputs_json: Optional[str],
+    mode: str,
+    job_id: Optional[str],
+    wait: bool,
+    interval: int,
+    timeout: int,
+    show_results: bool,
+    download_dir: Optional[str],
+    skip_existing: bool,
+    output: Optional[str],
 ):
-    """Port of legacy option 5: submit SAR Toolbox order and download available items."""
+    """OGC Processes command: list, inspect, submit, track, and download process jobs."""
 
-    rapi_api = EODMSRAPI(username, password)
+    aaa_api = make_aaa(username, password, env)
+    proc_api = make_processes(aaa_api, env)
 
-    if list_orders:
-        if not dtstart and not dtend:
-            dtstart, dtend = _default_last_month_range()
-
-        payload = _safe_rapi_call(
-            rapi_api.get_orders,
-            max_orders=maximum,
-            dtstart=dtstart,
-            dtend=dtend,
-        )
-
-        orders: List[Dict[str, Any]] = []
-        if isinstance(payload, list):
-            for entry in payload:
-                if isinstance(entry, dict):
-                    orders.append(entry)
-        elif isinstance(payload, dict):
-            if isinstance(payload.get("results"), list):
-                for entry in payload["results"]:
-                    if isinstance(entry, dict):
-                        orders.append(entry)
-            else:
-                orders.append(payload)
-
-        if not orders:
-            click.echo("No orders found.")
-            return
-
-        click.echo(f"Found {len(orders)} order(s):")
-        if dtstart or dtend:
-            click.echo(f"Listing window: {dtstart or 'open'} to {dtend or 'open'}")
-        for order in orders:
-            order_id = order.get("orderId") or order.get("id") or "unknown"
-            status = order.get("status") or "UNKNOWN"
-            created = order.get("dateSubmitted") or order.get("submissionDate") or ""
-            item_count = (
-                order.get("itemCount")
-                or order.get("numItems")
-                or (len(order.get("items")) if isinstance(order.get("items"), list) else None)
-            )
-            collection = (
-                order.get("collection")
-                or order.get("collectionId")
-                or order.get("dataset")
-                or "unknown"
-            )
-            process_name = order.get("processName") or order.get("orderType") or order.get("type")
-            updated = order.get("dateUpdated") or order.get("lastUpdated") or ""
-
-            details: List[str] = [f"status={status}", f"collection={collection}"]
-            if item_count is not None:
-                details.append(f"items={item_count}")
-            if process_name:
-                details.append(f"type={process_name}")
-            if created:
-                details.append(f"submitted={created}")
-            if updated:
-                details.append(f"updated={updated}")
-
-            click.echo(f"- {order_id} | " + " | ".join(details))
+    if list_processes and not submit and not input_structure and not job_id:
+        processes_json = proc_api.list_processes()
+        _print_process_summary(processes_json)
         return
 
-    if not sar_toolbox_request_json:
-        raise click.ClickException("--sar-toolbox-request-json is required unless --list is used.")
+    if input_structure:
+        if not process_id:
+            raise click.UsageError("--process_id is required with --input-structure")
 
-    with open(sar_toolbox_request_json, "r", encoding="utf-8") as req_file:
-        payload = json.load(req_file)
+        process_json = proc_api.get_process(process_id)
+        click.echo(json.dumps(process_json.get("inputs", {}), indent=4))
 
-    click.echo("Submitting SAR Toolbox order JSON to RAPI.")
-    order_res = _safe_rapi_call(rapi_api.order_json, payload, "Medium")
+        sample_payload = _build_sample_payload(process_id, process_json)
+        click.echo("\nSample execution payload:")
+        click.echo(json.dumps(sample_payload, indent=4))
 
-    if not isinstance(order_res, list) or len(order_res) == 0:
-        raise click.ClickException("Unexpected SAR Toolbox order response from RAPI.")
+        if output:
+            with open(output, "w", encoding="utf-8") as out_f:
+                json.dump(process_json, out_f, indent=2)
+            click.echo(f"Saved process description to {output}")
+        return
 
-    order_id = order_res[0].get("orderId")
-    if not order_id:
-        raise click.ClickException("Order response does not contain orderId.")
+    submitted_job_id = None
+    if submit:
+        if not process_id:
+            raise click.UsageError("--process_id is required with --submit")
+        if aaa_api is None:
+            raise click.UsageError("--username and --password are required with --submit")
 
-    click.echo(f"Order submitted: {order_id}")
+        loaded_inputs = _load_json_input(inputs_json, "inputs")
+        outputs = _load_json_input(outputs_json, "outputs")
+        if loaded_inputs is None:
+            raise click.UsageError("--inputs_json is required with --submit")
 
-    available_order = _safe_rapi_call(rapi_api.get_order, order_id)
-    items = _collect_order_items(available_order)
-    _download_rapi_items(rapi_api, items, download_dir)
+        request_mode = mode
+        if isinstance(loaded_inputs, dict) and "inputs" in loaded_inputs:
+            inputs = loaded_inputs.get("inputs")
+            if outputs is None and isinstance(loaded_inputs.get("outputs"), dict):
+                outputs = loaded_inputs.get("outputs")
+            if isinstance(loaded_inputs.get("mode"), str) and loaded_inputs.get("mode").strip():
+                request_mode = loaded_inputs.get("mode").strip()
+        else:
+            inputs = loaded_inputs
+
+        if not isinstance(inputs, dict):
+            raise click.UsageError("Resolved submit inputs must be a JSON object.")
+
+        submit_json = proc_api.submit_process(
+            process_id=process_id,
+            inputs=inputs,
+            outputs=outputs,
+            mode=request_mode,
+        )
+
+        click.echo(json.dumps(submit_json, indent=2))
+        submitted_job_id = submit_json.get("jobID")
+        click.echo(f"Submitted jobID: {submitted_job_id}")
+
+        if output:
+            with open(output, "w", encoding="utf-8") as out_f:
+                json.dump(submit_json, out_f, indent=2)
+            click.echo(f"Saved submission response to {output}")
+
+    target_job_id = job_id or submitted_job_id
+
+    if wait:
+        if not target_job_id:
+            raise click.UsageError("A job ID is required for --wait (provide --job_id or --submit)")
+        status_json = proc_api.poll_job_status(target_job_id, interval=interval, timeout=timeout)
+        click.echo(json.dumps(status_json, indent=2))
+    elif target_job_id and not show_results and not download_dir:
+        status_json = proc_api.get_job_status(target_job_id)
+        click.echo(json.dumps(status_json, indent=2))
+
+    if show_results:
+        if not target_job_id:
+            raise click.UsageError("A job ID is required for --show_results")
+        results_json = proc_api.get_job_results(target_job_id)
+        click.echo(json.dumps(results_json, indent=2))
+
+    if download_dir:
+        if not target_job_id:
+            raise click.UsageError("A job ID is required for --download_dir")
+        downloaded = proc_api.download_job_results(
+            job_id=target_job_id,
+            out_dir=os.path.abspath(download_dir),
+            skip_existing=skip_existing,
+        )
+        click.echo(json.dumps({"jobID": target_job_id, "downloaded_files": downloaded}, indent=2))
 
 
 @cli.command("download")
