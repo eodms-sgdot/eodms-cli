@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script used to search, order and download imagery from ' \
                   'the EODMS using the REST API (RAPI) service and DDS API service.'
-__version__ = '4.1.1'
+__version__ = '4.1.2'
 __maintainer__ = 'Kevin Ballantyne'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -33,7 +33,7 @@ import datetime
 import textwrap
 from typing import List, Dict, Any
 # from geomet import wkt
-# import json
+import json
 # import configparser
 import base64
 import binascii
@@ -1223,6 +1223,8 @@ class Prompter:
                     if len(filt_lst) == 0:
                         continue
                     pv = '"%s"' % ','.join(filt_lst)
+                elif flag == '-i':
+                    pv = f'"{pv}"'
 
             elif isinstance(pv, bool):
                 if not pv:
@@ -1233,6 +1235,8 @@ class Prompter:
                 if isinstance(pv, str) and pv.find(' ') > -1:
                     pv = f'"{pv}"'
                 elif isinstance(pv, str) and pv.find('|') > -1:
+                    pv = f'"{pv}"'
+                elif isinstance(pv, dict):
                     pv = f'"{pv}"'
 
             syntax_params.append(f'{flag} {pv}')
@@ -1377,6 +1381,14 @@ class Prompter:
         self.cli_syntax = self.build_syntax()
         print(f"{self.eod.path_colour}{self.cli_syntax}{self.eod.reset_colour}")
         self.logger.info(f"Command-line Syntax: {self.cli_syntax}")
+
+    def is_json_dict(self, in_str):
+        try:
+            in_str = in_str.replace("'", '"')
+            res = json.loads(in_str)
+            return res
+        except json.JSONDecodeError:
+            return False
 
     def prompt(self):
         """
@@ -1682,27 +1694,33 @@ class Prompter:
             else:
                 inputs = self.ask_st_images(input_val)
 
-                coll_id, ids = inputs.split(':')
-                # If Order Keys are entered, check if they exist
-                if inputs.find("_") > -1:
-                    ord_keys = ids.split('|')
-                    rec_ids = self.eod.get_record_ids(coll_id, ord_keys)
+                print(f"inputs: {inputs}")
 
-                    if len(rec_ids) == 0:
-                        err_msg = f"No images could be found with Order Keys: "\
-                                f"{', '.join(ord_keys)}."
-                        self.eod.logger.error(err_msg)
-                        # self.print_support(err_msg)
-                        self.eod.print_msg(err_msg, heading='error')
-                        self.eod.exit_cli(1)
+                inputs_dict = self.is_json_dict(inputs)
+                if inputs_dict:
+                    self.params['input_val'] = inputs_dict
                 else:
-                    rec_ids = ids.split('|')
+                    coll_id, ids = inputs.split(':')
+                    # If Order Keys are entered, check if they exist
+                    if inputs.find("_") > -1:
+                        ord_keys = ids.split('|')
+                        rec_ids = self.eod.get_record_ids(coll_id, ord_keys)
 
-                print(f"\nSubmitting images with Record Ids: " \
-                      f"{', '.join(rec_ids)}")
+                        if len(rec_ids) == 0:
+                            err_msg = f"No images could be found with Order Keys: "\
+                                    f"{', '.join(ord_keys)}."
+                            self.eod.logger.error(err_msg)
+                            # self.print_support(err_msg)
+                            self.eod.print_msg(err_msg, heading='error')
+                            self.eod.exit_cli(1)
+                    else:
+                        rec_ids = ids.split('|')
 
-                self.params['input_val'] = {"collection_id": coll_id, 
-                                            "record_ids": rec_ids}
+                    print(f"\nSubmitting images with Record Ids: " \
+                        f"{', '.join(rec_ids)}")
+
+                    self.params['input_val'] = {"collection_id": coll_id, 
+                                                "record_ids": rec_ids}
 
                 sar_tb = self.ask_st()
 
@@ -2032,7 +2050,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
         logger = setup_logger('EODMSRAPI', log_path)
 
         # Setup logging for the DDS Python package to print to .log file
-        dds_logger = setup_logger('eodms_dds', log_path)
+        setup_logger('eodms_dds', log_path)
 
         logger.info(f"Script start time: {start_str}")
 
