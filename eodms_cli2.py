@@ -309,7 +309,9 @@ def cli():
 @click.option("--collection", "-c", required=False, help="Collection name.")
 @click.option("--list", "list_collections", is_flag=True,
               help="List available STAC collections and exit.")
-@click.option("--datetime", "datetime_range", required=False, default=None,
+@click.option("--queryables", "show_queryables", is_flag=True,
+              help="Print queryables for --collection and exit.")
+@click.option("--datetime", "-d", "datetime_range", required=False, default=None,
               help='Temporal filter as ISO 8601 string/range (example: "2023-01-01/2023-12-31").')
 @click.option("--bbox", "-b", required=False, default=None,
               help="Bounding box as west,south,east,north")
@@ -330,6 +332,7 @@ def search_cmd(
     password: Optional[str],
     collection: Optional[str],
     list_collections: bool,
+    show_queryables: bool,
     datetime_range: Optional[str],
     bbox: Optional[str],
     limit: int,
@@ -362,6 +365,18 @@ def search_cmd(
                 click.echo(f"- {coll_id}")
             else:
                 click.echo(f"- {coll_id}: {coll_title}")
+        return
+
+    if show_queryables:
+        if not collection:
+            raise click.ClickException("--collection is required with --queryables.")
+
+        search_api = make_search(aaa_api, env)
+        coll = search_api.client.get_collection(collection)
+        if coll is None:
+            raise click.ClickException(f"Collection not found: {collection}")
+
+        search_api.print_queryables(coll)
         return
 
     if not collection:
