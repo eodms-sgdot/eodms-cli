@@ -66,3 +66,7 @@ log/
 *.bat
 *.ps1
 *.code-workspace
+*.tif
+*.pdf
+*.zip
+*.xml
