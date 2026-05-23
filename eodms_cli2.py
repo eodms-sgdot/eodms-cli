@@ -355,16 +355,16 @@ def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]
 
 def _print_process_summary(processes_json: Dict[str, Any]) -> None:
     all_processes = processes_json.get("processes", [])
-    click.echo("\n### Processing Service\n")
+    click.echo("\nProcessing Service:\n")
     for process_obj in all_processes:
         process_id = process_obj.get("id", "N/A")
         version = process_obj.get("version", "N/A")
         description = process_obj.get("description") or process_obj.get("abstract") or "N/A"
-        click.echo(f"{process_id} (v{version}): {description}")
+        click.echo(f"* {process_id} (v{version}): {description}")
 
-    click.echo("\n### SAR Toolbox\n")
+    click.echo("\nSAR Toolbox:\n")
     click.echo(
-        "SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic "
+        "* SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic "
         "Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts"
     )
 
@@ -630,9 +630,9 @@ def search_cmd(
               help='Environment (default: "prod").')
 @click.option("--process_id", "-pi", required=False, default=None,
               help="Processing service ID.")
-@click.option("--list_processes/--no-list_processes", default=True,
+@click.option("--list/--no-list", "list_processes", default=True,
               help="List available processes (default behavior).")
-@click.option("--input-structure", "input_structure", is_flag=True,
+@click.option("--describe", "describe", is_flag=True,
               help="Print process input structure and sample payload.")
 @click.option("--submit", is_flag=True,
               help="Submit a processing job (requires auth).")
@@ -664,7 +664,7 @@ def order_st_cmd(
     env: str,
     process_id: Optional[str],
     list_processes: bool,
-    input_structure: bool,
+    describe: bool,
     submit: bool,
     inputs_json: Optional[str],
     outputs_json: Optional[str],
@@ -683,14 +683,14 @@ def order_st_cmd(
     aaa_api = make_aaa(username, password, env)
     proc_api = make_processes(aaa_api, env)
 
-    if list_processes and not submit and not input_structure and not job_id:
+    if list_processes and not submit and not describe and not job_id:
         processes_json = proc_api.list_processes()
         _print_process_summary(processes_json)
         return
 
-    if input_structure:
+    if describe:
         if not process_id:
-            raise click.UsageError("--process_id is required with --input-structure")
+            raise click.UsageError("--process_id is required with --describe")
 
         if str(process_id).strip() == "SAR_Toolbox":
             schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
@@ -844,6 +844,8 @@ def order_st_cmd(
               help="Optional end datetime filter for order retrieval.")
 @click.option("--list", "list_orders", is_flag=True,
               help="List orders in the last 30 days and exit (no download).")
+@click.option("--order-status", required=False, default=None,
+              help="Optional status filter for --list (example: AVAILABLE_FOR_DOWNLOAD).")
 @click.option("--download-available", is_flag=True,
               help="Download AVAILABLE_FOR_DOWNLOAD order items (required for default bulk download mode).")
 @click.option("--dl_dir", "download_dir", required=False, default=".\\downloads",
@@ -861,6 +863,7 @@ def download_available_cmd(
     dtstart: Optional[str],
     dtend: Optional[str],
     list_orders: bool,
+    order_status: Optional[str],
     download_available: bool,
     download_dir: str,
 ):
@@ -904,6 +907,7 @@ def download_available_cmd(
             "maxOrders": limit,
             "dtstart": _to_rapi_orders_dt_string(list_dtstart),
             "dtend": _to_rapi_orders_dt_string(list_dtend),
+            "status": order_status.upper() if order_status else None,
             "collection": collection,
             "env": env,
         }
@@ -913,6 +917,7 @@ def download_available_cmd(
             max_orders=limit,
             dtstart=list_dtstart,
             dtend=list_dtend,
+            status=order_status,
         )
         click.echo(f"RAPI GET URL: {request_url}")
         payload = _safe_rapi_call(
@@ -920,6 +925,7 @@ def download_available_cmd(
             max_orders=limit,
             dtstart=list_dtstart,
             dtend=list_dtend,
+            status=order_status,
         )
         orders = payload or []
 
