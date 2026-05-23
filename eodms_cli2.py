@@ -9,6 +9,10 @@ and includes focused command flows:
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
+from urllib.error import URLError
+from urllib.parse import quote, urlencode
+from urllib.request import urlopen
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -141,29 +145,42 @@ def parse_legacy_order_items(order_items: str) -> Tuple[List[str], List[str]]:
     return order_ids, item_ids
 
 
-def _collect_order_items(payload: Any) -> List[Dict[str, Any]]:
-    """Extract order item dictionaries from common RAPI payload shapes."""
-    items: List[Dict[str, Any]] = []
+def _to_rapi_orders_dt_string(value: Any) -> Optional[str]:
+    if value is None:
+        return None
 
-    if payload is None:
-        return items
+    if isinstance(value, datetime):
+        dt_val = value.astimezone(timezone.utc)
+        return dt_val.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    if isinstance(payload, list):
-        for entry in payload:
-            items.extend(_collect_order_items(entry))
-        return items
+    if isinstance(value, str):
+        parsed = _parse_iso_datetime(value)
+        if parsed is not None:
+            return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+        stripped = value.strip()
+        if stripped:
+            return stripped
 
-    if isinstance(payload, dict):
-        if "downloadUrl" in payload or "itemId" in payload or "orderItemId" in payload:
-            items.append(payload)
-        if isinstance(payload.get("items"), list):
-            for entry in payload["items"]:
-                items.extend(_collect_order_items(entry))
-        if isinstance(payload.get("results"), list):
-            for entry in payload["results"]:
-                items.extend(_collect_order_items(entry))
+    return None
 
-    return items
+
+def _build_rapi_orders_url(rapi_api: EODMSRAPI, max_orders: int,
+                           dtstart: Any = None, dtend: Any = None,
+                           status: Optional[str] = None,
+                           out_format: str = "json") -> str:
+    params: Dict[str, Any] = {"maxOrders": max_orders}
+
+    dtstart_s = _to_rapi_orders_dt_string(dtstart)
+    dtend_s = _to_rapi_orders_dt_string(dtend)
+    if dtstart_s:
+        params["dtstart"] = dtstart_s
+    if dtend_s:
+        params["dtend"] = dtend_s
+    if status:
+        params["status"] = status.upper()
+
+    param_str = urlencode(params)
+    return f"{rapi_api.rapi_root}/order?{param_str}&format={out_format}"
 
 
 def _safe_rapi_call(callable_obj, *args, **kwargs):
@@ -171,6 +188,132 @@ def _safe_rapi_call(callable_obj, *args, **kwargs):
     if isinstance(result, QueryError):
         raise click.ClickException(result.get_msgs(as_str=True))
     return result
+
+
+def _first_dict(payload: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(payload, dict):
+        if isinstance(payload.get("results"), list):
+            for entry in payload["results"]:
+                found = _first_dict(entry)
+                if found is not None:
+                    return found
+        if isinstance(payload.get("items"), list):
+            for entry in payload["items"]:
+                found = _first_dict(entry)
+                if found is not None:
+                    return found
+        return payload
+    if isinstance(payload, list):
+        for entry in payload:
+            found = _first_dict(entry)
+            if found is not None:
+                return found
+    return None
+
+
+def _extract_first_order_id(payload: Any) -> Optional[str]:
+    if isinstance(payload, dict):
+        for key in ("orderId", "order_id", "ORDER_ID"):
+            value = payload.get(key)
+            if value is not None:
+                return str(value)
+        for key in ("results", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                for entry in value:
+                    found = _extract_first_order_id(entry)
+                    if found:
+                        return found
+        return None
+
+    if isinstance(payload, list):
+        for entry in payload:
+            found = _extract_first_order_id(entry)
+            if found:
+                return found
+
+    return None
+
+
+def _extract_order_key(stac_item: Dict[str, Any]) -> Optional[str]:
+    props = stac_item.get("properties") if isinstance(stac_item, dict) else None
+    if not isinstance(props, dict):
+        return None
+
+    return (
+        props.get("order_key")
+        or props.get("orderKey")
+        or props.get("Order Key")
+    )
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value or not isinstance(value, str):
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    # Handle STAC UTC suffix format.
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+
+    try:
+        dt_val = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+    if dt_val.tzinfo is None:
+        dt_val = dt_val.replace(tzinfo=timezone.utc)
+
+    return dt_val.astimezone(timezone.utc)
+
+
+def _format_rapi_datetime(dt_val: datetime) -> str:
+    return dt_val.strftime("%Y%m%d_%H%M%S")
+
+
+def _build_rapi_dates_from_stac_item(stac_item: Dict[str, Any], span_days: int = 1) -> Optional[List[Dict[str, str]]]:
+    props = stac_item.get("properties") if isinstance(stac_item, dict) else None
+    if not isinstance(props, dict):
+        return None
+
+    start_dt = _parse_iso_datetime(
+        props.get("start_datetime")
+        or props.get("startDateTime")
+        or props.get("acquisition_start")
+        or props.get("acquisitionStart")
+    )
+    end_dt = _parse_iso_datetime(
+        props.get("end_datetime")
+        or props.get("endDateTime")
+        or props.get("acquisition_end")
+        or props.get("acquisitionEnd")
+    )
+
+    if start_dt is None and end_dt is None:
+        center_dt = _parse_iso_datetime(
+            props.get("datetime")
+            or props.get("acquisition_datetime")
+            or props.get("acquisitionDateTime")
+        )
+        if center_dt is None:
+            return None
+        start_dt = center_dt
+        end_dt = center_dt + timedelta(days=span_days)
+    elif start_dt is None and end_dt is not None:
+        start_dt = end_dt - timedelta(days=span_days)
+    elif end_dt is None and start_dt is not None:
+        end_dt = start_dt + timedelta(days=span_days)
+
+    if start_dt is None or end_dt is None:
+        return None
+
+    if end_dt < start_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    return [{"start": _format_rapi_datetime(start_dt), "end": _format_rapi_datetime(end_dt)}]
 
 
 def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], download_dir: str) -> None:
@@ -212,16 +355,18 @@ def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]
 
 def _print_process_summary(processes_json: Dict[str, Any]) -> None:
     all_processes = processes_json.get("processes", [])
-    click.echo(f"Found {len(all_processes)} processes")
+    click.echo("### EODMS Processing Service.")
     for process_obj in all_processes:
         process_id = process_obj.get("id", "N/A")
-        title = process_obj.get("title", "N/A")
         version = process_obj.get("version", "N/A")
         description = process_obj.get("description") or process_obj.get("abstract") or "N/A"
-        click.echo(
-            f"  - id={process_id} | title={title} | version={version}\n"
-            f"    description={description}"
-        )
+        click.echo(f"{process_id} (v{version}): {description}")
+
+    click.echo("\n### EODMS SAR Toolbox")
+    click.echo(
+        "SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic "
+        "Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts"
+    )
 
 
 def _example_scalar_from_schema(schema: Dict[str, Any], input_name: str) -> Any:
@@ -300,7 +445,8 @@ def _build_sample_payload(process_id: str, process_json: Dict[str, Any]) -> Dict
 
 @click.group(cls=OrderedHelpGroup, context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
-    """EODMS CLI v2: STAC/DDS-first with targeted legacy ports."""
+    """EODMS CLI v2: STAC/DDS-first, non-interactive with minimal legacy ports."""
+    click.echo()
 
 
 @cli.command("search")
@@ -309,6 +455,10 @@ def cli():
 @click.option("--collection", "-c", required=False, help="Collection name.")
 @click.option("--list", "list_collections", is_flag=True,
               help="List available STAC collections and exit.")
+@click.option("--uuid2record", "uuid2record", is_flag=True,
+              help="Resolve UUID to order_key (search) then recordId (RAPI).")
+@click.option("--uuid", required=False, default=None,
+              help="UUID (or comma-separated UUIDs) used with --uuid2record.")
 @click.option("--queryables", "show_queryables", is_flag=True,
               help="Print queryables for --collection and exit.")
 @click.option("--datetime", "-d", "datetime_range", required=False, default=None,
@@ -332,6 +482,8 @@ def search_cmd(
     password: Optional[str],
     collection: Optional[str],
     list_collections: bool,
+    uuid2record: bool,
+    uuid: Optional[str],
     show_queryables: bool,
     datetime_range: Optional[str],
     bbox: Optional[str],
@@ -342,7 +494,7 @@ def search_cmd(
     output: Optional[str],
     env: str,
 ):
-    """Search STAC and optionally write results to GeoJSON."""
+    """STAC geotemporal/queryables and GeoJSON output."""
 
     bbox_list = parse_bbox(bbox)
 
@@ -365,6 +517,62 @@ def search_cmd(
                 click.echo(f"- {coll_id}")
             else:
                 click.echo(f"- {coll_id}: {coll_title}")
+        return
+
+    if uuid2record:
+        if not uuid:
+            raise click.ClickException("--uuid is required with --uuid2record.")
+        if not collection:
+            raise click.ClickException("--collection is required with --uuid2record.")
+        if not username or not password:
+            raise click.ClickException("--username and --password are required with --uuid2record.")
+
+        search_api = make_search(aaa_api, env)
+        rapi_api = EODMSRAPI(username, password)
+        uuid_values = [u.strip() for u in uuid.split(",") if u.strip()]
+        if not uuid_values:
+            raise click.ClickException("At least one UUID must be provided.")
+
+        for uuid_value in uuid_values:
+            item = search_api.get_item(collection, uuid_value)
+            if item is None:
+                click.echo(f"{uuid_value}: no item found in search/{collection}")
+                continue
+
+            order_key = _extract_order_key(item)
+            if not order_key:
+                click.echo(f"{uuid_value}: no order_key on STAC item")
+                continue
+
+            filter_dict = {"ARCHIVE_IMAGE.ORDER_KEY": ("=", [order_key])}
+            rapi_dates = _build_rapi_dates_from_stac_item(item, span_days=1)
+            try:
+                search_kwargs: Dict[str, Any] = {
+                    "filters": filter_dict,
+                    "max_results": 5,
+                }
+                if rapi_dates:
+                    search_kwargs["dates"] = rapi_dates
+
+                _safe_rapi_call(rapi_api.search, collection, **search_kwargs)
+                payload = _safe_rapi_call(rapi_api.get_results, "brief", show_progress=False)
+            except Exception as exc:
+                click.echo(f"{uuid_value}: order_key={order_key}; RAPI lookup error: {exc}")
+                continue
+
+            record = _first_dict(payload)
+            record_id = None
+            if isinstance(record, dict):
+                record_id = (
+                    record.get("recordId")
+                    or record.get("record_id")
+                    or record.get("RECORD_ID")
+                )
+
+            if record_id:
+                click.echo(f"{uuid_value}: order_key={order_key}; record_id={record_id}")
+            else:
+                click.echo(f"{uuid_value}: order_key={order_key}; record_id not found")
         return
 
     if show_queryables:
@@ -428,7 +636,7 @@ def search_cmd(
               help="Print process input structure and sample payload.")
 @click.option("--submit", is_flag=True,
               help="Submit a processing job (requires auth).")
-@click.option("--inputs_json", required=False, default=None,
+@click.option("--inputs_json", "--input_json", required=False, default=None,
               help="JSON string or path to JSON file for submit inputs.")
 @click.option("--outputs_json", required=False, default=None,
               help="JSON string or path to JSON file for generic submit outputs.")
@@ -470,7 +678,7 @@ def order_st_cmd(
     skip_existing: bool,
     output: Optional[str],
 ):
-    """OGC Processes command: list, inspect, submit, track, and download process jobs."""
+    """Processing Service for RADARDAT data; Level-1, SAR Toolbox, and ARD."""
 
     aaa_api = make_aaa(username, password, env)
     proc_api = make_processes(aaa_api, env)
@@ -483,6 +691,22 @@ def order_st_cmd(
     if input_structure:
         if not process_id:
             raise click.UsageError("--process_id is required with --input-structure")
+
+        if str(process_id).strip() == "SAR_Toolbox":
+            schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
+            try:
+                with urlopen(schema_url) as resp:
+                    body = resp.read().decode("utf-8")
+                schema_json = json.loads(body)
+            except (URLError, ValueError) as exc:
+                raise click.ClickException(f"Failed to fetch SAR Toolbox schema: {exc}")
+
+            click.echo(json.dumps(schema_json, indent=4))
+            if output:
+                with open(output, "w", encoding="utf-8") as out_f:
+                    json.dump(schema_json, out_f, indent=2)
+                click.echo(f"Saved SAR Toolbox schema to {output}")
+            return
 
         process_json = proc_api.get_process(process_id)
         click.echo(json.dumps(process_json.get("inputs", {}), indent=4))
@@ -505,6 +729,41 @@ def order_st_cmd(
             raise click.UsageError("--username and --password are required with --submit")
 
         loaded_inputs = _load_json_input(inputs_json, "inputs")
+        if str(process_id).strip() == "SAR_Toolbox":
+            if loaded_inputs is None:
+                raise click.UsageError("--input_json (or --inputs_json) is required with --submit for SAR_Toolbox")
+
+            sar_request = loaded_inputs
+            if isinstance(loaded_inputs, dict) and "inputs" in loaded_inputs and isinstance(loaded_inputs.get("inputs"), dict):
+                nested_inputs = loaded_inputs.get("inputs")
+                if isinstance(nested_inputs, dict) and "items" in nested_inputs:
+                    sar_request = nested_inputs
+
+            if not isinstance(sar_request, dict) or not isinstance(sar_request.get("items"), list):
+                raise click.UsageError(
+                    "SAR_Toolbox submit expects a JSON request containing an 'items' list "
+                    "(same structure used by legacy order_st / st_request)."
+                )
+
+            rapi_api = EODMSRAPI(username, password)
+            submit_json = _safe_rapi_call(rapi_api.order_json, sar_request)
+            click.echo(json.dumps(submit_json, indent=2))
+
+            if output:
+                with open(output, "w", encoding="utf-8") as out_f:
+                    json.dump(submit_json, out_f, indent=2)
+                click.echo(f"Saved submission response to {output}")
+
+            if download_dir:
+                order_id = _extract_first_order_id(submit_json)
+                if not order_id:
+                    raise click.ClickException("No orderId found in SAR_Toolbox submit response; cannot download.")
+                order_payload = _safe_rapi_call(rapi_api.get_order, order_id)
+                order_items = _safe_rapi_call(rapi_api.collect_order_items, order_payload)
+                _download_rapi_items(rapi_api, order_items, download_dir)
+
+            return
+
         outputs = _load_json_input(outputs_json, "outputs")
         if loaded_inputs is None:
             raise click.UsageError("--inputs_json is required with --submit")
@@ -577,13 +836,17 @@ def order_st_cmd(
               help='Environment for DDS download (default: "prod").')
 @click.option("--order-items", required=False, default=None,
               help="Legacy selector syntax: order:id1,id2|item:id3,id4")
-@click.option("--maximum", "-m", required=False, default=100, type=int,
+@click.option("--limit", "-l", required=False, default=100, type=int,
               help="Maximum AVAILABLE_FOR_DOWNLOAD orders to retrieve.")
 @click.option("--dtstart", required=False, default=None,
               help="Optional start datetime filter for order retrieval.")
 @click.option("--dtend", required=False, default=None,
               help="Optional end datetime filter for order retrieval.")
-@click.option("--dl_dir", "download_dir", required=False, default=".",
+@click.option("--list", "list_orders", is_flag=True,
+              help="List orders in the last 30 days and exit (no download).")
+@click.option("--download-available", is_flag=True,
+              help="Download AVAILABLE_FOR_DOWNLOAD order items (required for default bulk download mode).")
+@click.option("--dl_dir", "download_dir", required=False, default=".\\downloads",
               help="Destination directory for downloads.")
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
@@ -594,12 +857,14 @@ def download_available_cmd(
     collection: Optional[str],
     env: str,
     order_items: Optional[str],
-    maximum: int,
+    limit: int,
     dtstart: Optional[str],
     dtend: Optional[str],
+    list_orders: bool,
+    download_available: bool,
     download_dir: str,
 ):
-    """Port of legacy option 6: download order items with AVAILABLE_FOR_DOWNLOAD status."""
+    """Data Delivery Service (DDS) Bulk downloads"""
 
     if uuid:
         if not collection:
@@ -611,41 +876,114 @@ def download_available_cmd(
         download_dds_item(dds_api, collection, uuid, download_dir)
         return
 
+    if not order_items and not list_orders and not download_available:
+        raise click.ClickException(
+            "Use --download-available to download AVAILABLE_FOR_DOWNLOAD items, "
+            "or use --list to list only."
+        )
+
     rapi_api = EODMSRAPI(username, password)
+
+    if list_orders:
+        if dtstart and dtend:
+            list_dtstart = _parse_iso_datetime(dtstart)
+            list_dtend = _parse_iso_datetime(dtend)
+            if list_dtstart is None or list_dtend is None:
+                raise click.ClickException("--dtstart and --dtend must be ISO datetime strings (example: 2026-05-21T00:00:00Z).")
+            list_dtstart_label = str(dtstart)
+            list_dtend_label = str(dtend)
+        else:
+            now_utc = datetime.now(timezone.utc)
+            list_dtend = now_utc
+            list_dtstart = now_utc - timedelta(days=30)
+            list_dtstart_label = _format_rapi_datetime(list_dtstart)
+            list_dtend_label = _format_rapi_datetime(list_dtend)
+
+        click.echo(f"Getting list of orders from {list_dtstart_label} to {list_dtend_label}...")
+        list_params: Dict[str, Any] = {
+            "maxOrders": limit,
+            "dtstart": _to_rapi_orders_dt_string(list_dtstart),
+            "dtend": _to_rapi_orders_dt_string(list_dtend),
+            "collection": collection,
+            "env": env,
+        }
+        click.echo(f"List parameters: {json.dumps(list_params, indent=2)}")
+        request_url = _build_rapi_orders_url(
+            rapi_api,
+            max_orders=limit,
+            dtstart=list_dtstart,
+            dtend=list_dtend,
+        )
+        click.echo(f"RAPI GET URL: {request_url}")
+        payload = _safe_rapi_call(
+            rapi_api.get_order_summaries,
+            max_orders=limit,
+            dtstart=list_dtstart,
+            dtend=list_dtend,
+        )
+        orders = payload or []
+
+        if not orders:
+            click.echo("No orders found.")
+            return
+
+        click.echo(f"\nFound {len(orders)} order(s).")
+        for order in orders:
+            flat_order = {
+                "order_id": order.get("order_id") or "N/A",
+                "status": order.get("status") or "N/A",
+                "submitted": order.get("submitted") or "N/A",
+                "updated": order.get("updated") or "N/A",
+                "priority": order.get("priority") or "N/A",
+                "items": order.get("items") if order.get("items") is not None else 0,
+                "record_ids": order.get("record_ids") or [],
+                "collections": order.get("collections") or [],
+                "name": order.get("names") or [],
+                "destinations": order.get("destinations") or [],
+            }
+            click.echo(json.dumps(flat_order, indent=2, ensure_ascii=True))
+        return
+
     downloadable_items: List[Dict[str, Any]] = []
+    filtered_items: List[Dict[str, Any]] = []
 
     if order_items:
         order_ids, item_ids = parse_legacy_order_items(order_items)
 
         for order_id in order_ids:
             payload = _safe_rapi_call(rapi_api.get_order, order_id)
-            downloadable_items.extend(_collect_order_items(payload))
+            downloadable_items.extend(_safe_rapi_call(rapi_api.collect_order_items, payload))
 
         for item_id in item_ids:
             payload = _safe_rapi_call(rapi_api.get_order_item, item_id)
-            downloadable_items.extend(_collect_order_items(payload))
+            downloadable_items.extend(_safe_rapi_call(rapi_api.collect_order_items, payload))
+
+        # Explicit order/item selectors can include non-downloadable states.
+        for item in downloadable_items:
+            status = str(item.get("status", "")).upper()
+            if not status or status == "AVAILABLE_FOR_DOWNLOAD":
+                filtered_items.append(item)
     else:
+        bulk_dtstart = _parse_iso_datetime(dtstart) if dtstart else None
+        bulk_dtend = _parse_iso_datetime(dtend) if dtend else None
+        if (dtstart and bulk_dtstart is None) or (dtend and bulk_dtend is None):
+            raise click.ClickException("--dtstart and --dtend must be ISO datetime strings (example: 2026-05-21T00:00:00Z).")
+
         payload = _safe_rapi_call(
-            rapi_api.get_orders,
-            max_orders=maximum,
-            dtstart=dtstart,
-            dtend=dtend,
+            rapi_api.list_order_items,
+            max_orders=limit,
+            dtstart=bulk_dtstart,
+            dtend=bulk_dtend,
             status="AVAILABLE_FOR_DOWNLOAD",
         )
-        downloadable_items.extend(_collect_order_items(payload))
-
-    # Keep only items that are explicitly available for download when status exists.
-    filtered_items = []
-    for item in downloadable_items:
-        status = str(item.get("status", "")).upper()
-        if not status or status == "AVAILABLE_FOR_DOWNLOAD":
-            filtered_items.append(item)
+        filtered_items = list(payload or [])
 
     if not filtered_items:
         click.echo("No AVAILABLE_FOR_DOWNLOAD order items found.")
         return
 
     click.echo(f"Found {len(filtered_items)} AVAILABLE_FOR_DOWNLOAD item(s).")
+
     _download_rapi_items(rapi_api, filtered_items, download_dir)
 
 
