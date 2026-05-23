@@ -21,11 +21,13 @@ The EODMS-CLI was designed using **Python 3.10**.
 | dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/        |
 | geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/            |
 | click           | Used for the command-line input.                          | https://pypi.org/project/click/             |
+| fiona           | Used for vector geospatial file I/O (e.g., shapefiles).  | https://pypi.org/project/Fiona/             |
 | shapely         | Used to determine the percentage of overlap with the AOI. | https://pypi.org/project/Shapely/           |
 | python-dateutil | Used to parse dates.                                      | https://pypi.org/project/python-dateutil/   |
 | tqdm            | Used to access the RAPI and download files.               | https://pypi.org/project/tqdm/              |
 | numpy           | Used to close polygons.                                   | https://pypi.org/project/numpy/             |
-| GDAL            | (Optional) Only required when using AOI shapefiles.       | https://pypi.org/project/GDAL/              |
+| packaging       | Used for dependency/version comparisons.                  | https://pypi.org/project/packaging/         |
+| colorama        | Used for cross-platform colored terminal output.          | https://pypi.org/project/colorama/          |
 
 ## Setup
 
@@ -309,6 +311,7 @@ Ok, its `Queued`. Wait 30s... try again:
 
 ```
 > python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%     
+
 Downloading UUID: 342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] Successfully got item RCMImageProducts/342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] Downloading image to .\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD.zip...
@@ -322,6 +325,7 @@ Ok, let us instead now pre-process this scene. What processes are available?
 
 ```bash
 > python eodms_cli2.py process --list_processes                                           
+
 [ eodms_processes ] Successfully listed available processes
 
 ### EODMS Processing Service.
