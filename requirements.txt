@@ -1,5 +1,5 @@
 git+https://github.com/eodms-sgdot/eodms-py.git
-py-eodms-rapi>=1.7.0
+git+https://github.com/eodms-sgdot/py-eodms-rapi.git
 requests>=2.23.0
 dateparser>=1.0.0
 geomet>=0.3.0

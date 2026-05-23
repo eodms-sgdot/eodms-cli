@@ -15,7 +15,7 @@ The EODMS-CLI was designed using **Python 3.10**.
 
 | Package Name    | Use                                                       | URL                                         |
 |-----------------|-----------------------------------------------------------|---------------------------------------------|
-| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://pypi.org/project/py-eodms-rapi/     |
+| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://github.com/eodms-sgdot/py-eodms-rapi |
 | eodms-py        | The EODMS Python package.                                 | https://github.com/eodms-sgdot/eodms-py     |
 | Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/          |
 | dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/        |
@@ -37,7 +37,7 @@ The EODMS-CLI was designed using **Python 3.10**.
 	> git clone https://github.com/eodms-sgdot/eodms-cli.git
 	```
 	
-2. Install required packages (GDAL not included):
+2. Install required packages:
 
 	```bash
 	> cd eodms-cli
@@ -69,31 +69,7 @@ For more in-depth information on the configuration file, visit [Config File](htt
 
 ## Updating
 
-### Update py-eodms-rapi
-
-If you receive one of these messages when running the eodms-cli, follow the instructions (run `pip install py-eodms-rapi -U`).
-
-```bash
-**** WARNING ****
-The py-eodms-rapi currently installed is not the latest version. 
-It is recommended to use the latest version of the package. Please
-install it using: 'pip install py-eodms-rapi -U'.
-*****************
-```
-
-or
-
-```bash
-**** ERROR ****
-The py-eodms-rapi currently installed is an older version than the
-minimum required version. Please install it using: 'pip
-install py-eodms-rapi -U'.
-*****************
-```
-
-### Update eodms-cli
-
-If you need to update the eodms-cli to a new release, follow these steps:
+To update eodms-cli and its dependencies, follow these steps:
 
 1. Pull from the most recent Github repository
 
@@ -102,12 +78,11 @@ If you need to update the eodms-cli to a new release, follow these steps:
 	> git pull origin main
 	```
 
-2. Install required packages (GDAL not included):
+2. Install or upgrade required dependencies:
 
 	```bash
 	> cd eodms-cli
-	> pip install -r requirements.txt
-	> pip install py-eodms-rapi -U  # get the latest py-eodms-rapi for best functionality
+  > pip install -r requirements.txt --upgrade
 	```
 	
 3. Run the script using Python
