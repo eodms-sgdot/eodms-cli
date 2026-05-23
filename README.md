@@ -119,7 +119,8 @@ If you need to update the eodms-cli to a new release, follow these steps:
 ### List Commands
 
 ```
-python eodms_cli2.py --help                             
+> python eodms_cli2.py --help                             
+
 Usage: eodms_cli2.py [OPTIONS] COMMAND [ARGS]...
 
   EODMS CLI v2: STAC/DDS-first with targeted legacy ports.
@@ -138,7 +139,7 @@ Commands:
 Listing available collections...
 
 ```bash
-eodms_cli2.py search --list
+> python eodms_cli2.py search --list
 
 Using unauthenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
 Found 10 collection(s):
@@ -157,7 +158,7 @@ Found 10 collection(s):
 Login w/ authorized account to see restricted collections...
 
 ```bash
-▥ python eodms_cli2.py search --list -u %EODMS_USER% -p %EODMS_PASSWORD%
+> python eodms_cli2.py search --list -u %EODMS_USER% -p %EODMS_PASSWORD%
 
 [ eodms_aaa ] Current Refresh Token has expired. Getting new Tokens...
 [ eodms_aaa ] Successfully logged in using AAA API
@@ -192,7 +193,7 @@ Found 20 collection(s):
 Grab 20 results from the rcm-ard collection...
 
 ```bash
-▥ python eodms_cli2.py search -c rcm-ard -l 20 -o rcm.geojson
+> python eodms_cli2.py search -c rcm-ard -l 20 -o rcm.geojson
 
 Using unauthenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
 Searching up to limit of 20...
@@ -205,8 +206,9 @@ Saved 20 item(s) to rcm.geojson
 
 Take a look...
 
-`▥ type rcm.geojson` (on linux, `cat rcm.geojson`)
 ```json
+> cat rcm.geojson
+
 ...
         "rl_thumbnail": {
           "href": "https://rcm-ceos-ard.s3.ca-central-1.amazonaws.com/MLC/2025/03/04/RCM3_OK3308170_PK3507604_1_SC30MCPC_20250304_230019_CH_CV_MLC/RCM3_OK3308170_PK3507604_1_SC30MCPC_20250304_230019_RL_quickLook.tif",
@@ -240,7 +242,8 @@ Take a look...
 Refine the search. Supply some geotemporal criteria...
 
 ```bash
-▥ python eodms_cli2.py search -c Sentinel-1 -d "2026-05-01/2026-05-20" --aoi test/ottawa.geojson -o may-ottawa.geojson 
+> python eodms_cli2.py search -c Sentinel-1 -d "2026-05-01/2026-05-20" --aoi test/ottawa.geojson -o may-ottawa.geojson
+
 Loaded 1 polygon(s) from AOI file
 Using unauthenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
 Searching AOI geometry: Ottawa, ON, CA
@@ -256,7 +259,8 @@ Saved 10 item(s) to may-ottawa.geojson
 Tighten by collection-specifics. What are the queryables?
 
 ```bash
-▥ python eodms_cli2.py search -c RCMImageProducts --queryables
+> python eodms_cli2.py search -c RCMImageProducts --queryables
+
 Using unauthenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
       * pixel_data_type (string) e.g. pixel_data_type = 'Floating-Point' | constraints: enum=[Floating-Point, Integer]
       * beam_mnemonic (string) e.g. beam_mnemonic = 'example' | constraints: pattern=\w{2,13}
@@ -272,10 +276,10 @@ Using unauthenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
       * polarization (string) e.g. polarization = 'CH CV' | constraints: enum=[CH CV, HH, HH HV, HH HV VH VV, HH VV, ...]
 ```
 
-How about some high-res data e.g. '3M'...
+How about some high-res 5-metre...
 
 ```bash
-▥ python eodms_cli2.py search -u %EODMS_USER% -p %EODMS_PASSWORD% -c RCMImageProducts -d "2025-03-01/2026-05-20" --aoi test/ottawa.geojson -f "beam_mnemonic LIKE '5M%'" -o test/rcm_5m.geojson
+> python eodms_cli2.py search -u %EODMS_USER% -p %EODMS_PASSWORD% -c RCMImageProducts -d "2025-03-01/2026-05-20" --aoi test/ottawa.geojson -f "beam_mnemonic LIKE '5M%'" -o test/rcm_5m.geojson
 
 Loaded 1 polygon(s) from AOI file
 Using authenticated catalog: https://www.eodms-sgdot.nrcan-rncan.gc.ca/search
@@ -294,7 +298,7 @@ Ok, `342ea023-5a9d-5157-b494-e24ec7a3b014 (RCM1_OK3584454_PK3585363_1_5M19_20250
 Let us download this (level-1) image
 
 ```bash
-python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%      
+> python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%      
 
 Downloading UUID: 342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] RCMImageProducts/342ea023-5a9d-5157-b494-e24ec7a3b014 is being prepared; currentstatus is Queued.
@@ -304,7 +308,7 @@ Item has no download URL: collection=RCMImageProducts, uuid=342ea023-5a9d-5157-b
 Ok, its `Queued`. Wait 30s... try again:
 
 ```
-python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%     
+> python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%     
 Downloading UUID: 342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] Successfully got item RCMImageProducts/342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] Downloading image to .\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD.zip...
@@ -317,16 +321,18 @@ There it goes!
 Ok, let us instead now pre-process this scene. What processes are available?
 
 ```bash
-py eodms_cli2.py process --list_processes                                           
+> python eodms_cli2.py process --list_processes                                           
 [ eodms_processes ] Successfully listed available processes
 
 ### EODMS Processing Service.
+
 Radarsat1CEOSL0RAW (v0.0.1): Generate a Radarsat-1 CEOS L0 RAW product
 Radarsat1GAMMAL1SLC (v0.0.1): Generate a Radarsat-1 L1 product in GAMMA SLC format - Maximum of 2 frames per process request - Use 'start_time' and 'stop_time' to limit the frames processed
 Echo (v0.0.1): N/A
 Radarsat1CEOSL1SLC (v0.0.1): Generate Radarsat-1 L1 product in CEOS SLC (16-bit) - Maximum of 2 frames per process request - Use 'start_time' and 'stop_time' to limit the frames processed
 
 ### EODMS SAR Toolbox
+
 SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts.
 ```
 
@@ -378,7 +384,7 @@ https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/order
 We can check on it using...
 
 ```bash
-python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
+> python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
 
 ...
   [4]  order_id : 3168001
@@ -396,7 +402,7 @@ Not ready yet. Check again later
 
 
 ```bash
-python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
+> python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
 
 ...
   "order_id": "3168001",
@@ -411,7 +417,7 @@ python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASS
 All done. Download the whole directory using
 
 ```bash
-python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --order-items order:3168001       
+> python eodms_cli2.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --order-items order:3168001       
 
 Found 1 AVAILABLE_FOR_DOWNLOAD item(s).
 Downloading 1 item(s) to .\downloads
@@ -425,7 +431,7 @@ Downloading 1 item(s) to .\downloads
 The whole package now locally, ready to use.
 
 ```bash
-ls .\downloads\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD               
+> ls .\downloads\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD               
 RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_bitmask.tif
 RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_gammaToSigmaRatio.tif
 RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH.tif
