@@ -307,7 +307,7 @@ Ok, its `Queued`. Wait 30s... try again:
 python eodms_cli2.py download -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%     
 Downloading UUID: 342ea023-5a9d-5157-b494-e24ec7a3b014
 [ eodms_logger ] Successfully got item RCMImageProducts/342ea023-5a9d-5157-b494-e24ec7a3b014
-[ eodms_logger ] Downloading image to C:\Users\wmackinn\repos\eodms-cli\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD.zip...
+[ eodms_logger ] Downloading image to .\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD.zip...
 ```
 
 There it goes!
@@ -332,10 +332,9 @@ SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic Radiometry, Polarime
 
 Ok, `Analysis Ready Data` looks good. How is it called?
 
-```json
-▥ py eodms_cli2.py process --process_id SAR_Toolbox --input-structure
+```bash
+> py eodms_cli2.py process --process_id SAR_Toolbox --input-structure
 
-```
 Coming soon....
 ```
 
@@ -423,9 +422,21 @@ Downloading 1 item(s) to .\downloads
 ...
 ```
 
-The whole package
+The whole package now locally, ready to use.
 
-
+```bash
+ls .\downloads\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD               
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_bitmask.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_gammaToSigmaRatio.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_quickLook.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HV.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HV_quickLook.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_localContributingArea.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_localIncAngle.tif
+RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_product.xml
+RCM_EULA_GC_v3-1_20210202_UNCLASSIFIED.pdf
+```
 
 
 ## Contact

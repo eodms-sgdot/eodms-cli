@@ -355,14 +355,14 @@ def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]
 
 def _print_process_summary(processes_json: Dict[str, Any]) -> None:
     all_processes = processes_json.get("processes", [])
-    click.echo("### EODMS Processing Service.")
+    click.echo("\n### Processing Service\n")
     for process_obj in all_processes:
         process_id = process_obj.get("id", "N/A")
         version = process_obj.get("version", "N/A")
         description = process_obj.get("description") or process_obj.get("abstract") or "N/A"
         click.echo(f"{process_id} (v{version}): {description}")
 
-    click.echo("\n### EODMS SAR Toolbox")
+    click.echo("\n### SAR Toolbox\n")
     click.echo(
         "SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic "
         "Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts"
