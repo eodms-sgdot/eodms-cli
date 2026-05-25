@@ -100,16 +100,16 @@ To update eodms-cli and its dependencies, follow these steps:
 
 Usage: eodms_cli2.py [OPTIONS] COMMAND [ARGS]...
 
-  EODMS CLI v2: STAC/DDS-first with targeted legacy ports.
+  EODMS CLI v2: STAC/DDS-first, non-interactive with minimal legacy ports.
 
 Options:
   -h, --help  Show this message and exit.
 
 Commands:
-  search    Search STAC and optionally write results to GeoJSON.
-  process   OGC Processes command: list, inspect, submit, track, and...
-  download  Port of legacy option 6: download order items with...
-```
+  search    STAC geotemporal/queryables and GeoJSON output.
+  process   Processing Service for RADARDAT data; Level-1, SAR Toolbox,...
+  download  Data Delivery Service (DDS) Bulk downloads
+
 
 ### Search
 
