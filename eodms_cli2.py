@@ -9,6 +9,10 @@ and includes focused command flows:
 
 import json
 import os
+import configparser
+import base64
+import binascii
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.error import URLError
 from urllib.parse import quote, urlencode, unquote, urlsplit
@@ -23,6 +27,11 @@ from eodms import Processes_API, aaa, dds, search
 from eodms_rapi import EODMSRAPI, QueryError
 
 
+DEFAULT_DDS_BACKOFF_SECONDS = 60
+DEFAULT_DDS_RETRY_FILE = ".\\downloads\\dds_retry_items.jsonl"
+MAX_DDS_QUEUED_WAITS = 10
+
+
 class OrderedHelpGroup(click.Group):
     """Group that prints commands in a custom help order."""
 
@@ -30,6 +39,79 @@ class OrderedHelpGroup(click.Group):
         preferred = ["search", "process", "download"]
         remaining = sorted(name for name in self.commands if name not in preferred)
         return [name for name in preferred if name in self.commands] + remaining
+
+
+def _default_config_path() -> str:
+    user_home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    return os.path.join(user_home, ".eodms", "config.ini")
+
+
+def _load_config_parser(config_path: Optional[str] = None) -> Optional[configparser.ConfigParser]:
+    cfg_path = config_path or _default_config_path()
+    if not os.path.exists(cfg_path):
+        return None
+
+    parser = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
+    parser.read(cfg_path)
+    return parser
+
+
+def _decode_config_password(raw_password: str) -> str:
+    try:
+        return base64.b64decode(raw_password).decode("utf-8")
+    except binascii.Error:
+        return base64.b64decode(raw_password + "========").decode("utf-8")
+
+
+def _load_credentials_from_config(config_path: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+    parser = _load_config_parser(config_path)
+    if parser is None:
+        return None, None
+
+    username = None
+    password = None
+
+    for section in ("Credentials", "RAPI"):
+        if username is None and parser.has_option(section, "username"):
+            candidate = parser.get(section, "username").strip()
+            if candidate:
+                username = candidate
+
+        if password is None and parser.has_option(section, "password"):
+            encoded = parser.get(section, "password").strip()
+            if encoded:
+                try:
+                    password = _decode_config_password(encoded)
+                except Exception:
+                    password = encoded
+
+    return username, password
+
+
+def resolve_credentials(username: Optional[str], password: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    if username and password:
+        return username, password
+
+    cfg_username, cfg_password = _load_credentials_from_config()
+    return username or cfg_username, password or cfg_password
+
+
+def _load_dds_backoff_interval(config_path: Optional[str] = None) -> int:
+    parser = _load_config_parser(config_path)
+    if parser is None or not parser.has_section("DDS"):
+        return DEFAULT_DDS_BACKOFF_SECONDS
+
+    for option_name in ("backoff_interval", "back_interval"):
+        if parser.has_option("DDS", option_name):
+            value = parser.get("DDS", option_name).strip()
+            try:
+                parsed = int(value)
+                if parsed > 0:
+                    return parsed
+            except ValueError:
+                continue
+
+    return DEFAULT_DDS_BACKOFF_SECONDS
 
 
 def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
@@ -110,18 +192,220 @@ def make_processes(aaa_api, environment: str):
         return Processes_API(aaa_api, environment)
 
 
-def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: str) -> Optional[Dict[str, Any]]:
-    item_info = dds_api.get_item(collection, item_uuid)
-    if item_info is None:
-        click.echo(f"Item not found: collection={collection}, uuid={item_uuid}")
+def _normalize_status(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return "".join(ch for ch in str(value).upper() if ch.isalnum())
+
+
+def _extract_dds_status(item_info: Any) -> Optional[str]:
+    if not isinstance(item_info, dict):
         return None
 
-    if "download_url" not in item_info:
-        click.echo(f"Item has no download URL: collection={collection}, uuid={item_uuid}")
+    for key in ("status", "item_status", "itemStatus", "state"):
+        value = item_info.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+
+    props = item_info.get("properties")
+    if isinstance(props, dict):
+        for key in ("status", "item_status", "itemStatus", "state"):
+            value = props.get(key)
+            if value is not None and str(value).strip():
+                return str(value)
+
+    return None
+
+
+def _extract_dds_timestamp(item_info: Any) -> Optional[str]:
+    if not isinstance(item_info, dict):
         return None
 
-    dds_api.download_item(os.path.abspath(download_dir))
-    return item_info
+    for key in (
+        "last_update",
+        "lastUpdate",
+        "timestamp",
+        "updated",
+        "updated_at",
+        "date",
+        "datetime",
+    ):
+        value = item_info.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+
+    props = item_info.get("properties")
+    if isinstance(props, dict):
+        for key in (
+            "last_update",
+            "lastUpdate",
+            "timestamp",
+            "updated",
+            "updated_at",
+            "date",
+            "datetime",
+        ):
+            value = props.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+
+    return None
+
+
+def _append_dds_retry_item(retry_file: str, collection: str, item_uuid: str, status: str,
+                           timestamp: Optional[str] = None) -> None:
+    retry_path = os.path.abspath(retry_file)
+    normalized_collection = str(collection or "").strip().lower()
+    normalized_uuid = str(item_uuid or "").strip().lower()
+    normalized_status = _normalize_status(status)
+    resolved_timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    rows: List[Tuple[str, Any]] = []
+    duplicate_found = False
+
+    # Refresh timestamp for existing retry rows with same collection/uuid/status.
+    if os.path.exists(retry_path):
+        try:
+            with open(retry_path, "r", encoding="utf-8") as in_f:
+                for line in in_f:
+                    candidate = line.strip()
+                    if not candidate:
+                        rows.append(("raw", ""))
+                        continue
+                    try:
+                        row = json.loads(candidate)
+                    except json.JSONDecodeError:
+                        rows.append(("raw", candidate))
+                        continue
+
+                    if not isinstance(row, dict):
+                        rows.append(("raw", candidate))
+                        continue
+
+                    row_collection = str(row.get("collection", "")).strip().lower()
+                    row_uuid = str(
+                        row.get("uuid")
+                        or row.get("id")
+                        or row.get("item_id")
+                        or row.get("itemId")
+                        or ""
+                    ).strip().lower()
+                    row_status = _normalize_status(str(row.get("status", "")))
+
+                    if (
+                        row_collection == normalized_collection
+                        and row_uuid == normalized_uuid
+                        and row_status == normalized_status
+                    ):
+                        row["timestamp"] = resolved_timestamp
+                        row["status"] = status
+                        duplicate_found = True
+
+                    rows.append(("json", row))
+
+            if duplicate_found:
+                retry_dir = os.path.dirname(retry_path)
+                if retry_dir:
+                    os.makedirs(retry_dir, exist_ok=True)
+
+                with open(retry_path, "w", encoding="utf-8") as out_f:
+                    for row_type, row_value in rows:
+                        if row_type == "json":
+                            out_f.write(json.dumps(row_value, ensure_ascii=True) + "\n")
+                        elif row_value == "":
+                            out_f.write("\n")
+                        else:
+                            out_f.write(str(row_value) + "\n")
+
+                return
+        except Exception:
+            # If dedupe scan/update fails for any reason, continue and append.
+            pass
+
+    record = {
+        "collection": collection,
+        "uuid": item_uuid,
+        "status": status,
+        "timestamp": resolved_timestamp,
+    }
+
+    retry_dir = os.path.dirname(retry_path)
+    if retry_dir:
+        os.makedirs(retry_dir, exist_ok=True)
+
+    with open(retry_path, "a", encoding="utf-8") as out_f:
+        out_f.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+
+def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: str,
+                      queued_backoff_seconds: int = DEFAULT_DDS_BACKOFF_SECONDS,
+                      retry_file: str = DEFAULT_DDS_RETRY_FILE) -> Optional[Dict[str, Any]]:
+    waits = 0
+
+    while True:
+        item_info = dds_api.get_item(collection, item_uuid)
+        if item_info is None:
+            click.echo(f"Item not found: collection={collection}, uuid={item_uuid}")
+            return None
+
+        status_value = _extract_dds_status(item_info)
+        normalized_status = _normalize_status(status_value)
+
+        if normalized_status == "QUEUED":
+            if waits >= MAX_DDS_QUEUED_WAITS:
+                click.echo(
+                    f"Item remained Queued after {MAX_DDS_QUEUED_WAITS} wait(s): "
+                    f"collection={collection}, uuid={item_uuid}"
+                )
+                return None
+
+            waits += 1
+            click.echo(
+                f"DDS item Queued: collection={collection}, uuid={item_uuid}. "
+                f"Waiting {queued_backoff_seconds}s before retry ({waits}/{MAX_DDS_QUEUED_WAITS})..."
+            )
+            time.sleep(queued_backoff_seconds)
+            continue
+
+        if normalized_status in {"ITEMRESTORING", "ITEMSRESTORING"}:
+            restoring_timestamp = _extract_dds_timestamp(item_info)
+            retry_abs_path = os.path.abspath(retry_file)
+            retry_rel_path = os.path.relpath(retry_abs_path, os.getcwd())
+            retry_rel_path = os.path.normpath(retry_rel_path)
+            if not (retry_rel_path.startswith(".") or os.path.isabs(retry_rel_path)):
+                retry_rel_path = f".{os.sep}{retry_rel_path}"
+            _append_dds_retry_item(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status=status_value or "ItemRestoring",
+                timestamp=restoring_timestamp,
+            )
+            click.echo(
+                f"DDS item is {status_value or 'ItemRestoring'}; recorded for retry: "
+                f"collection={collection}, uuid={item_uuid}, file={retry_rel_path}"
+            )
+            click.echo(
+                "Retry with: "
+                f"py eodms_cli2.py download --dds-retry-file \"{retry_rel_path}\""
+            )
+            return {
+                "_dds_retry_logged": True,
+                "collection": collection,
+                "uuid": item_uuid,
+                "status": status_value or "ItemRestoring",
+                "timestamp": restoring_timestamp,
+            }
+
+        if "download_url" not in item_info:
+            click.echo(
+                f"Item has no download URL: collection={collection}, uuid={item_uuid}, "
+                f"status={status_value or 'unknown'}"
+            )
+            return None
+
+        dds_api.download_item(os.path.abspath(download_dir))
+        return item_info
 
 
 def _is_public_asset_collection(collection: str) -> bool:
@@ -204,18 +488,67 @@ def download_public_stac_assets(search_api, collection: str, item_uuid: str, dow
 def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
     try:
         with open(input_file, "r", encoding="utf-8") as src:
-            payload = json.load(src)
+            raw_text = src.read().strip()
     except Exception as exc:
-        raise click.ClickException(f"Failed to read input GeoJSON '{input_file}': {exc}")
+        raise click.ClickException(f"Failed to read input file '{input_file}': {exc}")
 
-    if not isinstance(payload, dict):
-        raise click.ClickException("Input file must contain a GeoJSON object.")
+    if not raw_text:
+        return []
 
-    features = payload.get("features")
-    if not isinstance(features, list):
-        raise click.ClickException("Input GeoJSON must contain a 'features' list.")
+    payload: Any = None
+    parsed_json = False
+    try:
+        payload = json.loads(raw_text)
+        parsed_json = True
+    except json.JSONDecodeError:
+        parsed_json = False
 
-    return [feature for feature in features if isinstance(feature, dict)]
+    if parsed_json:
+        if isinstance(payload, dict):
+            features = payload.get("features")
+            if isinstance(features, list):
+                return [feature for feature in features if isinstance(feature, dict)]
+
+            retry_items = payload.get("items")
+            if isinstance(retry_items, list):
+                return [item for item in retry_items if isinstance(item, dict)]
+
+            # Accept a single retry object (for example one JSONL line copied to .json)
+            # when it has an identifiable item UUID/id field.
+            if _extract_item_uuid(payload):
+                return [payload]
+
+            raise click.ClickException(
+                "Input JSON must be GeoJSON FeatureCollection ('features') "
+                "or retry JSON with an 'items' list (or a single item object with uuid/id)."
+            )
+
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+
+        raise click.ClickException("Input JSON must be an object or list.")
+
+    # Fallback: JSON lines support for retry files (one object per line).
+    items: List[Dict[str, Any]] = []
+    for idx, line in enumerate(raw_text.splitlines(), start=1):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        try:
+            parsed_line = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(
+                f"Invalid JSON line at {idx} in '{input_file}': {exc}"
+            )
+        if isinstance(parsed_line, dict):
+            items.append(parsed_line)
+
+    if items:
+        return items
+
+    raise click.ClickException(
+        "Input file must be GeoJSON, JSON retry records, or JSONL retry records."
+    )
 
 
 def parse_legacy_order_items(order_items: str) -> Tuple[List[str], List[str]]:
@@ -609,6 +942,8 @@ def search_cmd(
 ):
     """STAC geotemporal/queryables and GeoJSON output."""
 
+    username, password = resolve_credentials(username, password)
+
     bbox_list = parse_bbox(bbox)
 
     aaa_api = make_aaa(username, password, env)
@@ -809,6 +1144,8 @@ def order_st_cmd(
 ):
     """Processing Service for RADARDAT data; Level-1, SAR Toolbox, and ARD."""
 
+    username, password = resolve_credentials(username, password)
+
     aaa_api = make_aaa(username, password, env)
     proc_api = make_processes(aaa_api, env)
 
@@ -960,7 +1297,7 @@ def order_st_cmd(
 @click.option("--uuid", required=False, default=None,
               help="Download UUID directly via STAC assets (public collections) or DDS.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="GeoJSON file exported from search; downloads each feature result.")
+              help="Input file for download items (GeoJSON, JSON, or JSONL retry records).")
 @click.option("--collection", "-c", required=False, default=None,
               help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",
@@ -983,7 +1320,11 @@ def order_st_cmd(
               help="Destination directory for downloads.")
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
+@click.option("--dds-retry-file", required=False, default=DEFAULT_DDS_RETRY_FILE,
+              help="File used to append DDS ItemRestoring records for retry input.")
+@click.pass_context
 def download_available_cmd(
+    ctx: click.Context,
     username: Optional[str],
     password: Optional[str],
     uuid: Optional[str],
@@ -998,8 +1339,32 @@ def download_available_cmd(
     order_status: Optional[str],
     download_available: bool,
     download_dir: str,
+    dds_retry_file: str,
 ):
     """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
+
+    username, password = resolve_credentials(username, password)
+    dds_backoff_seconds = _load_dds_backoff_interval()
+
+    # If explicitly provided, allow --dds-retry-file to act as --input for retry runs.
+    dds_retry_file_provided = False
+    if hasattr(ctx, "get_parameter_source"):
+        try:
+            src = ctx.get_parameter_source("dds_retry_file")
+            param_source = getattr(click.core, "ParameterSource", None)
+            if param_source is not None and src == param_source.COMMANDLINE:
+                dds_retry_file_provided = True
+        except Exception:
+            dds_retry_file_provided = False
+
+    if not uuid and not input_file and dds_retry_file_provided:
+        retry_input_path = os.path.abspath(dds_retry_file)
+        if not os.path.exists(retry_input_path):
+            raise click.ClickException(
+                f"DDS retry file not found: {retry_input_path}"
+            )
+        click.echo(f"Using DDS retry input file: {retry_input_path}")
+        input_file = retry_input_path
 
     if uuid and input_file:
         raise click.ClickException("Use either --uuid or --input, not both.")
@@ -1007,7 +1372,7 @@ def download_available_cmd(
     if input_file:
         features = _load_download_items_from_geojson(input_file)
         if not features:
-            click.echo("No features found in input GeoJSON.")
+            click.echo("No items found in input file.")
             return
 
         aaa_api = make_aaa(username, password, env)
@@ -1019,8 +1384,9 @@ def download_available_cmd(
         skipped_count = 0
         asset_download_count = 0
         dds_download_count = 0
+        dds_retry_logged_count = 0
 
-        click.echo(f"Found {total_features} feature(s) in input file.")
+        click.echo(f"Found {total_features} item(s) in input file.")
         for feature in features:
             item_uuid = _extract_item_uuid(feature)
             item_collection = collection or feature.get("collection")
@@ -1029,7 +1395,7 @@ def download_available_cmd(
                 item_collection = feature.get("properties", {}).get("collection")
 
             if not item_uuid:
-                click.echo("Skipping feature with no UUID/id field.")
+                click.echo("Skipping item with no UUID/id field.")
                 skipped_count += 1
                 continue
 
@@ -1057,15 +1423,25 @@ def download_available_cmd(
             if dds_api is None:
                 dds_api = make_dds(aaa_api, env)
             click.echo(f"Downloading DDS item: collection={item_collection}, uuid={item_uuid}")
-            item_info = download_dds_item(dds_api, str(item_collection), item_uuid, download_dir)
-            if item_info is not None:
+            item_info = download_dds_item(
+                dds_api,
+                str(item_collection),
+                item_uuid,
+                download_dir,
+                queued_backoff_seconds=dds_backoff_seconds,
+                retry_file=dds_retry_file,
+            )
+            if isinstance(item_info, dict) and item_info.get("_dds_retry_logged"):
+                dds_retry_logged_count += 1
+            elif item_info is not None:
                 dds_download_count += 1
             processed_count += 1
 
         click.echo(
             "Input download summary: "
             f"processed_features={processed_count}, skipped_features={skipped_count}, "
-            f"public_assets_downloaded={asset_download_count}, dds_items_downloaded={dds_download_count}"
+            f"public_assets_downloaded={asset_download_count}, dds_items_downloaded={dds_download_count}, "
+            f"dds_retry_logged={dds_retry_logged_count}"
         )
         return
 
@@ -1090,7 +1466,14 @@ def download_available_cmd(
         aaa_api = make_aaa(username, password, env)
         dds_api = make_dds(aaa_api, env)
         click.echo(f"Downloading UUID: {uuid}")
-        download_dds_item(dds_api, collection, uuid, download_dir)
+        download_dds_item(
+            dds_api,
+            collection,
+            uuid,
+            download_dir,
+            queued_backoff_seconds=dds_backoff_seconds,
+            retry_file=dds_retry_file,
+        )
         return
 
     if not username or not password:
