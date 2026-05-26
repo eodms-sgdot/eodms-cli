@@ -11,7 +11,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from urllib.error import URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, unquote, urlsplit
 from urllib.request import urlopen
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -122,6 +122,83 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
 
     dds_api.download_item(os.path.abspath(download_dir))
     return item_info
+
+
+def _is_public_asset_collection(collection: str) -> bool:
+    normalized = str(collection or "").strip().lower()
+    return normalized in {"rcm-ard", "sentinel-1", "sentinel-2"}
+
+
+def _asset_filename(item_uuid: str, asset_name: str, href: str) -> str:
+    parsed = urlsplit(href)
+    file_name = os.path.basename(parsed.path)
+    file_name = unquote(file_name)
+    if file_name:
+        return file_name
+    return f"{item_uuid}_{asset_name}"
+
+
+def _unique_destination_path(destination_dir: str, file_name: str) -> str:
+    full_path = os.path.join(destination_dir, file_name)
+    if not os.path.exists(full_path):
+        return full_path
+
+    stem, ext = os.path.splitext(file_name)
+    idx = 1
+    while True:
+        candidate = os.path.join(destination_dir, f"{stem}_{idx}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        idx += 1
+
+
+def download_public_stac_assets(search_api, collection: str, item_uuid: str, download_dir: str) -> int:
+    item_info = search_api.get_item(collection, item_uuid)
+    if item_info is None:
+        click.echo(f"Item not found: collection={collection}, uuid={item_uuid}")
+        return 0
+
+    assets = item_info.get("assets") if isinstance(item_info, dict) else None
+    if not isinstance(assets, dict) or not assets:
+        click.echo(f"Item has no assets: collection={collection}, uuid={item_uuid}")
+        return 0
+
+    destination = os.path.abspath(download_dir)
+    os.makedirs(destination, exist_ok=True)
+
+    downloaded_count = 0
+    for asset_name, asset_obj in assets.items():
+        href = None
+        if isinstance(asset_obj, dict):
+            href = asset_obj.get("href")
+        elif isinstance(asset_obj, str):
+            href = asset_obj
+
+        if not href:
+            continue
+
+        out_name = _asset_filename(item_uuid, str(asset_name), str(href))
+        out_path = _unique_destination_path(destination, out_name)
+
+        click.echo(f"Downloading asset '{asset_name}'...")
+        try:
+            with urlopen(str(href)) as resp, open(out_path, "wb") as out_f:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out_f.write(chunk)
+        except Exception as exc:
+            click.echo(f"Failed to download asset '{asset_name}': {exc}")
+            continue
+
+        downloaded_count += 1
+        click.echo(f"Saved asset to {out_path}")
+
+    if downloaded_count == 0:
+        click.echo(f"No downloadable asset links found for collection={collection}, uuid={item_uuid}")
+
+    return downloaded_count
 
 
 def parse_legacy_order_items(order_items: str) -> Tuple[List[str], List[str]]:
@@ -245,6 +322,25 @@ def _extract_order_key(stac_item: Dict[str, Any]) -> Optional[str]:
         or props.get("orderKey")
         or props.get("Order Key")
     )
+
+
+def _extract_item_uuid(stac_item: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(stac_item, dict):
+        return None
+
+    for key in ("id", "uuid", "item_id", "itemId"):
+        value = stac_item.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+
+    props = stac_item.get("properties")
+    if isinstance(props, dict):
+        for key in ("uuid", "UUID", "id"):
+            value = props.get(key)
+            if value is not None and str(value).strip():
+                return str(value)
+
+    return None
 
 
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -621,6 +717,22 @@ def search_cmd(
 
     if output:
         save_items_geojson(items, output)
+        return
+
+    preview_uuids: List[str] = []
+    for item in items:
+        item_uuid = _extract_item_uuid(item)
+        if item_uuid:
+            preview_uuids.append(item_uuid)
+        if len(preview_uuids) == 5:
+            break
+
+    if preview_uuids:
+        click.echo("First 5 UUID(s):")
+        for item_uuid in preview_uuids:
+            click.echo(item_uuid)
+    else:
+        click.echo("No UUID values found in search results.")
 
 
 @cli.command("process")
@@ -826,12 +938,12 @@ def order_st_cmd(
 
 
 @cli.command("download")
-@click.option("--username", "-u", required=True, help="EODMS username.")
-@click.option("--password", "-p", required=True, help="EODMS password.")
+@click.option("--username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "-p", required=False, help="EODMS password.")
 @click.option("--uuid", required=False, default=None,
-              help="Download UUID directly via DDS.")
+              help="Download UUID directly via STAC assets (public collections) or DDS.")
 @click.option("--collection", "-c", required=False, default=None,
-              help="Collection for --uuid DDS download.")
+              help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",
               help='Environment for DDS download (default: "prod").')
 @click.option("--order-items", required=False, default=None,
@@ -853,8 +965,8 @@ def order_st_cmd(
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
 def download_available_cmd(
-    username: str,
-    password: str,
+    username: Optional[str],
+    password: Optional[str],
     uuid: Optional[str],
     collection: Optional[str],
     env: str,
@@ -867,17 +979,36 @@ def download_available_cmd(
     download_available: bool,
     download_dir: str,
 ):
-    """Data Delivery Service (DDS) Bulk downloads"""
+    """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
 
     if uuid:
         if not collection:
             raise click.ClickException("--collection is required when using --uuid.")
+
+        if _is_public_asset_collection(collection):
+            aaa_api = make_aaa(username, password, env)
+            search_api = make_search(aaa_api, env)
+            click.echo(f"Downloading all available STAC assets for UUID: {uuid}")
+            downloaded_count = download_public_stac_assets(search_api, collection, uuid, download_dir)
+            click.echo(f"Downloaded {downloaded_count} asset(s).")
+            return
+
+        if not username or not password:
+            raise click.ClickException(
+                "--username and --password are required for DDS UUID downloads "
+                "(non-public collections)."
+            )
 
         aaa_api = make_aaa(username, password, env)
         dds_api = make_dds(aaa_api, env)
         click.echo(f"Downloading UUID: {uuid}")
         download_dds_item(dds_api, collection, uuid, download_dir)
         return
+
+    if not username or not password:
+        raise click.ClickException(
+            "--username and --password are required for order listing/downloading."
+        )
 
     if not order_items and not list_orders and not download_available:
         raise click.ClickException(
