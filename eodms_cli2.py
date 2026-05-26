@@ -201,6 +201,23 @@ def download_public_stac_assets(search_api, collection: str, item_uuid: str, dow
     return downloaded_count
 
 
+def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
+    try:
+        with open(input_file, "r", encoding="utf-8") as src:
+            payload = json.load(src)
+    except Exception as exc:
+        raise click.ClickException(f"Failed to read input GeoJSON '{input_file}': {exc}")
+
+    if not isinstance(payload, dict):
+        raise click.ClickException("Input file must contain a GeoJSON object.")
+
+    features = payload.get("features")
+    if not isinstance(features, list):
+        raise click.ClickException("Input GeoJSON must contain a 'features' list.")
+
+    return [feature for feature in features if isinstance(feature, dict)]
+
+
 def parse_legacy_order_items(order_items: str) -> Tuple[List[str], List[str]]:
     """Parse legacy order-item selector syntax: order:id1,id2|item:id3,id4"""
     order_ids: List[str] = []
@@ -942,6 +959,8 @@ def order_st_cmd(
 @click.option("--password", "-p", required=False, help="EODMS password.")
 @click.option("--uuid", required=False, default=None,
               help="Download UUID directly via STAC assets (public collections) or DDS.")
+@click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
+              help="GeoJSON file exported from search; downloads each feature result.")
 @click.option("--collection", "-c", required=False, default=None,
               help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",
@@ -968,6 +987,7 @@ def download_available_cmd(
     username: Optional[str],
     password: Optional[str],
     uuid: Optional[str],
+    input_file: Optional[str],
     collection: Optional[str],
     env: str,
     order_items: Optional[str],
@@ -980,6 +1000,74 @@ def download_available_cmd(
     download_dir: str,
 ):
     """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
+
+    if uuid and input_file:
+        raise click.ClickException("Use either --uuid or --input, not both.")
+
+    if input_file:
+        features = _load_download_items_from_geojson(input_file)
+        if not features:
+            click.echo("No features found in input GeoJSON.")
+            return
+
+        aaa_api = make_aaa(username, password, env)
+        search_api = None
+        dds_api = None
+
+        total_features = len(features)
+        processed_count = 0
+        skipped_count = 0
+        asset_download_count = 0
+        dds_download_count = 0
+
+        click.echo(f"Found {total_features} feature(s) in input file.")
+        for feature in features:
+            item_uuid = _extract_item_uuid(feature)
+            item_collection = collection or feature.get("collection")
+
+            if not item_collection and isinstance(feature.get("properties"), dict):
+                item_collection = feature.get("properties", {}).get("collection")
+
+            if not item_uuid:
+                click.echo("Skipping feature with no UUID/id field.")
+                skipped_count += 1
+                continue
+
+            if not item_collection:
+                click.echo(f"Skipping uuid={item_uuid}: no collection on feature and no --collection override.")
+                skipped_count += 1
+                continue
+
+            if _is_public_asset_collection(str(item_collection)):
+                if search_api is None:
+                    search_api = make_search(aaa_api, env)
+                click.echo(f"Downloading public assets: collection={item_collection}, uuid={item_uuid}")
+                downloaded_assets = download_public_stac_assets(search_api, str(item_collection), item_uuid, download_dir)
+                asset_download_count += downloaded_assets
+                processed_count += 1
+                continue
+
+            if not username or not password:
+                click.echo(
+                    f"Skipping uuid={item_uuid} in collection={item_collection}: credentials required for DDS."
+                )
+                skipped_count += 1
+                continue
+
+            if dds_api is None:
+                dds_api = make_dds(aaa_api, env)
+            click.echo(f"Downloading DDS item: collection={item_collection}, uuid={item_uuid}")
+            item_info = download_dds_item(dds_api, str(item_collection), item_uuid, download_dir)
+            if item_info is not None:
+                dds_download_count += 1
+            processed_count += 1
+
+        click.echo(
+            "Input download summary: "
+            f"processed_features={processed_count}, skipped_features={skipped_count}, "
+            f"public_assets_downloaded={asset_download_count}, dds_items_downloaded={dds_download_count}"
+        )
+        return
 
     if uuid:
         if not collection:
