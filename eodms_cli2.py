@@ -13,6 +13,7 @@ import configparser
 import base64
 import binascii
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from urllib.error import URLError
 from urllib.parse import quote, urlencode, unquote, urlsplit
@@ -28,6 +29,7 @@ from eodms_rapi import EODMSRAPI, QueryError
 
 
 DEFAULT_DDS_BACKOFF_SECONDS = 60
+DEFAULT_DDS_CONCURRENT_DOWNLOADS = 10
 DEFAULT_DDS_RETRY_FILE = ".\\downloads\\dds_retry_items.jsonl"
 MAX_DDS_QUEUED_WAITS = 10
 
@@ -112,6 +114,47 @@ def _load_dds_backoff_interval(config_path: Optional[str] = None) -> int:
                 continue
 
     return DEFAULT_DDS_BACKOFF_SECONDS
+
+
+def _load_dds_concurrent_downloads(config_path: Optional[str] = None) -> int:
+    parser = _load_config_parser(config_path)
+    if parser is None or not parser.has_section("DDS"):
+        return DEFAULT_DDS_CONCURRENT_DOWNLOADS
+
+    if parser.has_option("DDS", "concurrent_downloads"):
+        value = parser.get("DDS", "concurrent_downloads").strip()
+        try:
+            parsed = int(value)
+            if parsed > 0:
+                return parsed
+        except ValueError:
+            pass
+
+    return DEFAULT_DDS_CONCURRENT_DOWNLOADS
+
+
+def _save_credentials_to_config(username: str, password: str,
+                                config_path: Optional[str] = None) -> str:
+    cfg_path = config_path or _default_config_path()
+    cfg_dir = os.path.dirname(cfg_path)
+    if cfg_dir:
+        os.makedirs(cfg_dir, exist_ok=True)
+
+    parser = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
+    if os.path.exists(cfg_path):
+        parser.read(cfg_path)
+
+    if not parser.has_section("Credentials"):
+        parser.add_section("Credentials")
+
+    parser.set("Credentials", "username", username)
+    encoded_password = base64.b64encode(password.encode("utf-8")).decode("utf-8")
+    parser.set("Credentials", "password", encoded_password)
+
+    with open(cfg_path, "w", encoding="utf-8") as cfg_file:
+        parser.write(cfg_file, space_around_delimiters=True)
+
+    return cfg_path
 
 
 def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
@@ -895,6 +938,18 @@ def cli():
     click.echo()
 
 
+@cli.command("configure")
+@click.option("--username", "username", "-u", required=True,
+              help="EODMS username to store in config.ini.")
+@click.option("--password", "password", "-p", required=True,
+              help="EODMS password to store in config.ini.")
+def configure_cmd(username: str, password: str):
+    """Save Credentials.username/password to %USERPROFILE%\\.eodms\\config.ini."""
+
+    cfg_path = _save_credentials_to_config(username=username, password=password)
+    click.echo(f"Saved credentials to {cfg_path}")
+
+
 @cli.command("search")
 @click.option("--username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "-p", required=False, help="EODMS password.")
@@ -1345,6 +1400,7 @@ def download_available_cmd(
 
     username, password = resolve_credentials(username, password)
     dds_backoff_seconds = _load_dds_backoff_interval()
+    dds_concurrent_downloads = _load_dds_concurrent_downloads()
 
     # If explicitly provided, allow --dds-retry-file to act as --input for retry runs.
     dds_retry_file_provided = False
@@ -1378,6 +1434,7 @@ def download_available_cmd(
         aaa_api = make_aaa(username, password, env)
         search_api = None
         dds_api = None
+        dds_work_items: List[Tuple[str, str]] = []
 
         total_features = len(features)
         processed_count = 0
@@ -1385,6 +1442,7 @@ def download_available_cmd(
         asset_download_count = 0
         dds_download_count = 0
         dds_retry_logged_count = 0
+        dds_no_download_count = 0
 
         click.echo(f"Found {total_features} item(s) in input file.")
         for feature in features:
@@ -1422,26 +1480,58 @@ def download_available_cmd(
 
             if dds_api is None:
                 dds_api = make_dds(aaa_api, env)
-            click.echo(f"Downloading DDS item: collection={item_collection}, uuid={item_uuid}")
-            item_info = download_dds_item(
-                dds_api,
-                str(item_collection),
-                item_uuid,
-                download_dir,
-                queued_backoff_seconds=dds_backoff_seconds,
-                retry_file=dds_retry_file,
+            dds_work_items.append((str(item_collection), item_uuid))
+
+        if dds_work_items:
+            click.echo(
+                f"Downloading {len(dds_work_items)} DDS item(s) with "
+                f"up to {dds_concurrent_downloads} concurrent worker(s)..."
             )
-            if isinstance(item_info, dict) and item_info.get("_dds_retry_logged"):
-                dds_retry_logged_count += 1
-            elif item_info is not None:
-                dds_download_count += 1
-            processed_count += 1
+
+            def _dds_worker(work_item: Tuple[str, str]) -> Optional[Dict[str, Any]]:
+                work_collection, work_uuid = work_item
+                click.echo(f"Downloading DDS item: collection={work_collection}, uuid={work_uuid}")
+                return download_dds_item(
+                    dds_api,
+                    work_collection,
+                    work_uuid,
+                    download_dir,
+                    queued_backoff_seconds=dds_backoff_seconds,
+                    retry_file=dds_retry_file,
+                )
+
+            with ThreadPoolExecutor(max_workers=dds_concurrent_downloads) as executor:
+                future_map = {
+                    executor.submit(_dds_worker, work_item): work_item
+                    for work_item in dds_work_items
+                }
+
+                for future in as_completed(future_map):
+                    work_collection, work_uuid = future_map[future]
+                    try:
+                        item_info = future.result()
+                    except Exception as exc:
+                        click.echo(
+                            f"DDS download failed: collection={work_collection}, "
+                            f"uuid={work_uuid}, error={exc}"
+                        )
+                        dds_no_download_count += 1
+                        continue
+
+                    if isinstance(item_info, dict) and item_info.get("_dds_retry_logged"):
+                        dds_retry_logged_count += 1
+                    elif item_info is not None:
+                        dds_download_count += 1
+                    else:
+                        dds_no_download_count += 1
+
+            processed_count += len(dds_work_items)
 
         click.echo(
             "Input download summary: "
             f"processed_features={processed_count}, skipped_features={skipped_count}, "
             f"public_assets_downloaded={asset_download_count}, dds_items_downloaded={dds_download_count}, "
-            f"dds_retry_logged={dds_retry_logged_count}"
+            f"dds_retry_logged={dds_retry_logged_count}, dds_not_downloaded={dds_no_download_count}"
         )
         return
 
