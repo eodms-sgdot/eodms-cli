@@ -11,7 +11,7 @@
 ##############################################################################
 
 __title__ = 'EODMS-CLI Tester'
-__author__ = 'Kevin Ballantyne'
+__author__ = 'EODMS'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
                 'as represented by the Minister of Natural Resources, 2023.'
 __license__ = 'MIT License'
@@ -93,7 +93,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Process 1")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '--collections', 'RCMImageProducts,Radarsat2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',
@@ -118,7 +118,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Process 2")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '-i', 'files/EODMS_Results.csv',
                    '-max', '4',
                    '-prc', 'order_csv',
@@ -137,7 +137,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Process 3")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '--collection', 'RCMImageProducts',
                    '--uuid', '13531983,13531917',
                    '-prc', 'uuid',
@@ -155,7 +155,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Process 4")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '-prc', 'download_restored_items',
                    '-i', 'files/20260216_155955_ItemsRestoring.json',
                    '-s']
@@ -171,7 +171,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Process 5")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '-st', 'files/sar_toolbox_request.json',
                    '-prc', 'order_st',
                    '-o', 'files/test5_output.geojson',
@@ -188,7 +188,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self._print_header("Search Only")
 
-        self.command = ["python", "../eodms_cli.py",
+        self.command = ["python", "../eodms_prompt.py",
                    '--collections', 'RCMImageProducts,Radarsat2',
                    '-d', '20190101-20220527',
                    '-i', 'files/NCR_AOI.geojson',

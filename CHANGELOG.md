@@ -76,11 +76,11 @@
 - Modified EODMS UI field mappings since they are now mapped in py-eodms-rapi
 - Added checks for specific collections which cannot be ordered/downloaded
 - Added new parameter to config file which can limit the number of times the script checks for orders that are AVAILABLE_FOR_DOWNLOAD (new parameter: download_attempts, default is blank meaning no limit)
-- Extended --configure options to allow for a single edit of a parameter in one command (ex: python eodms_cli.py --configure RAPI.download_attempts=10)
+- Extended --configure options to allow for a single edit of a parameter in one command (ex: python eodms_prompt.py --configure RAPI.download_attempts=10)
 
 ## 3.1.0 (2022-09-06)
 
-- Moved configuration 'gets' to separate methods in eodms_cli.py
+- Moved configuration 'gets' to separate methods in eodms_prompt.py
 - Added error check for 64base conversion of password
 - Removed CSV field option when running Process #2 and now automatically determines EODMS UI CSV results
 - For Process 4, added maximum number of downloads and the ability to list specific Order Ids and Order Item Ids

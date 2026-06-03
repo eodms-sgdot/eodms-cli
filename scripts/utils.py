@@ -1050,7 +1050,7 @@ class EodmsUtils:
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html. Once your account is ready, you can " \
-                    "run 'python eodms_cli.py --configure credentials' to " \
+                    "run 'python eodms_prompt.py --configure credentials' to " \
                     "add your new credentials to the configuration file."
             else:
                 msg = "Failed to retrieve a list of available collections."
@@ -2261,7 +2261,7 @@ class EodmsProcess(EodmsUtils):
             if isinstance(aoi, str) and os.path.exists(aoi):
                 # Parse the AOI file
                 try:
-                    from eodms_cli import parse_aoi_file
+                    from eodms_prompt import parse_aoi_file
                     aoi_list = parse_aoi_file(aoi)
                     if aoi_list and len(aoi_list) > 1:
                         multiple_aois = True

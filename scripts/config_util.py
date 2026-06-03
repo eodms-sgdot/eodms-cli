@@ -178,7 +178,7 @@ class ConfigUtils:
 
         if in_sect == '-h':
             print(f"""
-Usage: eodms_cli.py --configure [OPTIONS]
+Usage: eodms_prompt.py --configure [OPTIONS]
             
     Sets the parameters in the configuration file
     

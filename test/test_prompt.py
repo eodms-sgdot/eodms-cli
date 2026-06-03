@@ -27,7 +27,7 @@ import click
 
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 
-import eodms_cli
+import eodms_prompt as eodms_cli
 from scripts import config_util
 from scripts import utils as eod_util
 

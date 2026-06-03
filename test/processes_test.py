@@ -11,6 +11,11 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from eodms import AAA_API, Processes_API
+from eodms.errors import ProcessingError
+from wrapper_logging import configure_wrapper_logging
+
+
+configure_wrapper_logging()
 
 
 def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]:
@@ -359,6 +364,9 @@ def cli(
         )
     except click.UsageError:
         raise
+    except ProcessingError as e:
+        click.echo(f"Service error: {e}", err=True)
+        raise SystemExit(2)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
