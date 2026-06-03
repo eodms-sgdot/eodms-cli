@@ -100,6 +100,10 @@ class ConfigUtils:
                             "DDS":
                                 {"# Number of concurrent downloads for the DDS": None,
                                  "concurrent_downloads": '10'
+                                },
+                            "Logging":
+                                {"# Python strftime format used for log timestamps": None,
+                                 "datefmt": "%Y-%m-%d %H:%M:%S"
                                 }
                             }
 

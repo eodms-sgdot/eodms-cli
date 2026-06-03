@@ -10,13 +10,13 @@
 # 
 ##############################################################################
 
-__title__ = 'EODMS-CLI'
+__title__ = 'eodms_prompt'
 __author__ = 'EODMS'
 __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
                 'as represented by the Minister of Natural Resources, 2026'
 __license__ = 'MIT License'
-__description__ = 'Script used to search, order and download imagery from ' \
-                  'the EODMS using the REST API (RAPI) service and DDS API service.'
+__description__ = 'Script with prompts used to search, order and download imagery from ' \
+                  'the EODMS'
 __version__ = '4.1.2'
 __maintainer__ = 'EODMS'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
@@ -96,6 +96,43 @@ proc_choices = {'full': {
             }
 
 min_rapi_version = '1.6.0'
+
+_PROMPT_PRINT_ORIGINAL = print
+
+
+def _infer_prompt_log_level(message: str, file_target=None) -> int:
+    if file_target is sys.stderr:
+        return logging.ERROR
+
+    text = str(message or '').lower()
+    if any(token in text for token in ('error', 'failed', 'exception', 'traceback')):
+        return logging.ERROR
+    if any(token in text for token in ('warning', 'deprecated', 'not found', 'invalid', 'staging')):
+        return logging.WARNING
+    if 'for testing' in text:
+        return logging.DEBUG
+    return logging.INFO
+
+
+def print(*args, **kwargs):
+    level = kwargs.pop('level', None)
+    sep = kwargs.get('sep', ' ')
+    file_target = kwargs.get('file', None)
+
+    _PROMPT_PRINT_ORIGINAL(*args, **kwargs)
+
+    text = sep.join(str(part) for part in args)
+    if not text.strip():
+        return
+
+    # Avoid noisy log entries that only contain ANSI color escape sequences.
+    plain_text = re.sub(r'\x1b\[[0-9;]*m', '', text).strip()
+    if not plain_text:
+        return
+
+    logger = logging.getLogger('eodms')
+    log_level = level if level is not None else _infer_prompt_log_level(plain_text, file_target=file_target)
+    logger.log(log_level, plain_text)
 
 def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
     """
@@ -1754,6 +1791,34 @@ output_help += "Shapefile: The output will be ESRI Shapefile (requires GDAL " \
                 "Python package) (use extension .shp)"
 
 abs_path = os.path.abspath(__file__)
+PROMPT_DEFAULT_LOG_NAME = 'eodms_prompt.log'
+PROMPT_DEFAULT_LOG_DATEFMT = '%Y-%m-%d %H:%M:%S'
+
+
+def _resolve_prompt_log_path(raw_log_path):
+    base_dir = os.path.dirname(abs_path)
+    log_path = raw_log_path or ''
+
+    if log_path == '':
+        return os.path.join(base_dir, 'log', PROMPT_DEFAULT_LOG_NAME)
+
+    if not os.path.isabs(log_path):
+        log_path = os.path.join(base_dir, log_path)
+
+    if os.path.isdir(log_path):
+        return os.path.join(log_path, PROMPT_DEFAULT_LOG_NAME)
+
+    # Preserve explicit custom filenames, but migrate legacy/shared names
+    # so prompt and CLI logs can remain separated.
+    if os.path.basename(log_path).lower() in {
+        'logger.log',
+        'prompt.log',
+        'cli.log',
+        'eodms_cli.log',
+    }:
+        return os.path.join(os.path.dirname(log_path), PROMPT_DEFAULT_LOG_NAME)
+
+    return log_path
 
 def get_configuration_values(config_util, download_path):
 
@@ -1780,13 +1845,12 @@ def get_configuration_values(config_util, download_path):
     config_params['res_path'] = res_path
 
     log_path = config_util.get('Paths', 'log')
-    if log_path == '':
-        log_path = os.path.join(os.path.dirname(abs_path), 'log',
-                               'logger.log')
-    elif not os.path.isabs(log_path):
-        log_path = os.path.join(os.path.dirname(abs_path),
-                               log_path)
-    config_params['log_path'] = log_path
+    config_params['log_path'] = _resolve_prompt_log_path(log_path)
+
+    log_datefmt = config_util.get('Logging', 'datefmt')
+    if log_datefmt == '':
+        log_datefmt = PROMPT_DEFAULT_LOG_DATEFMT
+    config_params['log_datefmt'] = log_datefmt
 
     # Set the timeout values
     timeout_query = config_util.get('RAPI', 'timeout_query')
@@ -1841,18 +1905,40 @@ def get_latest_version():
 
     return latest_version
 
-def setup_logger(log_name, log_path):
+def setup_logger(log_name, log_path, level=logging.DEBUG,
+                 datefmt=PROMPT_DEFAULT_LOG_DATEFMT):
+
+    pathlib.Path(os.path.dirname(log_path)).mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger(log_name)
+    logger.setLevel(level)
+    logger.propagate = False
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - '
                                     '%(message)s',
-                                    datefmt='%Y-%m-%d %I:%M:%S %p')
-    log_handler = handlers.RotatingFileHandler(log_path, maxBytes=500000,
-                                                backupCount=2)
-    log_handler.setLevel(logging.DEBUG)
-    log_handler.setFormatter(formatter)
-    logger.addHandler(log_handler)
+                                    datefmt=datefmt)
+
+    target_path = os.path.abspath(log_path)
+    existing_handler = None
+    for handler in logger.handlers:
+        if isinstance(handler, handlers.RotatingFileHandler):
+            existing_path = getattr(handler, 'baseFilename', None)
+            if existing_path and os.path.abspath(existing_path) == target_path:
+                existing_handler = handler
+                break
+
+    if existing_handler is None:
+        log_handler = handlers.RotatingFileHandler(
+            target_path,
+            maxBytes=500000,
+            backupCount=2,
+            encoding='utf-8'
+        )
+        logger.addHandler(log_handler)
+        existing_handler = log_handler
+
+    existing_handler.setLevel(level)
+    existing_handler.setFormatter(formatter)
 
     return logger
 
@@ -1969,7 +2055,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
     order_check_date = config_params['order_check_date']
     download_attempts = config_params['download_attempts']
     concurrent_downloads = config_params['concurrent_downloads']
+    log_datefmt = config_params['log_datefmt']
 
+    logger = setup_logger('eodms', log_path, datefmt=log_datefmt)
 
     eodms_domain = os.getenv('EODMS_STAGING_DOMAIN')
 
@@ -2011,7 +2099,7 @@ def cli(username, password, input_val, collections, process, filters, dates,
     start_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
 
     eod = None
-    logger = None
+    logger = logging.getLogger('eodms')
 
     try:
 
@@ -2041,16 +2129,6 @@ def cli(username, password, input_val, collections, process, filters, dates,
         reset = eod_util.EodmsProcess(colourize=colourize).reset_colour
         print(f"\nImages will be downloaded to " \
             f"'{fn_col}{download_path}{reset}'.")
-
-        if not os.path.exists(os.path.dirname(log_path)):
-            pathlib.Path(os.path.dirname(log_path)).mkdir(
-                parents=True, exist_ok=True)
-            
-        # Setup logging for the RAPI Python package to print to .log file
-        logger = setup_logger('EODMSRAPI', log_path)
-
-        # Setup logging for the DDS Python package to print to .log file
-        setup_logger('eodms_dds', log_path)
 
         logger.info(f"Script start time: {start_str}")
 

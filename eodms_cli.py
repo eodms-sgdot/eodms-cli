@@ -1,4 +1,4 @@
-"""EODMS CLI v2 (non-interactive) focused on eodms-py STAC/DDS workflows.
+"""eodms_cli (non-interactive) focused on eodms-py STAC/DDS workflows.
 
 This module provides the current command-driven CLI entrypoint with three
 core flows:
@@ -14,6 +14,8 @@ import os
 import configparser
 import base64
 import binascii
+import logging
+import logging.handlers as handlers
 import time
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -42,6 +44,12 @@ DEFAULT_DDS_BACKOFF_SECONDS = 60
 DEFAULT_DDS_CONCURRENT_DOWNLOADS = 10
 DEFAULT_DDS_RETRY_FILE = ".\\downloads\\dds_retry_items.jsonl"
 MAX_DDS_QUEUED_WAITS = 10
+CLI_DEFAULT_LOG_NAME = "eodms_cli.log"
+CLI_DEFAULT_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+_CLI_LOG_INITIALIZED = False
+_CLI_LOG_PATH: Optional[str] = None
+_CLI_LOG_DATEFMT = CLI_DEFAULT_LOG_DATEFMT
 
 
 class OrderedHelpGroup(click.Group):
@@ -63,6 +71,7 @@ def handle_service_errors(func):
         try:
             return func(*args, **kwargs)
         except EODMS_SERVICE_ERRORS as exc:
+            logging.getLogger("eodms_cli").error("Service error: %s", exc)
             raise ServiceError(f"Service error: {exc}") from exc
 
     return wrapper
@@ -81,6 +90,158 @@ def _load_config_parser(config_path: Optional[str] = None) -> Optional[configpar
     parser = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
     parser.read(cfg_path)
     return parser
+
+
+def _resolve_cli_log_path(raw_log_path: Optional[str]) -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_path = (raw_log_path or "").strip()
+
+    if not log_path:
+        return os.path.join(base_dir, "log", CLI_DEFAULT_LOG_NAME)
+
+    if not os.path.isabs(log_path):
+        log_path = os.path.join(base_dir, log_path)
+
+    if os.path.isdir(log_path):
+        return os.path.join(log_path, CLI_DEFAULT_LOG_NAME)
+
+    # Keep prompt and CLI logs separated when an old shared filename is used.
+    if os.path.basename(log_path).lower() in {
+        "logger.log",
+        "prompt.log",
+        "cli.log",
+        "eodms_prompt.log",
+    }:
+        return os.path.join(os.path.dirname(log_path), CLI_DEFAULT_LOG_NAME)
+
+    return log_path
+
+
+def _load_cli_log_path(config_path: Optional[str] = None) -> str:
+    parser = _load_config_parser(config_path)
+    raw_log_path: Optional[str] = None
+
+    if parser is not None and parser.has_section("Paths") and parser.has_option("Paths", "log"):
+        raw_log_path = parser.get("Paths", "log")
+
+    return _resolve_cli_log_path(raw_log_path)
+
+
+def _load_cli_log_datefmt(config_path: Optional[str] = None) -> str:
+    parser = _load_config_parser(config_path)
+    if parser is None or not parser.has_section("Logging"):
+        return CLI_DEFAULT_LOG_DATEFMT
+
+    if parser.has_option("Logging", "datefmt"):
+        value = parser.get("Logging", "datefmt").strip()
+        if value:
+            return value
+
+    return CLI_DEFAULT_LOG_DATEFMT
+
+
+def _setup_file_logger(log_name: str, log_path: str, level: int = logging.DEBUG,
+                       datefmt: str = CLI_DEFAULT_LOG_DATEFMT) -> logging.Logger:
+    logger = logging.getLogger(log_name)
+    logger.setLevel(level)
+    logger.propagate = False
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s",
+        datefmt=datefmt,
+    )
+
+    target_path = os.path.abspath(log_path)
+    log_dir = os.path.dirname(target_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    existing_handler = None
+    for handler in list(logger.handlers):
+        if isinstance(handler, handlers.RotatingFileHandler):
+            existing_path = getattr(handler, "baseFilename", None)
+            if existing_path and os.path.abspath(existing_path) == target_path:
+                existing_handler = handler
+            else:
+                logger.removeHandler(handler)
+                handler.close()
+
+    if existing_handler is None:
+        existing_handler = handlers.RotatingFileHandler(
+            target_path,
+            maxBytes=500000,
+            backupCount=2,
+            encoding="utf-8",
+        )
+        logger.addHandler(existing_handler)
+
+    existing_handler.setLevel(level)
+    existing_handler.setFormatter(formatter)
+    return logger
+
+
+def _setup_package_logger(log_path: str, level: int = logging.INFO,
+                          datefmt: str = CLI_DEFAULT_LOG_DATEFMT) -> None:
+    package_logger = logging.getLogger("eodms")
+    package_logger.setLevel(level)
+    package_logger.propagate = False
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt=datefmt,
+    )
+
+    target_path = os.path.abspath(log_path)
+    log_dir = os.path.dirname(target_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+
+    file_handler = None
+    stream_handler = None
+    for handler in list(package_logger.handlers):
+        if isinstance(handler, handlers.RotatingFileHandler):
+            existing_path = getattr(handler, "baseFilename", None)
+            if existing_path and os.path.abspath(existing_path) == target_path:
+                file_handler = handler
+            else:
+                package_logger.removeHandler(handler)
+                handler.close()
+        elif isinstance(handler, logging.StreamHandler) and not isinstance(handler, handlers.RotatingFileHandler):
+            stream_handler = handler
+        elif isinstance(handler, logging.NullHandler):
+            package_logger.removeHandler(handler)
+
+    if file_handler is None:
+        file_handler = handlers.RotatingFileHandler(
+            target_path,
+            maxBytes=500000,
+            backupCount=2,
+            encoding="utf-8",
+        )
+        package_logger.addHandler(file_handler)
+
+    if stream_handler is None:
+        stream_handler = logging.StreamHandler()
+        package_logger.addHandler(stream_handler)
+
+    file_handler.setLevel(level)
+    file_handler.setFormatter(formatter)
+    stream_handler.setLevel(level)
+    stream_handler.setFormatter(formatter)
+
+
+def _initialize_cli_logging() -> None:
+    global _CLI_LOG_INITIALIZED, _CLI_LOG_PATH, _CLI_LOG_DATEFMT
+    if _CLI_LOG_INITIALIZED:
+        return
+
+    _CLI_LOG_PATH = _load_cli_log_path()
+    _CLI_LOG_DATEFMT = _load_cli_log_datefmt()
+    _setup_file_logger("eodms_cli", _CLI_LOG_PATH, datefmt=_CLI_LOG_DATEFMT)
+    _setup_package_logger(_CLI_LOG_PATH, datefmt=_CLI_LOG_DATEFMT)
+
+    logging.getLogger("eodms_cli").info("CLI start time: %s", datetime.now().strftime(_CLI_LOG_DATEFMT))
+    _CLI_LOG_INITIALIZED = True
 
 
 def _decode_config_password(raw_password: str) -> str:
@@ -960,16 +1121,38 @@ def _build_sample_payload(process_id: str, process_json: Dict[str, Any]) -> Dict
 @click.group(cls=OrderedHelpGroup, context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
     """EODMS CLI v2: STAC/DDS-first, non-interactive with minimal legacy ports."""
+    try:
+        _initialize_cli_logging()
+    except Exception as exc:
+        click.echo(f"Warning: failed to initialize CLI file logging: {exc}")
     click.echo()
 
 
 @cli.command("configure")
-@click.option("--username", "username", "-u", required=True,
+@click.option("--username", "username", "-u", required=False,
               help="EODMS username to store in config.ini.")
-@click.option("--password", "password", "-p", required=True,
+@click.option("--password", "password", "-p", required=False,
               help="EODMS password to store in config.ini.")
-def configure_cmd(username: str, password: str):
+@click.option("--show", "show_config", is_flag=True,
+              help="Print the current config.ini file and exit.")
+def configure_cmd(username: Optional[str], password: Optional[str], show_config: bool):
     """Save Credentials.username/password to %USERPROFILE%\\.eodms\\config.ini."""
+
+    cfg_path = _default_config_path()
+
+    if show_config:
+        if username or password:
+            raise click.ClickException("--show cannot be combined with --username or --password.")
+
+        if not os.path.exists(cfg_path):
+            raise click.ClickException(f"Config file not found: {cfg_path}")
+
+        with open(cfg_path, "r", encoding="utf-8") as cfg_file:
+            click.echo(cfg_file.read().rstrip())
+        return
+
+    if not username or not password:
+        raise click.ClickException("--username and --password are required unless --show is used.")
 
     cfg_path = _save_credentials_to_config(username=username, password=password)
     click.echo(f"Saved credentials to {cfg_path}")
@@ -1031,21 +1214,7 @@ def search_cmd(
 
     if list_collections:
         search_api = make_search(aaa_api, env)
-        collections = []
-        for coll in search_api.client.get_collections():
-            coll_title = getattr(coll, "title", None) or coll.id
-            collections.append((coll.id, coll_title))
-
-        if not collections:
-            click.echo("No collections found.")
-            return
-
-        click.echo(f"Found {len(collections)} collection(s):")
-        for coll_id, coll_title in collections:
-            if coll_title == coll_id:
-                click.echo(f"- {coll_id}")
-            else:
-                click.echo(f"- {coll_id}: {coll_title}")
+        search_api.print_collections()
         return
 
     if uuid2record:
