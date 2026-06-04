@@ -16,6 +16,7 @@ import binascii
 import logging
 import logging.handlers as handlers
 import time
+import threading
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -55,6 +56,8 @@ _CLI_LOG_LEVEL = CLI_DEFAULT_LOG_LEVEL
 _SEARCH_UA_PATCHED = False
 _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = "2026.06.03"
+_SPINNER_FRAMES = ("|", "/", "-", "\\")
+_SPINNER_WRITE_LOCK = threading.Lock()
 
 
 class OrderedHelpGroup(click.Group):
@@ -286,22 +289,15 @@ def _decode_config_password(raw_password: str) -> str:
 def _load_credentials_from_config(config_path: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
     cfg = _load_config_utils(config_path)
 
-    username = None
+    username = str(cfg.get("Credentials", "username") or "").strip() or None
+
+    encoded = str(cfg.get("Credentials", "password") or "").strip()
     password = None
-
-    for section in ("Credentials", "RAPI"):
-        if username is None:
-            candidate = str(cfg.get(section, "username") or "").strip()
-            if candidate:
-                username = candidate
-
-        if password is None:
-            encoded = str(cfg.get(section, "password") or "").strip()
-            if encoded:
-                try:
-                    password = _decode_config_password(encoded)
-                except Exception:
-                    password = encoded
+    if encoded:
+        try:
+            password = _decode_config_password(encoded)
+        except Exception:
+            password = encoded
 
     return username, password
 
@@ -577,6 +573,31 @@ def _append_dds_retry_item(retry_file: str, collection: str, item_uuid: str, sta
         out_f.write(json.dumps(record, ensure_ascii=True) + "\n")
 
 
+def _spinner_backoff_wait(wait_seconds: int, label: str) -> None:
+    remaining = int(wait_seconds)
+    if remaining <= 0:
+        return
+
+    start = time.monotonic()
+    frame_idx = 0
+
+    while True:
+        elapsed = time.monotonic() - start
+        remaining = int(max(0, wait_seconds - elapsed + 0.999))
+        if remaining <= 0:
+            break
+
+        frame = _SPINNER_FRAMES[frame_idx % len(_SPINNER_FRAMES)]
+        with _SPINNER_WRITE_LOCK:
+            click.echo(f"\r{label} {frame} {remaining}s remaining", nl=False)
+
+        frame_idx += 1
+        time.sleep(0.2)
+
+    with _SPINNER_WRITE_LOCK:
+        click.echo(f"\r{label} done.{' ' * 20}")
+
+
 def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: str,
                       queued_backoff_seconds: int = DEFAULT_DDS_BACKOFF_SECONDS,
                       retry_file: str = DEFAULT_DDS_RETRY_FILE) -> Optional[Dict[str, Any]]:
@@ -604,7 +625,10 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 f"DDS item Queued: collection={collection}, uuid={item_uuid}. "
                 f"Waiting {queued_backoff_seconds}s before retry ({waits}/{MAX_DDS_QUEUED_WAITS})..."
             )
-            time.sleep(queued_backoff_seconds)
+            _spinner_backoff_wait(
+                queued_backoff_seconds,
+                f"Backoff wait ({waits}/{MAX_DDS_QUEUED_WAITS}) for {item_uuid}:",
+            )
             continue
 
         if normalized_status in {"ITEMRESTORING", "ITEMSRESTORING"}:
@@ -1158,6 +1182,8 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
         if not os.path.exists(cfg_path):
             raise click.ClickException(f"Config file not found: {cfg_path}")
 
+        click.echo(f"Config file: {cfg_path}")
+        click.echo()
         with open(cfg_path, "r", encoding="utf-8") as cfg_file:
             click.echo(cfg_file.read().rstrip())
         return

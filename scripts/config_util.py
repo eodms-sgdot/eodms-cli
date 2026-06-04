@@ -74,19 +74,13 @@ class ConfigUtils:
                                  "colourize": 'True'},
                             "Credentials":
                                 {"# Username of the eodms account used to "
-                                 "access the rapi": None,
+                                 "access search/process/download/rapi": None,
                                  "username": '',
                                  "# Password of the eodms account used to "
-                                 "access the rapi": None,
+                                 "access search/process/download/rapi": None,
                                  "password": ''},
                             "RAPI":
-                                {"# Username of the eodms account used to "
-                                 "access the rapi (legacy fallback)": None,
-                                 "username": '',
-                                 "# Password of the eodms account used to "
-                                 "access the rapi (legacy fallback)": None,
-                                 "password": '',
-                                 "# Number of attempts made to the rapi when "
+                                {"# Number of attempts made to the rapi when "
                                  "a timeout occurs": None,
                                  "access_attempts": '4',
                                  "# Maximum number of results to return from "
@@ -354,15 +348,13 @@ Options:
         self._set_dict('Script', 'Script', 'keep_downloads')
         self._set_dict('Script', 'Script', 'colourize')
 
-        cr = ['Credentials', 'RAPI']  # For backwards compatibility
+        cr = ['Credentials', 'RAPI']  # For backwards compatibility (legacy creds)
         self._set_dict('Credentials', cr, 'username')
         self._set_dict('Credentials', cr, 'password')
 
         sr = ['Script', 'RAPI']  # For backwards compatibility
         self._set_dict('RAPI', 'RAPI', 'access_attempts')
         self._set_dict('RAPI', 'RAPI', 'max_results')
-        self._set_dict('RAPI', 'RAPI', 'username')
-        self._set_dict('RAPI', 'RAPI', 'password')
         self._set_dict('RAPI', sr, 'timeout_query')
         self._set_dict('RAPI', sr, 'timeout_order')
         self._set_dict('RAPI', 'RAPI', 'order_check_date')
