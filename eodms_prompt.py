@@ -1793,6 +1793,7 @@ output_help += "Shapefile: The output will be ESRI Shapefile (requires GDAL " \
 abs_path = os.path.abspath(__file__)
 PROMPT_DEFAULT_LOG_NAME = 'eodms_prompt.log'
 PROMPT_DEFAULT_LOG_DATEFMT = '%Y-%m-%d %H:%M:%S'
+PROMPT_DEFAULT_LOG_LEVEL = logging.DEBUG
 
 
 def _resolve_prompt_log_path(raw_log_path):
@@ -1819,6 +1820,7 @@ def _resolve_prompt_log_path(raw_log_path):
         return os.path.join(os.path.dirname(log_path), PROMPT_DEFAULT_LOG_NAME)
 
     return log_path
+
 
 def get_configuration_values(config_util, download_path):
 
@@ -1847,10 +1849,12 @@ def get_configuration_values(config_util, download_path):
     log_path = config_util.get('Paths', 'log')
     config_params['log_path'] = _resolve_prompt_log_path(log_path)
 
-    log_datefmt = config_util.get('Logging', 'datefmt')
-    if log_datefmt == '':
-        log_datefmt = PROMPT_DEFAULT_LOG_DATEFMT
-    config_params['log_datefmt'] = log_datefmt
+    config_params['log_datefmt'] = config_util.get_logging_datefmt(
+        PROMPT_DEFAULT_LOG_DATEFMT
+    )
+    config_params['log_level'] = config_util.get_logging_level(
+        PROMPT_DEFAULT_LOG_LEVEL
+    )
 
     # Set the timeout values
     timeout_query = config_util.get('RAPI', 'timeout_query')
@@ -1905,7 +1909,7 @@ def get_latest_version():
 
     return latest_version
 
-def setup_logger(log_name, log_path, level=logging.DEBUG,
+def setup_logger(log_name, log_path, level=PROMPT_DEFAULT_LOG_LEVEL,
                  datefmt=PROMPT_DEFAULT_LOG_DATEFMT):
 
     pathlib.Path(os.path.dirname(log_path)).mkdir(parents=True, exist_ok=True)
@@ -2056,8 +2060,9 @@ def cli(username, password, input_val, collections, process, filters, dates,
     download_attempts = config_params['download_attempts']
     concurrent_downloads = config_params['concurrent_downloads']
     log_datefmt = config_params['log_datefmt']
+    log_level = config_params['log_level']
 
-    logger = setup_logger('eodms', log_path, datefmt=log_datefmt)
+    logger = setup_logger('eodms', log_path, level=log_level, datefmt=log_datefmt)
 
     eodms_domain = os.getenv('EODMS_STAGING_DOMAIN')
 

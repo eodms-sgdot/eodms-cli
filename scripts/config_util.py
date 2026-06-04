@@ -20,13 +20,17 @@ import logging
 
 class ConfigUtils:
 
-    def __init__(self, eod=None):
+    def __init__(self, eod=None, config_path=None):
         # Set the configuration filepath
         old_config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'eodmscli_config.ini')
 
-        self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-                                      'config.ini')
+        self.config_fn = config_path or os.path.join(
+            os.sep,
+            os.path.expanduser('~'),
+            '.eodms',
+            'config.ini',
+        )
         self.eod = eod
 
         if os.path.exists(old_config_fn):
@@ -37,7 +41,8 @@ class ConfigUtils:
 
         # Create configparser
         self.config_info = configparser.ConfigParser(comment_prefixes='/',
-                                                     allow_no_value=True)
+                                                     allow_no_value=True,
+                                                     interpolation=None)
 
         self.logger = logging.getLogger('eodms')
 
@@ -75,7 +80,13 @@ class ConfigUtils:
                                  "access the rapi": None,
                                  "password": ''},
                             "RAPI":
-                                {"# Number of attempts made to the rapi when "
+                                {"# Username of the eodms account used to "
+                                 "access the rapi (legacy fallback)": None,
+                                 "username": '',
+                                 "# Password of the eodms account used to "
+                                 "access the rapi (legacy fallback)": None,
+                                 "password": '',
+                                 "# Number of attempts made to the rapi when "
                                  "a timeout occurs": None,
                                  "access_attempts": '4',
                                  "# Maximum number of results to return from "
@@ -99,10 +110,16 @@ class ConfigUtils:
                                  },
                             "DDS":
                                 {"# Number of concurrent downloads for the DDS": None,
-                                 "concurrent_downloads": '10'
+                                 "concurrent_downloads": '10',
+                                 "# Backoff wait in seconds between queued DDS poll attempts": None,
+                                 "backoff_interval": '60',
+                                 "# Legacy alias recognized for backoff_interval": None,
+                                 "back_interval": '60'
                                 },
                             "Logging":
-                                {"# Python strftime format used for log timestamps": None,
+                                {"# Logging threshold (DEBUG, INFO, WARNING, ERROR, CRITICAL or numeric)": None,
+                                 "level": "INFO",
+                                 "# Python strftime format used for log timestamps": None,
                                  "datefmt": "%Y-%m-%d %H:%M:%S"
                                 }
                             }
@@ -268,6 +285,42 @@ Options:
             if option in self.config_dict[section].keys():
                 return self.config_dict[section][option]
 
+    @staticmethod
+    def parse_log_level(raw_level, default_level=logging.INFO):
+        """Parse a logging level name/number from config text."""
+        if raw_level is None:
+            return default_level
+
+        level_text = str(raw_level).strip()
+        if level_text == '':
+            return default_level
+
+        if level_text.isdigit():
+            return int(level_text)
+
+        level_name = level_text.upper()
+        mapped = getattr(logging, level_name, None)
+        if isinstance(mapped, int):
+            return mapped
+
+        return default_level
+
+    def get_logging_level(self, default_level=logging.INFO):
+        """Return configured logging level with default fallback."""
+        return self.parse_log_level(self.get('Logging', 'level'), default_level)
+
+    def get_logging_datefmt(self, default_datefmt):
+        """Return configured logging datefmt with default fallback."""
+        datefmt = self.get('Logging', 'datefmt')
+        if datefmt is None:
+            return default_datefmt
+
+        datefmt_text = str(datefmt).strip()
+        if datefmt_text == '':
+            return default_datefmt
+
+        return datefmt_text
+
     def set(self, section, option, value):
         """
         Sets a value in the config_dict
@@ -308,6 +361,8 @@ Options:
         sr = ['Script', 'RAPI']  # For backwards compatibility
         self._set_dict('RAPI', 'RAPI', 'access_attempts')
         self._set_dict('RAPI', 'RAPI', 'max_results')
+        self._set_dict('RAPI', 'RAPI', 'username')
+        self._set_dict('RAPI', 'RAPI', 'password')
         self._set_dict('RAPI', sr, 'timeout_query')
         self._set_dict('RAPI', sr, 'timeout_order')
         self._set_dict('RAPI', 'RAPI', 'order_check_date')
@@ -315,6 +370,11 @@ Options:
 
         sr = ['Script', 'DDS']  # For backwards compatibility
         self._set_dict('DDS', 'DDS', 'concurrent_downloads')
+        self._set_dict('DDS', 'DDS', 'backoff_interval')
+        self._set_dict('DDS', 'DDS', 'back_interval')
+
+        self._set_dict('Logging', 'Logging', 'level')
+        self._set_dict('Logging', 'Logging', 'datefmt')
 
     def write(self):
         """

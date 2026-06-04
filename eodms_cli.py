@@ -11,7 +11,6 @@ Legacy prompt-driven workflows are implemented separately in eodms_prompt.py.
 
 import json
 import os
-import configparser
 import base64
 import binascii
 import logging
@@ -30,6 +29,7 @@ import fiona
 from shapely.geometry import shape
 
 from eodms import Processes_API, aaa, dds, search
+from scripts import config_util
 try:
     from eodms.errors import EODMSError
     EODMS_SERVICE_ERRORS = (EODMSError,)
@@ -46,10 +46,15 @@ DEFAULT_DDS_RETRY_FILE = ".\\downloads\\dds_retry_items.jsonl"
 MAX_DDS_QUEUED_WAITS = 10
 CLI_DEFAULT_LOG_NAME = "eodms_cli.log"
 CLI_DEFAULT_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+CLI_DEFAULT_LOG_LEVEL = logging.INFO
 
 _CLI_LOG_INITIALIZED = False
 _CLI_LOG_PATH: Optional[str] = None
 _CLI_LOG_DATEFMT = CLI_DEFAULT_LOG_DATEFMT
+_CLI_LOG_LEVEL = CLI_DEFAULT_LOG_LEVEL
+_SEARCH_UA_PATCHED = False
+_CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
+_CLI_UA_VERSION = "2026.06.03"
 
 
 class OrderedHelpGroup(click.Group):
@@ -82,14 +87,46 @@ def _default_config_path() -> str:
     return os.path.join(user_home, ".eodms", "config.ini")
 
 
-def _load_config_parser(config_path: Optional[str] = None) -> Optional[configparser.ConfigParser]:
-    cfg_path = config_path or _default_config_path()
-    if not os.path.exists(cfg_path):
-        return None
+def _load_config_utils(config_path: Optional[str] = None) -> config_util.ConfigUtils:
+    cfg = config_util.ConfigUtils(config_path=config_path)
+    cfg.import_config()
+    return cfg
 
-    parser = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
-    parser.read(cfg_path)
-    return parser
+
+def _resolve_cli_user_agent_version() -> str:
+    env_version = os.environ.get(_CLI_UA_VERSION_ENV_VAR, "").strip()
+    if env_version:
+        return env_version
+
+    return _CLI_UA_VERSION
+
+
+def _patch_search_user_agent() -> None:
+    global _SEARCH_UA_PATCHED
+    if _SEARCH_UA_PATCHED:
+        return
+
+    base_method = getattr(search.Search_API, "_default_user_agent", None)
+    if not callable(base_method):
+        _SEARCH_UA_PATCHED = True
+        return
+
+    cli_token = f"eodms-cli/{_resolve_cli_user_agent_version()}"
+
+    def _default_user_agent_with_cli() -> str:
+        try:
+            base_ua = str(base_method() or "").strip()
+        except TypeError:
+            # Compatibility fallback for older implementations that are bound instance methods.
+            base_ua = str(base_method(search.Search_API) or "").strip()
+        if cli_token in base_ua:
+            return base_ua
+        if base_ua:
+            return f"{base_ua} {cli_token}"
+        return cli_token
+
+    setattr(search.Search_API, "_default_user_agent", staticmethod(_default_user_agent_with_cli))
+    _SEARCH_UA_PATCHED = True
 
 
 def _resolve_cli_log_path(raw_log_path: Optional[str]) -> str:
@@ -118,26 +155,20 @@ def _resolve_cli_log_path(raw_log_path: Optional[str]) -> str:
 
 
 def _load_cli_log_path(config_path: Optional[str] = None) -> str:
-    parser = _load_config_parser(config_path)
-    raw_log_path: Optional[str] = None
-
-    if parser is not None and parser.has_section("Paths") and parser.has_option("Paths", "log"):
-        raw_log_path = parser.get("Paths", "log")
+    cfg = _load_config_utils(config_path)
+    raw_log_path = cfg.get("Paths", "log")
 
     return _resolve_cli_log_path(raw_log_path)
 
 
 def _load_cli_log_datefmt(config_path: Optional[str] = None) -> str:
-    parser = _load_config_parser(config_path)
-    if parser is None or not parser.has_section("Logging"):
-        return CLI_DEFAULT_LOG_DATEFMT
+    cfg = _load_config_utils(config_path)
+    return cfg.get_logging_datefmt(CLI_DEFAULT_LOG_DATEFMT)
 
-    if parser.has_option("Logging", "datefmt"):
-        value = parser.get("Logging", "datefmt").strip()
-        if value:
-            return value
 
-    return CLI_DEFAULT_LOG_DATEFMT
+def _load_cli_log_level(config_path: Optional[str] = None) -> int:
+    cfg = _load_config_utils(config_path)
+    return cfg.get_logging_level(CLI_DEFAULT_LOG_LEVEL)
 
 
 def _setup_file_logger(log_name: str, log_path: str, level: int = logging.DEBUG,
@@ -231,14 +262,15 @@ def _setup_package_logger(log_path: str, level: int = logging.INFO,
 
 
 def _initialize_cli_logging() -> None:
-    global _CLI_LOG_INITIALIZED, _CLI_LOG_PATH, _CLI_LOG_DATEFMT
+    global _CLI_LOG_INITIALIZED, _CLI_LOG_PATH, _CLI_LOG_DATEFMT, _CLI_LOG_LEVEL
     if _CLI_LOG_INITIALIZED:
         return
 
     _CLI_LOG_PATH = _load_cli_log_path()
     _CLI_LOG_DATEFMT = _load_cli_log_datefmt()
-    _setup_file_logger("eodms_cli", _CLI_LOG_PATH, datefmt=_CLI_LOG_DATEFMT)
-    _setup_package_logger(_CLI_LOG_PATH, datefmt=_CLI_LOG_DATEFMT)
+    _CLI_LOG_LEVEL = _load_cli_log_level()
+    _setup_file_logger("eodms_cli", _CLI_LOG_PATH, level=_CLI_LOG_LEVEL, datefmt=_CLI_LOG_DATEFMT)
+    _setup_package_logger(_CLI_LOG_PATH, level=_CLI_LOG_LEVEL, datefmt=_CLI_LOG_DATEFMT)
 
     logging.getLogger("eodms_cli").info("CLI start time: %s", datetime.now().strftime(_CLI_LOG_DATEFMT))
     _CLI_LOG_INITIALIZED = True
@@ -252,21 +284,19 @@ def _decode_config_password(raw_password: str) -> str:
 
 
 def _load_credentials_from_config(config_path: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
-    parser = _load_config_parser(config_path)
-    if parser is None:
-        return None, None
+    cfg = _load_config_utils(config_path)
 
     username = None
     password = None
 
     for section in ("Credentials", "RAPI"):
-        if username is None and parser.has_option(section, "username"):
-            candidate = parser.get(section, "username").strip()
+        if username is None:
+            candidate = str(cfg.get(section, "username") or "").strip()
             if candidate:
                 username = candidate
 
-        if password is None and parser.has_option(section, "password"):
-            encoded = parser.get(section, "password").strip()
+        if password is None:
+            encoded = str(cfg.get(section, "password") or "").strip()
             if encoded:
                 try:
                     password = _decode_config_password(encoded)
@@ -285,62 +315,42 @@ def resolve_credentials(username: Optional[str], password: Optional[str]) -> Tup
 
 
 def _load_dds_backoff_interval(config_path: Optional[str] = None) -> int:
-    parser = _load_config_parser(config_path)
-    if parser is None or not parser.has_section("DDS"):
-        return DEFAULT_DDS_BACKOFF_SECONDS
+    cfg = _load_config_utils(config_path)
 
     for option_name in ("backoff_interval", "back_interval"):
-        if parser.has_option("DDS", option_name):
-            value = parser.get("DDS", option_name).strip()
-            try:
-                parsed = int(value)
-                if parsed > 0:
-                    return parsed
-            except ValueError:
-                continue
-
-    return DEFAULT_DDS_BACKOFF_SECONDS
-
-
-def _load_dds_concurrent_downloads(config_path: Optional[str] = None) -> int:
-    parser = _load_config_parser(config_path)
-    if parser is None or not parser.has_section("DDS"):
-        return DEFAULT_DDS_CONCURRENT_DOWNLOADS
-
-    if parser.has_option("DDS", "concurrent_downloads"):
-        value = parser.get("DDS", "concurrent_downloads").strip()
+        value = str(cfg.get("DDS", option_name) or "").strip()
         try:
             parsed = int(value)
             if parsed > 0:
                 return parsed
         except ValueError:
-            pass
+            continue
+
+    return DEFAULT_DDS_BACKOFF_SECONDS
+
+
+def _load_dds_concurrent_downloads(config_path: Optional[str] = None) -> int:
+    cfg = _load_config_utils(config_path)
+    value = str(cfg.get("DDS", "concurrent_downloads") or "").strip()
+    try:
+        parsed = int(value)
+        if parsed > 0:
+            return parsed
+    except ValueError:
+        pass
 
     return DEFAULT_DDS_CONCURRENT_DOWNLOADS
 
 
 def _save_credentials_to_config(username: str, password: str,
                                 config_path: Optional[str] = None) -> str:
-    cfg_path = config_path or _default_config_path()
-    cfg_dir = os.path.dirname(cfg_path)
-    if cfg_dir:
-        os.makedirs(cfg_dir, exist_ok=True)
-
-    parser = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
-    if os.path.exists(cfg_path):
-        parser.read(cfg_path)
-
-    if not parser.has_section("Credentials"):
-        parser.add_section("Credentials")
-
-    parser.set("Credentials", "username", username)
+    cfg = _load_config_utils(config_path)
+    cfg.set("Credentials", "username", username)
     encoded_password = base64.b64encode(password.encode("utf-8")).decode("utf-8")
-    parser.set("Credentials", "password", encoded_password)
+    cfg.set("Credentials", "password", encoded_password)
+    cfg.write()
 
-    with open(cfg_path, "w", encoding="utf-8") as cfg_file:
-        parser.write(cfg_file, space_around_delimiters=True)
-
-    return cfg_path
+    return cfg.get_filename()
 
 
 def parse_aoi_file(aoi_file: str) -> List[Dict[str, Any]]:
@@ -408,6 +418,7 @@ def make_dds(aaa_api, environment: str):
 
 
 def make_search(aaa_api, environment: str):
+    _patch_search_user_agent()
     try:
         return search.Search_API(aaa_api=aaa_api, environment=environment)
     except TypeError:
