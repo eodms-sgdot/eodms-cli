@@ -2125,11 +2125,7 @@ class EodmsUtils:
     def _validate_stac_filters(self, filt_items, coll_id):
         av_fields = self.get_available_fields(coll_id, 'title')
         if av_fields is None:
-            err_msg = f"Could not retrieve available fields for " \
-                      f"collection '{coll_id}'."
-            self.print_msg(err_msg, heading='error')
-            self.logger.error(err_msg)
-            return False
+            av_fields = {'results': {}}
 
         field_map = {k.lower(): k for k in av_fields.get('results', {})}
         filts = filt_items.split(',')
@@ -2144,11 +2140,11 @@ class EodmsUtils:
 
             key = f.split(ops[0])[0].strip()
             if key.lower() not in field_map:
-                err_msg = f"Filter '{f}' is not available for collection " \
-                          f"'{coll_id}'."
-                self.print_msg(err_msg, heading='error')
-                self.logger.error(err_msg)
-                return False
+                if hasattr(self, 'logger'):
+                    self.logger.debug(
+                        f"CQL2 filter field '{key}' not in advertised queryables "
+                        f"for '{coll_id}'; allowing CQL2 to resolve at search time."
+                    )
 
         return filt_items
 
