@@ -763,6 +763,47 @@ def _compact_dds_retry_file(retry_file: str) -> int:
     return len(deduped_rows)
 
 
+def _record_dds_retry(
+    retry_file: str,
+    collection: str,
+    item_uuid: str,
+    status: str,
+    timestamp: Optional[str] = None,
+    detail: Optional[str] = None,
+) -> Dict[str, Any]:
+    retry_abs_path = os.path.abspath(retry_file)
+    retry_rel_path = os.path.relpath(retry_abs_path, os.getcwd())
+    retry_rel_path = os.path.normpath(retry_rel_path)
+    if not (retry_rel_path.startswith(".") or os.path.isabs(retry_rel_path)):
+        retry_rel_path = f".{os.sep}{retry_rel_path}"
+
+    _append_dds_retry_item(
+        retry_file=retry_file,
+        collection=collection,
+        item_uuid=item_uuid,
+        status=status,
+        timestamp=timestamp,
+    )
+
+    extra_detail = f", detail={detail}" if detail else ""
+    click.echo(
+        f"DDS item recorded for retry: collection={collection}, uuid={item_uuid}, "
+        f"status={status}{extra_detail}, file={retry_rel_path}"
+    )
+    click.echo(
+        "Retry with: "
+        f"py eodms_cli.py download --dds-retry-file \"{retry_rel_path}\""
+    )
+
+    return {
+        "_dds_retry_logged": True,
+        "collection": collection,
+        "uuid": item_uuid,
+        "status": status,
+        "timestamp": timestamp,
+    }
+
+
 def _spinner_backoff_wait(wait_seconds: int, label: str) -> None:
     remaining = int(wait_seconds)
     if remaining <= 0:
@@ -794,13 +835,44 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
     waits = 0
 
     while True:
-        item_info = dds_api.get_item(collection, item_uuid)
+        try:
+            item_info = dds_api.get_item(collection, item_uuid)
+        except Exception as exc:
+            click.echo(
+                f"DDS get_item failed: collection={collection}, uuid={item_uuid}, error={exc}"
+            )
+            return _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="GetItemError",
+                detail=str(exc),
+            )
+
         if item_info is None:
             click.echo(f"Item not found: collection={collection}, uuid={item_uuid}")
-            return None
+            return _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="ItemNotFound",
+            )
+
+        if not isinstance(item_info, dict):
+            click.echo(
+                f"Unexpected DDS item response type: collection={collection}, uuid={item_uuid}, "
+                f"type={type(item_info).__name__}"
+            )
+            return _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="InvalidItemResponse",
+            )
 
         status_value = _extract_dds_status(item_info)
         normalized_status = _normalize_status(status_value)
+        item_timestamp = _extract_dds_timestamp(item_info)
 
         if normalized_status == "QUEUED":
             if waits >= MAX_DDS_QUEUED_WAITS:
@@ -808,7 +880,13 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                     f"Item remained Queued after {MAX_DDS_QUEUED_WAITS} wait(s): "
                     f"collection={collection}, uuid={item_uuid}"
                 )
-                return None
+                return _record_dds_retry(
+                    retry_file=retry_file,
+                    collection=collection,
+                    item_uuid=item_uuid,
+                    status="QueuedTimeout",
+                    timestamp=item_timestamp,
+                )
 
             waits += 1
             click.echo(
@@ -822,43 +900,42 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
             continue
 
         if normalized_status in {"ITEMRESTORING", "ITEMSRESTORING"}:
-            restoring_timestamp = _extract_dds_timestamp(item_info)
-            retry_abs_path = os.path.abspath(retry_file)
-            retry_rel_path = os.path.relpath(retry_abs_path, os.getcwd())
-            retry_rel_path = os.path.normpath(retry_rel_path)
-            if not (retry_rel_path.startswith(".") or os.path.isabs(retry_rel_path)):
-                retry_rel_path = f".{os.sep}{retry_rel_path}"
-            _append_dds_retry_item(
+            return _record_dds_retry(
                 retry_file=retry_file,
                 collection=collection,
                 item_uuid=item_uuid,
                 status=status_value or "ItemRestoring",
-                timestamp=restoring_timestamp,
+                timestamp=item_timestamp,
             )
-            click.echo(
-                f"DDS item is {status_value or 'ItemRestoring'}; recorded for retry: "
-                f"collection={collection}, uuid={item_uuid}, file={retry_rel_path}"
-            )
-            click.echo(
-                "Retry with: "
-                f"py eodms_cli.py download --dds-retry-file \"{retry_rel_path}\""
-            )
-            return {
-                "_dds_retry_logged": True,
-                "collection": collection,
-                "uuid": item_uuid,
-                "status": status_value or "ItemRestoring",
-                "timestamp": restoring_timestamp,
-            }
 
         if "download_url" not in item_info:
             click.echo(
                 f"Item has no download URL: collection={collection}, uuid={item_uuid}, "
                 f"status={status_value or 'unknown'}"
             )
-            return None
+            return _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status=status_value or "NoDownloadURL",
+                timestamp=item_timestamp,
+            )
 
-        dds_api.download_item(os.path.abspath(download_dir))
+        try:
+            dds_api.download_item(os.path.abspath(download_dir))
+        except Exception as exc:
+            click.echo(
+                f"DDS download failed: collection={collection}, uuid={item_uuid}, error={exc}"
+            )
+            return _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="DownloadError",
+                timestamp=item_timestamp,
+                detail=str(exc),
+            )
+
         return item_info
 
 
@@ -1899,7 +1976,7 @@ def order_st_cmd(
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
 @click.option("--dds-retry-file", required=False, default=DEFAULT_DDS_RETRY_FILE,
-              help="File used to append DDS ItemRestoring records for retry input.")
+              help="File used to append DDS retry records for non-success item attempts.")
 @click.pass_context
 @handle_service_errors
 def download_available_cmd(
