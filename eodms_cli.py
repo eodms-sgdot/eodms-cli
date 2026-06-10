@@ -11,6 +11,7 @@ Legacy prompt-driven workflows are implemented separately in eodms_prompt.py.
 
 import json
 import os
+import csv
 import base64
 import binascii
 import logging
@@ -400,6 +401,194 @@ def save_items_geojson(items: Optional[List[Dict[str, Any]]], output_file: str) 
     click.echo(f"Saved {len(feature_collection['features'])} item(s) to {output_file}")
 
 
+def _read_tsv_rows(input_file: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    try:
+        with open(input_file, "r", encoding="utf-8-sig", newline="") as src:
+            reader = csv.DictReader(src, delimiter="\t")
+            if not reader.fieldnames:
+                raise click.ClickException("Input TSV must include a header row.")
+            return list(reader.fieldnames), [dict(row) for row in reader]
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Failed to read TSV input '{input_file}': {exc}")
+
+
+def _write_tsv_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str, Any]]) -> None:
+    try:
+        with open(output_file, "w", encoding="utf-8", newline="") as out_f:
+            writer = csv.DictWriter(out_f, fieldnames=fieldnames, delimiter="\t")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({
+                    field_name: "" if row.get(field_name) is None else str(row.get(field_name))
+                    for field_name in fieldnames
+                })
+    except Exception as exc:
+        raise click.ClickException(f"Failed to write TSV output '{output_file}': {exc}")
+
+
+def _get_tsv_order_key_column(fieldnames: List[str]) -> Optional[str]:
+    normalized = {str(name).strip().lower(): name for name in fieldnames}
+    return normalized.get("order_keys") or normalized.get("order_key")
+
+
+def _extract_search_spatial_resolution(item: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(item, dict):
+        return None
+
+    props = item.get("properties")
+    containers = [item]
+    if isinstance(props, dict):
+        containers.append(props)
+
+    for container in containers:
+        for key in ("spatial_resolution", "spatialResolution", "SPATIAL_RESOLUTION"):
+            value = container.get(key)
+            if value is not None and str(value).strip():
+                return str(value)
+
+    return None
+
+
+def _extract_search_timestamp(item: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(item, dict):
+        return None
+
+    props = item.get("properties")
+    containers = [item]
+    if isinstance(props, dict):
+        containers.append(props)
+
+    for container in containers:
+        for key in (
+            "timestamp",
+            "datetime",
+            "date",
+            "updated",
+            "updated_at",
+            "start_datetime",
+            "acquisition_datetime",
+        ):
+            value = container.get(key)
+            if value is not None and str(value).strip():
+                return str(value)
+
+    return None
+
+
+def _extract_thumbnail_url(item: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(item, dict):
+        return None
+
+    # Prefer STAC assets that typically hold browse imagery.
+    assets = item.get("assets")
+    if isinstance(assets, dict):
+        for asset_key in ("thumbnail", "thumb", "quicklook", "browse", "overview", "preview"):
+            asset = assets.get(asset_key)
+            if isinstance(asset, dict):
+                href = asset.get("href")
+                if href is not None and str(href).strip():
+                    return str(href)
+
+        # Fall back to any asset that has a non-empty href.
+        for asset in assets.values():
+            if isinstance(asset, dict):
+                href = asset.get("href")
+                if href is not None and str(href).strip():
+                    return str(href)
+
+    # Alternate STAC shape using links with rel hints.
+    links = item.get("links")
+    if isinstance(links, list):
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+            rel = str(link.get("rel") or "").strip().lower()
+            if rel in ("thumbnail", "preview", "icon"):
+                href = link.get("href")
+                if href is not None and str(href).strip():
+                    return str(href)
+
+    return None
+
+
+def _quote_cql2_text_string(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _chunk_values(values: List[str], chunk_size: int) -> List[List[str]]:
+    resolved_chunk_size = max(1, int(chunk_size or 1))
+    return [values[idx:idx + resolved_chunk_size] for idx in range(0, len(values), resolved_chunk_size)]
+
+
+def _search_items_by_filter(search_api, collection: str, filter_text: str, limit: int) -> List[Dict[str, Any]]:
+    resolved_limit = max(1, int(limit or 1))
+
+    try:
+        items = search_api.stac_search(
+            collections=[collection],
+            limit=resolved_limit,
+            filter=filter_text,
+            filter_lang="cql2-text",
+        )
+    except (AttributeError, TypeError):
+        items = search_api.search_multiple_geometries(
+            s_intersect_list=[{"name": None, "wkt": None}],
+            collection=collection,
+            datetime_range=None,
+            bbox=None,
+            limit=resolved_limit,
+            filter_text=filter_text,
+        )
+
+    if items is None:
+        return []
+    if isinstance(items, dict):
+        features = items.get("features")
+        if isinstance(features, list):
+            return [item for item in features if isinstance(item, dict)]
+        return [items]
+    return [item for item in list(items) if isinstance(item, dict)]
+
+
+def _search_items_by_order_keys(search_api, collection: str, order_keys: List[str],
+                                chunk_size: int = 100) -> Dict[str, Dict[str, Any]]:
+    matched_items: Dict[str, Dict[str, Any]] = {}
+    cleaned_order_keys = []
+    seen_order_keys = set()
+
+    for raw_order_key in order_keys:
+        order_key = str(raw_order_key or "").strip()
+        if not order_key or order_key in seen_order_keys:
+            continue
+        cleaned_order_keys.append(order_key)
+        seen_order_keys.add(order_key)
+
+    for order_key_chunk in _chunk_values(cleaned_order_keys, chunk_size):
+        if not order_key_chunk:
+            continue
+
+        chunk_filter = " OR ".join(
+            f"order_key = {_quote_cql2_text_string(order_key)}"
+            for order_key in order_key_chunk
+        )
+        items = _search_items_by_filter(
+            search_api,
+            collection,
+            f"({chunk_filter})",
+            limit=len(order_key_chunk),
+        )
+
+        for item in items:
+            found_order_key = _extract_order_key(item)
+            if not found_order_key or found_order_key in matched_items:
+                continue
+            matched_items[found_order_key] = item
+
+    return matched_items
+
+
 def make_aaa(username: Optional[str], password: Optional[str], environment: str):
     if username and password:
         return aaa.AAA_API(username, password, environment)
@@ -491,72 +680,7 @@ def _extract_dds_timestamp(item_info: Any) -> Optional[str]:
 def _append_dds_retry_item(retry_file: str, collection: str, item_uuid: str, status: str,
                            timestamp: Optional[str] = None) -> None:
     retry_path = os.path.abspath(retry_file)
-    normalized_collection = str(collection or "").strip().lower()
-    normalized_uuid = str(item_uuid or "").strip().lower()
-    normalized_status = _normalize_status(status)
     resolved_timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    rows: List[Tuple[str, Any]] = []
-    duplicate_found = False
-
-    # Refresh timestamp for existing retry rows with same collection/uuid/status.
-    if os.path.exists(retry_path):
-        try:
-            with open(retry_path, "r", encoding="utf-8") as in_f:
-                for line in in_f:
-                    candidate = line.strip()
-                    if not candidate:
-                        rows.append(("raw", ""))
-                        continue
-                    try:
-                        row = json.loads(candidate)
-                    except json.JSONDecodeError:
-                        rows.append(("raw", candidate))
-                        continue
-
-                    if not isinstance(row, dict):
-                        rows.append(("raw", candidate))
-                        continue
-
-                    row_collection = str(row.get("collection", "")).strip().lower()
-                    row_uuid = str(
-                        row.get("uuid")
-                        or row.get("id")
-                        or row.get("item_id")
-                        or row.get("itemId")
-                        or ""
-                    ).strip().lower()
-                    row_status = _normalize_status(str(row.get("status", "")))
-
-                    if (
-                        row_collection == normalized_collection
-                        and row_uuid == normalized_uuid
-                        and row_status == normalized_status
-                    ):
-                        row["timestamp"] = resolved_timestamp
-                        row["status"] = status
-                        duplicate_found = True
-
-                    rows.append(("json", row))
-
-            if duplicate_found:
-                retry_dir = os.path.dirname(retry_path)
-                if retry_dir:
-                    os.makedirs(retry_dir, exist_ok=True)
-
-                with open(retry_path, "w", encoding="utf-8") as out_f:
-                    for row_type, row_value in rows:
-                        if row_type == "json":
-                            out_f.write(json.dumps(row_value, ensure_ascii=True) + "\n")
-                        elif row_value == "":
-                            out_f.write("\n")
-                        else:
-                            out_f.write(str(row_value) + "\n")
-
-                return
-        except Exception:
-            # If dedupe scan/update fails for any reason, continue and append.
-            pass
 
     record = {
         "collection": collection,
@@ -571,6 +695,72 @@ def _append_dds_retry_item(retry_file: str, collection: str, item_uuid: str, sta
 
     with open(retry_path, "a", encoding="utf-8") as out_f:
         out_f.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+
+def _compact_dds_retry_file(retry_file: str) -> int:
+    retry_path = os.path.abspath(retry_file)
+    if not os.path.exists(retry_path):
+        return 0
+
+    deduped: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+
+    with open(retry_path, "r", encoding="utf-8") as in_f:
+        for line in in_f:
+            candidate = line.strip()
+            if not candidate:
+                continue
+
+            try:
+                row = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(row, dict):
+                continue
+
+            row_collection = str(row.get("collection", "")).strip()
+            row_uuid = str(
+                row.get("uuid")
+                or row.get("id")
+                or row.get("item_id")
+                or row.get("itemId")
+                or ""
+            ).strip()
+            row_status = str(row.get("status", "")).strip()
+
+            if not row_collection or not row_uuid:
+                continue
+
+            norm_key = (
+                row_collection.lower(),
+                row_uuid.lower(),
+                _normalize_status(row_status),
+            )
+            if not norm_key[2]:
+                continue
+
+            deduped[norm_key] = {
+                "collection": row_collection,
+                "uuid": row_uuid,
+                "status": row_status,
+                "timestamp": str(row.get("timestamp") or "").strip()
+                or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+
+    deduped_rows = list(deduped.values())
+    deduped_rows.sort(
+        key=lambda row: (
+            str(row.get("collection") or "").lower(),
+            str(row.get("uuid") or "").lower(),
+            _normalize_status(str(row.get("status") or "")),
+        )
+    )
+
+    with open(retry_path, "w", encoding="utf-8") as out_f:
+        for row in deduped_rows:
+            out_f.write(json.dumps(row, ensure_ascii=True) + "\n")
+
+    return len(deduped_rows)
 
 
 def _spinner_backoff_wait(wait_seconds: int, label: str) -> None:
@@ -813,6 +1003,48 @@ def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
     raise click.ClickException(
         "Input file must be GeoJSON, JSON retry records, or JSONL retry records."
     )
+
+
+def _load_download_items_from_tsv(input_file: str) -> List[Dict[str, Any]]:
+    fieldnames, rows = _read_tsv_rows(input_file)
+
+    normalized = {str(name).strip().lower(): name for name in fieldnames}
+    uuid_col = (
+        normalized.get("uuid")
+        or normalized.get("id")
+        or normalized.get("item_id")
+        or normalized.get("itemid")
+    )
+    collection_col = normalized.get("collection")
+
+    if not uuid_col:
+        raise click.ClickException(
+            "Input TSV for download must contain a 'uuid' (or id/item_id) column."
+        )
+
+    features: List[Dict[str, Any]] = []
+    for row in rows:
+        item_uuid = str(row.get(uuid_col) or "").strip()
+        if not item_uuid:
+            continue
+
+        item_collection = ""
+        if collection_col:
+            item_collection = str(row.get(collection_col) or "").strip()
+
+        feature: Dict[str, Any] = {"id": item_uuid}
+        if item_collection:
+            feature["collection"] = item_collection
+        features.append(feature)
+
+    return features
+
+
+def _load_download_items(input_file: str) -> List[Dict[str, Any]]:
+    lower_name = str(input_file or "").strip().lower()
+    if lower_name.endswith(".tsv"):
+        return _load_download_items_from_tsv(input_file)
+    return _load_download_items_from_geojson(input_file)
 
 
 def parse_legacy_order_items(order_items: str) -> Tuple[List[str], List[str]]:
@@ -1219,8 +1451,10 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
               help="WKT geometry used with S_INTERSECTS.")
 @click.option("--aoi", required=False, default=None, type=click.Path(exists=True),
               help="Path to geospatial AOI file with 1-5 polygons.")
+@click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
+              help="Input TSV file with order_key/order_keys column; requires --collection and --output.")
 @click.option("--output", "-o", required=False, default=None,
-              help="Output GeoJSON file for search results.")
+              help="Output GeoJSON file for search results, or TSV file when using --input.")
 @click.option("--env", "-e", required=False, default="prod",
               help='Environment (default: "prod").')
 @handle_service_errors
@@ -1238,10 +1472,11 @@ def search_cmd(
     filter_text: Optional[str],
     s_intersect: Optional[str],
     aoi: Optional[str],
+    input_file: Optional[str],
     output: Optional[str],
     env: str,
 ):
-    """STAC geotemporal/queryables and GeoJSON output."""
+    """STAC geotemporal/queryables and GeoJSON/TSV output."""
 
     username, password = resolve_credentials(username, password)
 
@@ -1320,6 +1555,61 @@ def search_cmd(
             raise click.ClickException(f"Collection not found: {collection}")
 
         search_api.print_queryables(coll)
+        return
+
+    if input_file:
+        if not collection:
+            raise click.ClickException("--collection is required with --input.")
+        if not output:
+            raise click.ClickException("--output is required with --input.")
+
+        input_fields, input_rows = _read_tsv_rows(input_file)
+        order_key_column = _get_tsv_order_key_column(input_fields)
+        if not order_key_column:
+            raise click.ClickException("Input TSV must contain an 'order_keys' or 'order_key' column.")
+
+        search_api = make_search(aaa_api, env)
+        output_fields = list(input_fields)
+        for field_name in ("spatial_resolution", "timestamp", "uuid", "thumbnail_url"):
+            if field_name not in output_fields:
+                output_fields.append(field_name)
+
+        ordered_keys = [str(row.get(order_key_column) or "").strip() for row in input_rows]
+        items_by_order_key = _search_items_by_order_keys(search_api, collection, ordered_keys, chunk_size=100)
+
+        matched_count = 0
+        for row in input_rows:
+            row["spatial_resolution"] = ""
+            row["timestamp"] = ""
+            row["uuid"] = ""
+            row["thumbnail_url"] = ""
+
+            order_key = str(row.get(order_key_column) or "").strip()
+            if not order_key:
+                continue
+
+            first_item = items_by_order_key.get(order_key)
+            if not first_item:
+                continue
+
+            spatial_resolution = _extract_search_spatial_resolution(first_item)
+            item_timestamp = _extract_search_timestamp(first_item)
+            item_uuid = _extract_item_uuid(first_item)
+            thumbnail_url = _extract_thumbnail_url(first_item)
+
+            if spatial_resolution is not None:
+                row["spatial_resolution"] = spatial_resolution
+            if item_timestamp is not None:
+                row["timestamp"] = item_timestamp
+            if item_uuid is not None:
+                row["uuid"] = item_uuid
+            if thumbnail_url is not None:
+                row["thumbnail_url"] = thumbnail_url
+
+            matched_count += 1
+
+        _write_tsv_rows(output, output_fields, input_rows)
+        click.echo(f"Saved {len(input_rows)} row(s) to {output}; matched {matched_count} order_key value(s).")
         return
 
     if not collection:
@@ -1585,7 +1875,7 @@ def order_st_cmd(
 @click.option("--uuid", required=False, default=None,
               help="Download UUID directly via STAC assets (public collections) or DDS.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="Input file for download items (GeoJSON, JSON, or JSONL retry records).")
+              help="Input file for download items (TSV, GeoJSON, JSON, or JSONL retry records).")
 @click.option("--collection", "-c", required=False, default=None,
               help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",
@@ -1660,10 +1950,21 @@ def download_available_cmd(
         raise click.ClickException("Use either --uuid or --input, not both.")
 
     if input_file:
-        features = _load_download_items_from_geojson(input_file)
+        features = _load_download_items(input_file)
         if not features:
             click.echo("No items found in input file.")
             return
+
+        # Deduplicate retry records once before processing when using retry input.
+        retry_input_abs = os.path.abspath(input_file)
+        retry_file_abs = os.path.abspath(dds_retry_file)
+        if retry_input_abs == retry_file_abs:
+            deduped_count = _compact_dds_retry_file(dds_retry_file)
+            if deduped_count:
+                click.echo(
+                    f"Compacted DDS retry file to {deduped_count} unique item(s): {retry_input_abs}"
+                )
+                features = _load_download_items(input_file)
 
         aaa_api = make_aaa(username, password, env)
         search_api = None
