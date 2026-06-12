@@ -1277,7 +1277,8 @@ class EodmsUtils:
                             method='write',
                             miniters=1,
                             total=float(fsize),
-                            desc=os.path.basename(dest_fn)
+                            desc=os.path.basename(dest_fn),
+                            dynamic_ncols=True,
                     ) as file_out:
                         for chunk in stream.iter_content(chunk_size=1024):
                             file_out.write(chunk)

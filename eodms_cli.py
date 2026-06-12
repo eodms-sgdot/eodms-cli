@@ -18,6 +18,7 @@ import logging
 import logging.handlers as handlers
 import time
 import threading
+import re
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -44,7 +45,8 @@ from eodms_rapi import EODMSRAPI, QueryError
 
 DEFAULT_DDS_BACKOFF_SECONDS = 60
 DEFAULT_DDS_CONCURRENT_DOWNLOADS = 10
-DEFAULT_DDS_RETRY_FILE = ".\\downloads\\dds_retry_items.jsonl"
+DEFAULT_DOWNLOADS_MANIFEST_NAME = "downloads.jsonl"
+DEFAULT_DDS_RETRY_FILE = os.path.join(".\\downloads", DEFAULT_DOWNLOADS_MANIFEST_NAME)
 MAX_DDS_QUEUED_WAITS = 10
 CLI_DEFAULT_LOG_NAME = "eodms_cli.log"
 CLI_DEFAULT_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
@@ -57,8 +59,15 @@ _CLI_LOG_LEVEL = CLI_DEFAULT_LOG_LEVEL
 _SEARCH_UA_PATCHED = False
 _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = "2026.06.03"
-_SPINNER_FRAMES = ("|", "/", "-", "\\")
 _SPINNER_WRITE_LOCK = threading.Lock()
+
+# Let tqdm recalculate bar width when terminal dimensions change.
+os.environ.setdefault("TQDM_DYNAMIC_NCOLS", "1")
+
+
+def _resolve_downloads_manifest_path(download_dir: str) -> str:
+    destination = os.path.abspath(download_dir)
+    return os.path.join(destination, DEFAULT_DOWNLOADS_MANIFEST_NAME)
 
 
 class OrderedHelpGroup(click.Group):
@@ -677,24 +686,242 @@ def _extract_dds_timestamp(item_info: Any) -> Optional[str]:
     return None
 
 
-def _append_dds_retry_item(retry_file: str, collection: str, item_uuid: str, status: str,
-                           timestamp: Optional[str] = None) -> None:
+def _extract_dds_download_filename(item_info: Dict[str, Any], item_uuid: str) -> Optional[str]:
+    if not isinstance(item_info, dict):
+        return None
+
+    download_url = item_info.get("download_url")
+    if download_url is not None and str(download_url).strip():
+        parsed = urlsplit(str(download_url).strip())
+        file_name = unquote(os.path.basename(parsed.path or "")).strip()
+        if file_name:
+            return file_name
+
+    for key in ("filename", "file_name", "name", "title"):
+        value = item_info.get(key)
+        if value is None:
+            continue
+        file_name = str(value).strip()
+        if file_name:
+            return file_name
+
+    if item_uuid:
+        return f"{item_uuid}.zip"
+
+    return None
+
+
+def _coerce_http_status_code(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return None
+
+    if isinstance(value, int):
+        return value if 100 <= value <= 599 else None
+
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+
+    if value_str.isdigit():
+        code = int(value_str)
+        return code if 100 <= code <= 599 else None
+
+    match = re.search(r"\b([1-5][0-9]{2})\b", value_str)
+    if not match:
+        return None
+
+    code = int(match.group(1))
+    return code if 100 <= code <= 599 else None
+
+
+def _extract_http_status_code(payload: Any) -> Optional[int]:
+    if payload is None:
+        return None
+
+    if isinstance(payload, dict):
+        for key in (
+            "http_response_code",
+            "http_status_code",
+            "status_code",
+            "response_code",
+            "http_status",
+            "status",
+            "code",
+        ):
+            code = _coerce_http_status_code(payload.get(key))
+            if code is not None:
+                return code
+
+        nested_response = payload.get("response")
+        nested_code = _extract_http_status_code(nested_response)
+        if nested_code is not None:
+            return nested_code
+
+    for attr in (
+        "http_response_code",
+        "http_status_code",
+        "status_code",
+        "response_code",
+        "http_status",
+        "status",
+        "code",
+    ):
+        code = _coerce_http_status_code(getattr(payload, attr, None))
+        if code is not None:
+            return code
+
+    nested_response = getattr(payload, "response", None)
+    nested_code = _extract_http_status_code(nested_response)
+    if nested_code is not None:
+        return nested_code
+
+    return _coerce_http_status_code(payload)
+
+
+def _write_jsonl_rows_atomic(file_path: str, rows: List[Dict[str, Any]]) -> None:
+    target_path = os.path.abspath(file_path)
+    target_dir = os.path.dirname(target_path)
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+
+    temp_path = f"{target_path}.tmp.{os.getpid()}.{threading.get_ident()}"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as out_f:
+            for row in rows:
+                out_f.write(json.dumps(row, ensure_ascii=True) + "\n")
+            out_f.flush()
+            os.fsync(out_f.fileno())
+
+        os.replace(temp_path, target_path)
+
+        if target_dir:
+            try:
+                dir_fd = os.open(target_dir, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except Exception:
+                pass
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+def _append_dds_retry_item(
+    retry_file: str,
+    collection: str,
+    item_uuid: str,
+    status: str,
+    timestamp: Optional[str] = None,
+    http_response_code: Optional[int] = None,
+    source: Optional[str] = None,
+    file_name: Optional[str] = None,
+    file_path: Optional[str] = None,
+    detail: Optional[str] = None,
+    update_existing_only: bool = False,
+) -> bool:
     retry_path = os.path.abspath(retry_file)
     resolved_timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    record = {
-        "collection": collection,
-        "uuid": item_uuid,
-        "status": status,
-        "timestamp": resolved_timestamp,
-    }
+    normalized_uuid = str(item_uuid or "").strip().lower()
+    if not normalized_uuid:
+        return False
 
-    retry_dir = os.path.dirname(retry_path)
-    if retry_dir:
-        os.makedirs(retry_dir, exist_ok=True)
+    deduped_by_uuid: Dict[str, Dict[str, Any]] = {}
+    if os.path.exists(retry_path):
+        with open(retry_path, "r", encoding="utf-8") as in_f:
+            for line in in_f:
+                candidate = line.strip()
+                if not candidate:
+                    continue
 
-    with open(retry_path, "a", encoding="utf-8") as out_f:
-        out_f.write(json.dumps(record, ensure_ascii=True) + "\n")
+                try:
+                    row = json.loads(candidate)
+                except json.JSONDecodeError:
+                    continue
+
+                if not isinstance(row, dict):
+                    continue
+
+                row_uuid = str(
+                    row.get("uuid")
+                    or row.get("id")
+                    or row.get("item_id")
+                    or row.get("itemId")
+                    or ""
+                ).strip()
+                if not row_uuid:
+                    continue
+
+                deduped_by_uuid[row_uuid.lower()] = {
+                    "collection": str(row.get("collection") or "").strip(),
+                    "uuid": row_uuid,
+                    "status": str(row.get("status") or "").strip(),
+                    "timestamp": str(row.get("timestamp") or "").strip()
+                    or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "http_response_code": _extract_http_status_code(row),
+                    "source": str(row.get("source") or "").strip(),
+                    "file_name": str(row.get("file_name") or "").strip(),
+                    "file_path": str(row.get("file_path") or "").strip(),
+                    "detail": str(row.get("detail") or "").strip(),
+                }
+
+    current_row = deduped_by_uuid.get(normalized_uuid)
+    if current_row is None and update_existing_only:
+        return False
+
+    if current_row is None:
+        current_row = {
+            "collection": str(collection or "").strip(),
+            "uuid": str(item_uuid).strip(),
+            "status": str(status or "").strip(),
+            "timestamp": resolved_timestamp,
+        }
+    else:
+        current_row["collection"] = str(collection or current_row.get("collection") or "").strip()
+        current_row["status"] = str(status or current_row.get("status") or "").strip()
+        current_row["timestamp"] = resolved_timestamp
+
+    if http_response_code is None:
+        current_row.pop("http_response_code", None)
+    else:
+        current_row["http_response_code"] = int(http_response_code)
+
+    if source is None:
+        current_row.pop("source", None)
+    else:
+        current_row["source"] = str(source).strip()
+
+    if file_name is None:
+        current_row.pop("file_name", None)
+    else:
+        current_row["file_name"] = str(file_name).strip()
+
+    if file_path is None:
+        current_row.pop("file_path", None)
+    else:
+        current_row["file_path"] = str(file_path).strip()
+
+    if detail is None:
+        current_row.pop("detail", None)
+    else:
+        current_row["detail"] = str(detail).strip()
+
+    deduped_by_uuid[normalized_uuid] = current_row
+
+    rows = list(deduped_by_uuid.values())
+    rows.sort(key=lambda row: str(row.get("uuid") or "").lower())
+
+    _write_jsonl_rows_atomic(retry_path, rows)
+
+    return True
 
 
 def _compact_dds_retry_file(retry_file: str) -> int:
@@ -702,7 +929,7 @@ def _compact_dds_retry_file(retry_file: str) -> int:
     if not os.path.exists(retry_path):
         return 0
 
-    deduped: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    deduped: Dict[str, Dict[str, Any]] = {}
 
     with open(retry_path, "r", encoding="utf-8") as in_f:
         for line in in_f:
@@ -731,34 +958,30 @@ def _compact_dds_retry_file(retry_file: str) -> int:
             if not row_collection or not row_uuid:
                 continue
 
-            norm_key = (
-                row_collection.lower(),
-                row_uuid.lower(),
-                _normalize_status(row_status),
-            )
-            if not norm_key[2]:
+            if not row_status:
                 continue
 
-            deduped[norm_key] = {
+            deduped[row_uuid.lower()] = {
                 "collection": row_collection,
                 "uuid": row_uuid,
                 "status": row_status,
                 "timestamp": str(row.get("timestamp") or "").strip()
                 or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "http_response_code": _extract_http_status_code(row),
+                "source": str(row.get("source") or "").strip(),
+                "file_name": str(row.get("file_name") or "").strip(),
+                "file_path": str(row.get("file_path") or "").strip(),
+                "detail": str(row.get("detail") or "").strip(),
             }
 
     deduped_rows = list(deduped.values())
     deduped_rows.sort(
         key=lambda row: (
-            str(row.get("collection") or "").lower(),
             str(row.get("uuid") or "").lower(),
-            _normalize_status(str(row.get("status") or "")),
         )
     )
 
-    with open(retry_path, "w", encoding="utf-8") as out_f:
-        for row in deduped_rows:
-            out_f.write(json.dumps(row, ensure_ascii=True) + "\n")
+    _write_jsonl_rows_atomic(retry_path, deduped_rows)
 
     return len(deduped_rows)
 
@@ -769,7 +992,12 @@ def _record_dds_retry(
     item_uuid: str,
     status: str,
     timestamp: Optional[str] = None,
+    http_response_code: Optional[int] = None,
+    source: Optional[str] = None,
+    file_name: Optional[str] = None,
+    file_path: Optional[str] = None,
     detail: Optional[str] = None,
+    update_existing_only: bool = False,
 ) -> Dict[str, Any]:
     retry_abs_path = os.path.abspath(retry_file)
     retry_rel_path = os.path.relpath(retry_abs_path, os.getcwd())
@@ -777,76 +1005,124 @@ def _record_dds_retry(
     if not (retry_rel_path.startswith(".") or os.path.isabs(retry_rel_path)):
         retry_rel_path = f".{os.sep}{retry_rel_path}"
 
-    _append_dds_retry_item(
+    wrote_record = _append_dds_retry_item(
         retry_file=retry_file,
         collection=collection,
         item_uuid=item_uuid,
         status=status,
         timestamp=timestamp,
+        http_response_code=http_response_code,
+        source=source,
+        file_name=file_name,
+        file_path=file_path,
+        detail=detail,
+        update_existing_only=update_existing_only,
     )
 
+    if not wrote_record and update_existing_only:
+        click.echo(
+            f"Download manifest update skipped (uuid not present in manifest): "
+            f"collection={collection}, uuid={item_uuid}, status={status}"
+        )
+        return {
+            "_dds_retry_logged": False,
+            "_dds_retry_skipped": True,
+            "_manifest_status": status,
+            "collection": collection,
+            "uuid": item_uuid,
+            "status": status,
+            "timestamp": timestamp,
+            "http_response_code": http_response_code,
+            "source": source,
+            "file_name": file_name,
+            "file_path": file_path,
+            "detail": detail,
+        }
+
     extra_detail = f", detail={detail}" if detail else ""
+    extra_http = f", http_response_code={http_response_code}" if http_response_code is not None else ""
+    extra_source = f", source={source}" if source else ""
+    extra_file_name = f", file_name={file_name}" if file_name else ""
+    extra_file_path = f", file_path={file_path}" if file_path else ""
     click.echo(
-        f"DDS item recorded for retry: collection={collection}, uuid={item_uuid}, "
-        f"status={status}{extra_detail}, file={retry_rel_path}"
+        f"Download manifest updated: collection={collection}, uuid={item_uuid}, "
+        f"status={status}{extra_source}{extra_http}{extra_file_name}{extra_file_path}{extra_detail}, "
+        f"manifest={retry_rel_path}"
     )
-    click.echo(
-        "Retry with: "
-        f"py eodms_cli.py download --dds-retry-file \"{retry_rel_path}\""
-    )
+    if status.lower().find("restoring") > -1 or status.lower().find("queued") > -1:
+        click.echo(
+            "Replay with: "
+            f"py eodms_cli.py download --input \"{retry_rel_path}\""
+        )
 
     return {
         "_dds_retry_logged": True,
+        "_manifest_status": status,
         "collection": collection,
         "uuid": item_uuid,
         "status": status,
         "timestamp": timestamp,
+        "http_response_code": http_response_code,
+        "source": source,
+        "file_name": file_name,
+        "file_path": file_path,
+        "detail": detail,
     }
 
 
 def _spinner_backoff_wait(wait_seconds: int, label: str) -> None:
-    remaining = int(wait_seconds)
-    if remaining <= 0:
+    total = int(wait_seconds)
+    if total <= 0:
         return
 
+    with _SPINNER_WRITE_LOCK:
+        click.echo(f"{label} waiting {total}s...")
+
     start = time.monotonic()
-    frame_idx = 0
+    last_print_elapsed = 0.0
+    _PRINT_INTERVAL = 15
 
     while True:
         elapsed = time.monotonic() - start
-        remaining = int(max(0, wait_seconds - elapsed + 0.999))
+        remaining = int(max(0, total - elapsed + 0.999))
         if remaining <= 0:
             break
 
-        frame = _SPINNER_FRAMES[frame_idx % len(_SPINNER_FRAMES)]
-        with _SPINNER_WRITE_LOCK:
-            click.echo(f"\r{label} {frame} {remaining}s remaining", nl=False)
+        if elapsed - last_print_elapsed >= _PRINT_INTERVAL:
+            with _SPINNER_WRITE_LOCK:
+                click.echo(f"{label} {remaining}s remaining...")
+            last_print_elapsed = elapsed
 
-        frame_idx += 1
-        time.sleep(0.2)
+        time.sleep(1)
 
     with _SPINNER_WRITE_LOCK:
-        click.echo(f"\r{label} done.{' ' * 20}")
+        click.echo(f"{label} done.")
 
 
 def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: str,
                       queued_backoff_seconds: int = DEFAULT_DDS_BACKOFF_SECONDS,
-                      retry_file: str = DEFAULT_DDS_RETRY_FILE) -> Optional[Dict[str, Any]]:
+                      retry_file: str = DEFAULT_DDS_RETRY_FILE,
+                      update_retry_existing_only: bool = True) -> Optional[Dict[str, Any]]:
     waits = 0
 
     while True:
         try:
             item_info = dds_api.get_item(collection, item_uuid)
         except Exception as exc:
+            http_response_code = _extract_http_status_code(exc)
             click.echo(
-                f"DDS get_item failed: collection={collection}, uuid={item_uuid}, error={exc}"
+                f"DDS get_item failed: collection={collection}, uuid={item_uuid}, "
+                f"http_response_code={http_response_code}, error={exc}"
             )
             return _record_dds_retry(
                 retry_file=retry_file,
                 collection=collection,
                 item_uuid=item_uuid,
                 status="GetItemError",
+                http_response_code=http_response_code,
+                source="dds",
                 detail=str(exc),
+                update_existing_only=update_retry_existing_only,
             )
 
         if item_info is None:
@@ -856,25 +1132,44 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 collection=collection,
                 item_uuid=item_uuid,
                 status="ItemNotFound",
+                source="dds",
+                update_existing_only=update_retry_existing_only,
             )
 
         if not isinstance(item_info, dict):
+            http_response_code = _extract_http_status_code(item_info)
             click.echo(
                 f"Unexpected DDS item response type: collection={collection}, uuid={item_uuid}, "
-                f"type={type(item_info).__name__}"
+                f"http_response_code={http_response_code}, type={type(item_info).__name__}"
             )
             return _record_dds_retry(
                 retry_file=retry_file,
                 collection=collection,
                 item_uuid=item_uuid,
                 status="InvalidItemResponse",
+                http_response_code=http_response_code,
+                source="dds",
+                update_existing_only=update_retry_existing_only,
             )
 
         status_value = _extract_dds_status(item_info)
         normalized_status = _normalize_status(status_value)
         item_timestamp = _extract_dds_timestamp(item_info)
+        item_http_response_code = _extract_http_status_code(item_info)
 
         if normalized_status == "QUEUED":
+            _record_dds_retry(
+                retry_file=retry_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="Queued",
+                timestamp=item_timestamp,
+                http_response_code=item_http_response_code,
+                source="dds",
+                detail=f"wait_attempt={waits + 1}/{MAX_DDS_QUEUED_WAITS}",
+                update_existing_only=update_retry_existing_only,
+            )
+
             if waits >= MAX_DDS_QUEUED_WAITS:
                 click.echo(
                     f"Item remained Queued after {MAX_DDS_QUEUED_WAITS} wait(s): "
@@ -886,6 +1181,9 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                     item_uuid=item_uuid,
                     status="QueuedTimeout",
                     timestamp=item_timestamp,
+                    http_response_code=item_http_response_code,
+                    source="dds",
+                    update_existing_only=update_retry_existing_only,
                 )
 
             waits += 1
@@ -906,6 +1204,9 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 item_uuid=item_uuid,
                 status=status_value or "ItemRestoring",
                 timestamp=item_timestamp,
+                http_response_code=item_http_response_code,
+                source="dds",
+                update_existing_only=update_retry_existing_only,
             )
 
         if "download_url" not in item_info:
@@ -919,13 +1220,42 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 item_uuid=item_uuid,
                 status=status_value or "NoDownloadURL",
                 timestamp=item_timestamp,
+                http_response_code=item_http_response_code,
+                source="dds",
+                update_existing_only=update_retry_existing_only,
             )
 
+        resolved_download_dir = os.path.abspath(download_dir)
+        os.makedirs(resolved_download_dir, exist_ok=True)
+
+        expected_file_name = _extract_dds_download_filename(item_info, item_uuid)
+        if expected_file_name:
+            expected_file_path = os.path.join(resolved_download_dir, expected_file_name)
+            if os.path.exists(expected_file_path):
+                click.echo(
+                    f"Skipping DDS download (file already exists): "
+                    f"collection={collection}, uuid={item_uuid}, file={expected_file_path}"
+                )
+                return _record_dds_retry(
+                    retry_file=retry_file,
+                    collection=collection,
+                    item_uuid=item_uuid,
+                    status="SkippedExisting",
+                    timestamp=item_timestamp,
+                    http_response_code=item_http_response_code,
+                    source="dds",
+                    file_name=expected_file_name,
+                    file_path=expected_file_path,
+                    update_existing_only=update_retry_existing_only,
+                )
+
         try:
-            dds_api.download_item(os.path.abspath(download_dir))
+            download_result = dds_api.download_item(resolved_download_dir)
         except Exception as exc:
+            http_response_code = _extract_http_status_code(exc)
             click.echo(
-                f"DDS download failed: collection={collection}, uuid={item_uuid}, error={exc}"
+                f"DDS download failed: collection={collection}, uuid={item_uuid}, "
+                f"http_response_code={http_response_code}, error={exc}"
             )
             return _record_dds_retry(
                 retry_file=retry_file,
@@ -933,10 +1263,33 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 item_uuid=item_uuid,
                 status="DownloadError",
                 timestamp=item_timestamp,
+                http_response_code=http_response_code,
+                source="dds",
+                file_name=expected_file_name,
+                file_path=(os.path.join(resolved_download_dir, expected_file_name)
+                           if expected_file_name else None),
                 detail=str(exc),
+                update_existing_only=update_retry_existing_only,
             )
 
-        return item_info
+        resolved_path: Optional[str] = None
+        if isinstance(download_result, str) and str(download_result).strip():
+            resolved_path = str(download_result).strip()
+        elif expected_file_name:
+            resolved_path = os.path.join(resolved_download_dir, expected_file_name)
+
+        return _record_dds_retry(
+            retry_file=retry_file,
+            collection=collection,
+            item_uuid=item_uuid,
+            status="Downloaded",
+            timestamp=item_timestamp,
+            http_response_code=item_http_response_code,
+            source="dds",
+            file_name=expected_file_name,
+            file_path=resolved_path,
+            update_existing_only=update_retry_existing_only,
+        )
 
 
 def _is_public_asset_collection(collection: str) -> bool:
@@ -967,15 +1320,34 @@ def _unique_destination_path(destination_dir: str, file_name: str) -> str:
         idx += 1
 
 
-def download_public_stac_assets(search_api, collection: str, item_uuid: str, download_dir: str) -> int:
+def download_public_stac_assets(search_api, collection: str, item_uuid: str, download_dir: str,
+                                manifest_file: Optional[str] = None) -> int:
     item_info = search_api.get_item(collection, item_uuid)
     if item_info is None:
         click.echo(f"Item not found: collection={collection}, uuid={item_uuid}")
+        if manifest_file:
+            _record_dds_retry(
+                retry_file=manifest_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="ItemNotFound",
+                source="stac",
+                update_existing_only=False,
+            )
         return 0
 
     assets = item_info.get("assets") if isinstance(item_info, dict) else None
     if not isinstance(assets, dict) or not assets:
         click.echo(f"Item has no assets: collection={collection}, uuid={item_uuid}")
+        if manifest_file:
+            _record_dds_retry(
+                retry_file=manifest_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="NoAssets",
+                source="stac",
+                update_existing_only=False,
+            )
         return 0
 
     destination = os.path.abspath(download_dir)
@@ -1005,13 +1377,45 @@ def download_public_stac_assets(search_api, collection: str, item_uuid: str, dow
                     out_f.write(chunk)
         except Exception as exc:
             click.echo(f"Failed to download asset '{asset_name}': {exc}")
+            if manifest_file:
+                _record_dds_retry(
+                    retry_file=manifest_file,
+                    collection=collection,
+                    item_uuid=item_uuid,
+                    status="AssetDownloadError",
+                    source="stac",
+                    file_name=out_name,
+                    file_path=out_path,
+                    detail=str(exc),
+                    update_existing_only=False,
+                )
             continue
 
         downloaded_count += 1
         click.echo(f"Saved asset to {out_path}")
+        if manifest_file:
+            _record_dds_retry(
+                retry_file=manifest_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="Downloaded",
+                source="stac",
+                file_name=out_name,
+                file_path=out_path,
+                update_existing_only=False,
+            )
 
     if downloaded_count == 0:
         click.echo(f"No downloadable asset links found for collection={collection}, uuid={item_uuid}")
+        if manifest_file:
+            _record_dds_retry(
+                retry_file=manifest_file,
+                collection=collection,
+                item_uuid=item_uuid,
+                status="NoDownloadableAssets",
+                source="stac",
+                update_existing_only=False,
+            )
 
     return downloaded_count
 
@@ -1040,18 +1444,18 @@ def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
             if isinstance(features, list):
                 return [feature for feature in features if isinstance(feature, dict)]
 
-            retry_items = payload.get("items")
-            if isinstance(retry_items, list):
-                return [item for item in retry_items if isinstance(item, dict)]
+            manifest_items = payload.get("items")
+            if isinstance(manifest_items, list):
+                return [item for item in manifest_items if isinstance(item, dict)]
 
-            # Accept a single retry object (for example one JSONL line copied to .json)
+            # Accept a single manifest object (for example one JSONL line copied to .json)
             # when it has an identifiable item UUID/id field.
             if _extract_item_uuid(payload):
                 return [payload]
 
             raise click.ClickException(
                 "Input JSON must be GeoJSON FeatureCollection ('features') "
-                "or retry JSON with an 'items' list (or a single item object with uuid/id)."
+                "or manifest JSON with an 'items' list (or a single item object with uuid/id)."
             )
 
         if isinstance(payload, list):
@@ -1059,7 +1463,7 @@ def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
 
         raise click.ClickException("Input JSON must be an object or list.")
 
-    # Fallback: JSON lines support for retry files (one object per line).
+    # Fallback: JSON lines support for manifest files (one object per line).
     items: List[Dict[str, Any]] = []
     for idx, line in enumerate(raw_text.splitlines(), start=1):
         candidate = line.strip()
@@ -1078,7 +1482,7 @@ def _load_download_items_from_geojson(input_file: str) -> List[Dict[str, Any]]:
         return items
 
     raise click.ClickException(
-        "Input file must be GeoJSON, JSON retry records, or JSONL retry records."
+        "Input file must be GeoJSON, JSON manifest records, or JSONL manifest records."
     )
 
 
@@ -1335,7 +1739,8 @@ def _build_rapi_dates_from_stac_item(stac_item: Dict[str, Any], span_days: int =
     return [{"start": _format_rapi_datetime(start_dt), "end": _format_rapi_datetime(end_dt)}]
 
 
-def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], download_dir: str) -> None:
+def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], download_dir: str,
+                         manifest_file: Optional[str] = None) -> None:
     if not items:
         click.echo("No downloadable items found.")
         return
@@ -1345,6 +1750,34 @@ def _download_rapi_items(rapi_api: EODMSRAPI, items: List[Dict[str, Any]], downl
 
     click.echo(f"Downloading {len(items)} item(s) to {destination}")
     result = _safe_rapi_call(rapi_api.download, items, destination)
+
+    if manifest_file:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            row_collection = str(item.get("collection") or item.get("collectionId") or "").strip()
+            row_uuid = str(
+                item.get("uuid")
+                or item.get("id")
+                or item.get("item_id")
+                or item.get("itemId")
+                or item.get("recordId")
+                or item.get("orderItemId")
+                or item.get("orderId")
+                or ""
+            ).strip()
+            if not row_uuid:
+                continue
+
+            _record_dds_retry(
+                retry_file=manifest_file,
+                collection=row_collection,
+                item_uuid=row_uuid,
+                status="DownloadRequested",
+                source="rapi",
+                update_existing_only=False,
+            )
 
     if isinstance(result, list):
         click.echo(f"Downloaded/attempted {len(result)} item(s).")
@@ -1512,8 +1945,12 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
               help="List available STAC collections and exit.")
 @click.option("--uuid2record", "uuid2record", is_flag=True,
               help="Resolve UUID to order_key (search) then recordId (RAPI).")
+@click.option("--orderkey2uuid", "orderkey2uuid", is_flag=True,
+              help="Resolve order_key value(s) to UUID(s) using search.")
 @click.option("--uuid", required=False, default=None,
               help="UUID (or comma-separated UUIDs) used with --uuid2record.")
+@click.option("--order-key", "order_key", required=False, default=None,
+              help="order_key value (or comma-separated values) used with --orderkey2uuid.")
 @click.option("--queryables", "show_queryables", is_flag=True,
               help="Print queryables for --collection and exit.")
 @click.option("--datetime", "-d", "datetime_range", required=False, default=None,
@@ -1541,7 +1978,9 @@ def search_cmd(
     collection: Optional[str],
     list_collections: bool,
     uuid2record: bool,
+    orderkey2uuid: bool,
     uuid: Optional[str],
+    order_key: Optional[str],
     show_queryables: bool,
     datetime_range: Optional[str],
     bbox: Optional[str],
@@ -1565,6 +2004,9 @@ def search_cmd(
         search_api = make_search(aaa_api, env)
         search_api.print_collections()
         return
+
+    if uuid2record and orderkey2uuid:
+        raise click.ClickException("Use either --uuid2record or --orderkey2uuid, not both.")
 
     if uuid2record:
         if not uuid:
@@ -1620,6 +2062,37 @@ def search_cmd(
                 click.echo(f"{uuid_value}: order_key={order_key}; record_id={record_id}")
             else:
                 click.echo(f"{uuid_value}: order_key={order_key}; record_id not found")
+        return
+
+    if orderkey2uuid:
+        if not order_key:
+            raise click.ClickException("--order-key is required with --orderkey2uuid.")
+        if not collection:
+            raise click.ClickException("--collection is required with --orderkey2uuid.")
+
+        search_api = make_search(aaa_api, env)
+        order_key_values = [value.strip() for value in order_key.split(",") if value.strip()]
+        if not order_key_values:
+            raise click.ClickException("At least one order_key value must be provided.")
+
+        items_by_order_key = _search_items_by_order_keys(
+            search_api,
+            collection,
+            order_key_values,
+            chunk_size=100,
+        )
+
+        for order_key_value in order_key_values:
+            item = items_by_order_key.get(order_key_value)
+            if item is None:
+                click.echo(f"{order_key_value}: no item found in search/{collection}")
+                continue
+
+            item_uuid = _extract_item_uuid(item)
+            if item_uuid:
+                click.echo(f"{order_key_value}: uuid={item_uuid}")
+            else:
+                click.echo(f"{order_key_value}: uuid not found")
         return
 
     if show_queryables:
@@ -1881,7 +2354,12 @@ def order_st_cmd(
                     raise click.ClickException("No orderId found in SAR_Toolbox submit response; cannot download.")
                 order_payload = _safe_rapi_call(rapi_api.get_order, order_id)
                 order_items = _safe_rapi_call(rapi_api.collect_order_items, order_payload)
-                _download_rapi_items(rapi_api, order_items, download_dir)
+                _download_rapi_items(
+                    rapi_api,
+                    order_items,
+                    download_dir,
+                    manifest_file=_resolve_downloads_manifest_path(download_dir),
+                )
 
             return
 
@@ -1952,7 +2430,7 @@ def order_st_cmd(
 @click.option("--uuid", required=False, default=None,
               help="Download UUID directly via STAC assets (public collections) or DDS.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="Input file for download items (TSV, GeoJSON, JSON, or JSONL retry records).")
+              help="Input file for download items (TSV, GeoJSON, JSON, or JSONL). Use downloads.jsonl here to replay tracked items.")
 @click.option("--collection", "-c", required=False, default=None,
               help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",
@@ -1975,12 +2453,8 @@ def order_st_cmd(
               help="Destination directory for downloads.")
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
-@click.option("--dds-retry-file", required=False, default=DEFAULT_DDS_RETRY_FILE,
-              help="File used to append DDS retry records for non-success item attempts.")
-@click.pass_context
 @handle_service_errors
 def download_available_cmd(
-    ctx: click.Context,
     username: Optional[str],
     password: Optional[str],
     uuid: Optional[str],
@@ -1995,33 +2469,12 @@ def download_available_cmd(
     order_status: Optional[str],
     download_available: bool,
     download_dir: str,
-    dds_retry_file: str,
 ):
     """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
 
     username, password = resolve_credentials(username, password)
     dds_backoff_seconds = _load_dds_backoff_interval()
     dds_concurrent_downloads = _load_dds_concurrent_downloads()
-
-    # If explicitly provided, allow --dds-retry-file to act as --input for retry runs.
-    dds_retry_file_provided = False
-    if hasattr(ctx, "get_parameter_source"):
-        try:
-            src = ctx.get_parameter_source("dds_retry_file")
-            param_source = getattr(click.core, "ParameterSource", None)
-            if param_source is not None and src == param_source.COMMANDLINE:
-                dds_retry_file_provided = True
-        except Exception:
-            dds_retry_file_provided = False
-
-    if not uuid and not input_file and dds_retry_file_provided:
-        retry_input_path = os.path.abspath(dds_retry_file)
-        if not os.path.exists(retry_input_path):
-            raise click.ClickException(
-                f"DDS retry file not found: {retry_input_path}"
-            )
-        click.echo(f"Using DDS retry input file: {retry_input_path}")
-        input_file = retry_input_path
 
     if uuid and input_file:
         raise click.ClickException("Use either --uuid or --input, not both.")
@@ -2032,16 +2485,25 @@ def download_available_cmd(
             click.echo("No items found in input file.")
             return
 
-        # Deduplicate retry records once before processing when using retry input.
-        retry_input_abs = os.path.abspath(input_file)
-        retry_file_abs = os.path.abspath(dds_retry_file)
-        if retry_input_abs == retry_file_abs:
-            deduped_count = _compact_dds_retry_file(dds_retry_file)
+        # Download activity is tracked in a manifest inside the active
+        # download directory and updated for every status transition.
+        input_abs = os.path.abspath(input_file)
+        update_retry_existing_only = False
+        manifest_file_for_run = _resolve_downloads_manifest_path(download_dir)
+
+        input_suffix = str(input_file).strip().lower()
+        is_manifest_input = input_suffix.endswith(".manifest") or input_suffix.endswith(".jsonl")
+        if is_manifest_input:
+            deduped_count = _compact_dds_retry_file(input_file)
             if deduped_count:
                 click.echo(
-                    f"Compacted DDS retry file to {deduped_count} unique item(s): {retry_input_abs}"
+                    f"Compacted download manifest to {deduped_count} unique item(s): {input_abs}"
                 )
                 features = _load_download_items(input_file)
+
+        click.echo(
+            f"Download manifest path: {os.path.abspath(manifest_file_for_run)}"
+        )
 
         aaa_api = make_aaa(username, password, env)
         search_api = None
@@ -2078,7 +2540,13 @@ def download_available_cmd(
                 if search_api is None:
                     search_api = make_search(aaa_api, env)
                 click.echo(f"Downloading public assets: collection={item_collection}, uuid={item_uuid}")
-                downloaded_assets = download_public_stac_assets(search_api, str(item_collection), item_uuid, download_dir)
+                downloaded_assets = download_public_stac_assets(
+                    search_api,
+                    str(item_collection),
+                    item_uuid,
+                    download_dir,
+                    manifest_file=manifest_file_for_run,
+                )
                 asset_download_count += downloaded_assets
                 processed_count += 1
                 continue
@@ -2109,7 +2577,8 @@ def download_available_cmd(
                     work_uuid,
                     download_dir,
                     queued_backoff_seconds=dds_backoff_seconds,
-                    retry_file=dds_retry_file,
+                    retry_file=manifest_file_for_run,
+                    update_retry_existing_only=update_retry_existing_only,
                 )
 
             with ThreadPoolExecutor(max_workers=dds_concurrent_downloads) as executor:
@@ -2130,8 +2599,14 @@ def download_available_cmd(
                         dds_no_download_count += 1
                         continue
 
-                    if isinstance(item_info, dict) and item_info.get("_dds_retry_logged"):
-                        dds_retry_logged_count += 1
+                    if isinstance(item_info, dict):
+                        manifest_status = _normalize_status(item_info.get("_manifest_status") or item_info.get("status"))
+                        if manifest_status in {"DOWNLOADED", "SKIPPEDEXISTING"}:
+                            dds_download_count += 1
+                        elif item_info.get("_dds_retry_logged"):
+                            dds_retry_logged_count += 1
+                        else:
+                            dds_no_download_count += 1
                     elif item_info is not None:
                         dds_download_count += 1
                     else:
@@ -2155,7 +2630,13 @@ def download_available_cmd(
             aaa_api = make_aaa(username, password, env)
             search_api = make_search(aaa_api, env)
             click.echo(f"Downloading all available STAC assets for UUID: {uuid}")
-            downloaded_count = download_public_stac_assets(search_api, collection, uuid, download_dir)
+            downloaded_count = download_public_stac_assets(
+                search_api,
+                collection,
+                uuid,
+                download_dir,
+                manifest_file=_resolve_downloads_manifest_path(download_dir),
+            )
             click.echo(f"Downloaded {downloaded_count} asset(s).")
             return
 
@@ -2174,7 +2655,8 @@ def download_available_cmd(
             uuid,
             download_dir,
             queued_backoff_seconds=dds_backoff_seconds,
-            retry_file=dds_retry_file,
+            retry_file=_resolve_downloads_manifest_path(download_dir),
+            update_retry_existing_only=False,
         )
         return
 
@@ -2294,7 +2776,12 @@ def download_available_cmd(
 
     click.echo(f"Found {len(filtered_items)} AVAILABLE_FOR_DOWNLOAD item(s).")
 
-    _download_rapi_items(rapi_api, filtered_items, download_dir)
+    _download_rapi_items(
+        rapi_api,
+        filtered_items,
+        download_dir,
+        manifest_file=_resolve_downloads_manifest_path(download_dir),
+    )
 
 
 if __name__ == "__main__":
