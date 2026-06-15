@@ -2178,6 +2178,15 @@ def search_cmd(
     if not s_intersect_list:
         s_intersect_list = [{"name": None, "wkt": None}]
 
+    # Set default datetime range if not provided
+    if datetime_range is None:
+        cfg = _load_config_utils()
+        default_days = int(cfg.get('Search', 'default_date_range_days') or '90')
+        now = datetime.now()
+        start_date = now - timedelta(days=default_days)
+        datetime_range = f"{start_date.strftime('%Y-%m-%d')}/{now.strftime('%Y-%m-%d')}"
+        click.echo(f"Using default date range ({default_days} days): {datetime_range}")
+
     search_api = make_search(aaa_api, env)
     items = search_api.search_multiple_geometries(
         s_intersect_list=s_intersect_list,

@@ -110,6 +110,10 @@ class ConfigUtils:
                                  "# Legacy alias recognized for backoff_interval": None,
                                  "back_interval": '60'
                                 },
+                            "Search":
+                                {"# Default number of days to search back when no --datetime is provided": None,
+                                 "default_date_range_days": '90'
+                                 },
                             "Logging":
                                 {"# Logging threshold (DEBUG, INFO, WARNING, ERROR, CRITICAL or numeric)": None,
                                  "level": "INFO",
@@ -364,6 +368,8 @@ Options:
         self._set_dict('DDS', 'DDS', 'concurrent_downloads')
         self._set_dict('DDS', 'DDS', 'backoff_interval')
         self._set_dict('DDS', 'DDS', 'back_interval')
+
+        self._set_dict('Search', 'Search', 'default_date_range_days')
 
         self._set_dict('Logging', 'Logging', 'level')
         self._set_dict('Logging', 'Logging', 'datefmt')
