@@ -117,13 +117,15 @@ class TestEodmsCli(unittest.TestCase):
             with open(output_path, "r", encoding="utf-8", newline="") as out_f:
                 rows = list(csv.DictReader(out_f, delimiter="\t"))
 
-            self.assertEqual(["order_keys", "note", "spatial_resolution", "timestamp", "uuid"], list(rows[0].keys()))
+            self.assertEqual(["order_keys", "note", "spatial_resolution", "timestamp", "uuid", "thumbnail_url"], list(rows[0].keys()))
             self.assertEqual("30", rows[0]["spatial_resolution"])
             self.assertEqual("2026-06-09T12:00:00Z", rows[0]["timestamp"])
             self.assertEqual("uuid-123", rows[0]["uuid"])
+            self.assertEqual("", rows[0]["thumbnail_url"])
             self.assertEqual("", rows[1]["spatial_resolution"])
             self.assertEqual("", rows[1]["timestamp"])
             self.assertEqual("", rows[1]["uuid"])
+            self.assertEqual("", rows[1]["thumbnail_url"])
             self.assertEqual(1, len(fake_search.calls))
             self.assertIn("MATCH_ONE", fake_search.calls[0]["filter"])
             self.assertIn("MISS_ONE", fake_search.calls[0]["filter"])
