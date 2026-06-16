@@ -56,19 +56,19 @@ The EODMS-CLI was designed using **Python 3.10**.
 	> pip install -r requirements.txt --upgrade
 	```
 	
-3. Run the script using Python
+3. Run the CLI using Python
 
 	```bash
-  > python eodms_prompt.py
+    > python eodms_cli.py --help
 	```
 	
-NOTE: Depending on your installation of Python, you may have to run ```python3 eodms_prompt.py```.
+NOTE: Depending on your installation of Python, you may have to run ```python3 eodms_cli.py --help```.
 	
 ## Configuration
 
-Configuration for the script can be found in the **config.ini** file in the home folder under ".eodms".
+Configuration for the CLI can be found in the **config.ini** file in the home folder under ".eodms".
 
-Configuration options can be changed by running ```python eodms_prompt.py --configure```.
+Configuration options can be changed by running ```python eodms_cli.py configure```.
 
 In the config file, you can: 
 
@@ -97,10 +97,10 @@ To update eodms-cli and its dependencies, follow these steps:
   > pip install -r requirements.txt --upgrade
 	```
 	
-3. Run the script using Python
+3. Run the CLI using Python
 
 	```bash
-  > python eodms_prompt.py
+    > python eodms_cli.py --help
 	```
 
 ## User Guide
