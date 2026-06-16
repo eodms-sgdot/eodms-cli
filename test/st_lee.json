@@ -1,0 +1,27 @@
+{
+    "items": [
+        {
+            "collectionId": "RCMImageProducts",
+            "recordId": "35752078",
+            "parameters": {}
+        }
+    ],
+    "destinations": [],
+    "vapRequest": {
+        "sequence": {
+            "sequence_1": "mylee"
+        },
+        "method": {
+            "method-209-1": {
+                "Category": "200",
+                "Method": "209",
+                "LabelName": "mylee",
+                "FilterSizeX": "5",
+                "FilterSizeY": "5"
+            }
+        },
+        "deliveryLocation": "DOWNLOAD",
+        "AllPol": "on",
+        "pr_users_username": "william.mackinnon@nrcan-rncan.gc.ca"
+    }
+}

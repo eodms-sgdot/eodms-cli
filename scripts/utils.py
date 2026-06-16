@@ -32,6 +32,7 @@ from eodms_rapi import EODMSRAPI
 from eodms_rapi import QueryError
 
 from eodms import dds, aaa
+from eodms.search import Search_API
 
 try:
     import dateparser
@@ -45,6 +46,139 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
+
+
+def _stac_feature_to_bbox(features):
+    """
+    Converts a features list (e.g. [('INTERSECTS', wkt_or_geojson)]) to a
+    STAC bbox [west, south, east, north], or None if no features provided.
+    """
+    if not features:
+        return None
+
+    import shapely.wkt
+    import shapely.geometry
+
+    geoms = []
+    for feat in features:
+        # feat is a tuple like ('INTERSECTS', geometry_string_or_dict)
+        geom_val = feat[1] if isinstance(feat, (list, tuple)) and len(feat) > 1 else feat
+        if isinstance(geom_val, dict):
+            geoms.append(shapely.geometry.shape(geom_val))
+        elif isinstance(geom_val, str):
+            try:
+                geoms.append(shapely.wkt.loads(geom_val))
+            except Exception:
+                import json as _json
+                geoms.append(shapely.geometry.shape(_json.loads(geom_val)))
+        else:
+            geoms.append(geom_val)
+
+    if not geoms:
+        return None
+
+    from shapely.ops import unary_union
+    union = unary_union(geoms)
+    minx, miny, maxx, maxy = union.bounds
+    return [minx, miny, maxx, maxy]
+
+
+def _parse_dates_to_stac(dates):
+    """
+    Converts a dates list from _parse_dates (list of {'start': ..., 'end': ...}
+    dicts with format 'YYYYMMDD_HHMMSS') to a STAC ISO 8601 datetime string.
+    Returns None if no dates provided.
+    """
+    if not dates:
+        return None
+
+    def _fmt(date_str):
+        """Convert '20200105_045034' to '2020-01-05T04:50:34Z'."""
+        date_str = date_str.replace('_', 'T')
+        try:
+            dt = datetime.strptime(date_str, '%Y%m%dT%H%M%S')
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:
+            return date_str
+
+    parts = []
+    for d in dates:
+        if isinstance(d, dict):
+            start = _fmt(d.get('start', ''))
+            end = _fmt(d.get('end', ''))
+            parts.append(f"{start}/{end}")
+        elif isinstance(d, str):
+            # Time interval string (e.g. "24 hours") — not directly
+            # expressible as STAC datetime; pass through as-is
+            parts.append(d)
+
+    return parts[0] if len(parts) == 1 else ','.join(parts)
+
+
+def _normalize_record(item):
+    """
+    Normalizes any record format (STAC item, RAPI record, or CSV row) to a
+    standard format with guaranteed field: archiveId, collectionId.
+    This is the single normalization point for all ingestion paths.
+    
+    :param item: A STAC Item (dict or pystac), RAPI record, or CSV row dict
+    :return: Normalized record dict with standard fields
+    """
+    if not isinstance(item, dict):
+        # Handle pystac Item objects
+        props = dict(item.properties) if item.properties else {}
+        item_id = item.id
+        geometry = item.geometry
+        collection = getattr(item, 'collection_id', '') or ''
+        links = {lnk.rel: lnk.href for lnk in getattr(item, 'links', [])}
+        record = {}
+        record['archiveId'] = item_id
+        record['collectionId'] = collection
+        if geometry:
+            record['geometry'] = geometry
+        record.update(props)
+        return record
+    
+    # Handle dict records (STAC items, RAPI, CSV, etc.)
+    record = dict(item)  # Preserve original fields
+    
+    # Determine if this is a STAC item (has 'properties' key)
+    if 'properties' in record:
+        props = record.get('properties', {})
+        item_id = record.get('id', '')
+        collection = record.get('collection', '')
+        # Merge properties into record at top level
+        for k, v in props.items():
+            if k not in record:
+                record[k] = v
+    else:
+        # RAPI or CSV format: normalize case-insensitive lookups
+        item_id = record.get('id') or record.get('ID')
+        collection = record.get('collectionId') or record.get('collection_id') or \
+                     record.get('collection') or record.get('Collection')
+    
+    # Normalize unique identifier to archiveId (try all known field names)
+    archive_id = record.get('archiveId') or record.get('archive_id') or \
+                 record.get('archiveid') or record.get('image_uuid') or \
+                 record.get('image id') or record.get('recordId') or \
+                 record.get('record_id') or record.get('recordid') or item_id
+    
+    # Set standard fields
+    if archive_id:
+        record['archiveId'] = archive_id
+    if collection:
+        record['collectionId'] = collection
+    
+    return record
+
+
+def _normalize_stac_item(item):
+    """
+    Deprecated: use _normalize_record instead.
+    Kept for backwards compatibility.
+    """
+    return _normalize_record(item)
+
 
 class EodmsUtils:
 
@@ -81,6 +215,7 @@ class EodmsUtils:
         self.password = kwargs.get('password')
 
         self.dds_api = None
+        self.search_api = None
 
         self.logger = logging.getLogger('eodms')
 
@@ -362,10 +497,61 @@ class EodmsUtils:
         :rtype: dict
         """
 
+        if coll_id is None:
+            coll_id = self.coll_id
+
+        return self._parse_stac_filters(filters, coll_id)
+
+    def _parse_stac_filters(self, filters, coll_id):
+        out_filters = {}
+        av_fields = self.get_available_fields(coll_id, 'title')
+        if av_fields is None:
+            return out_filters
+
+        stac_fields = av_fields.get('results', {})
+        field_map = {k.lower(): k for k in stac_fields.keys()}
+
+        for filt in filters:
+            if all(x not in filt for x in self.operators):
+                print(f"Filter '{filt}' entered incorrectly.")
+                continue
+
+            ops = [x for x in self.operators if x in filt]
+            filt_split = ''
+            op = ''
+            for cur_op in ops:
+                filt_split = filt.split(cur_op)
+                op = cur_op
+
+            key = filt_split[0].strip()
+            if key.lower() not in field_map:
+                err = f"Filter '{key}' is not available for Collection " \
+                      f"'{coll_id}'."
+                self.print_msg(err, heading='warning')
+                self.logger.warning(err)
+                continue
+
+            fld_id = field_map[key.lower()]
+            val = filt_split[1].strip().replace('"', '').replace("'", '')
+
+            if val is None or val == '':
+                err = f"No value specified for Filter ID '{key}'."
+                self.print_msg(err, heading='warning')
+                self.logger.warning(err)
+                continue
+
+            vals = [v.strip() for v in val.split('|') if v.strip() != '']
+            if len(vals) == 0:
+                continue
+
+            out_filters[fld_id] = (op, vals)
+
+        return out_filters
+
+    def _parse_rapi_filters(self, filters, coll_id):
         out_filters = {}
 
         for filt in filters:
-
             if all(x not in filt for x in self.operators):
                 print(f"Filter '{filt}' entered incorrectly.")
                 continue
@@ -374,20 +560,16 @@ class EodmsUtils:
 
             filt_split = ''
             op = ''
-            for o in ops:
-                filt_split = filt.split(o)
-                op = o
+            for cur_op in ops:
+                filt_split = filt.split(cur_op)
+                op = cur_op
 
-            if coll_id is None:
-                coll_id = self.coll_id
-
-            # Convert the input field for EODMS_RAPI
             key = filt_split[0].strip()
             coll_fields = self.field_mapper.get_fields(coll_id)
 
             if key.lower() not in coll_fields.get_eod_fieldnames(lowered=True):
                 err = f"Filter '{key}' is not available for Collection " \
-                          f"'{coll_id}'."
+                      f"'{coll_id}'."
                 self.print_msg(err, heading='warning')
                 self.logger.warning(err)
                 continue
@@ -395,7 +577,6 @@ class EodmsUtils:
             fld = coll_fields.get_field(key)
             fld_id = fld.get_rapi_id()
 
-            # Modified operator if maximum or minimum
             if key.lower().find('maximum') > -1 and \
                 fld_id.lower().find('maximum') == -1:
                 op = "<="
@@ -412,10 +593,9 @@ class EodmsUtils:
                 self.logger.warning(err)
                 continue
 
-            # Check if val is a valid entry for the filter
             vals = val.split('|')
             choices = fld.get_choices(True)
-            
+
             if choices is not None:
                 rep_vals = []
                 for v_str in vals:
@@ -423,7 +603,7 @@ class EodmsUtils:
                     if new_val is None:
                         choices_str = ', '.join(list(filter(None, choices)))
                         err = f"{v_str} is not a valid choice for filter " \
-                                f"'{key}'. Valid choices are: {choices_str}"
+                              f"'{key}'. Valid choices are: {choices_str}"
                         self.print_msg(err, heading='warning')
                         self.logger.warning(err)
                         continue
@@ -489,91 +669,21 @@ class EodmsUtils:
         csv_res = eodms_csv.import_eodms_csv()
 
         ##################################################
-        self.print_heading("Retrieving Record IDs for the list of "
-                           "entries in the CSV file")
+        self.print_heading("Retrieving download candidates from CSV file")
+              
         ##################################################
-
-        # Group all records into different collections
-        sat_recs = {}
 
         if max_images is not None and max_images != '':
             csv_res = csv_res[:max_images]
-
-        # Group by satellite
-        for rec in csv_res:
-
-            # Get the collection ID for the image
-            satellite = rec.get('satellite')
-
-            if satellite is None:
-                satellite = rec.get('title')
-
-            rec_lst = []
-            if satellite in sat_recs:
-                rec_lst = sat_recs[satellite]
-
-            rec_lst.append(rec)
-
-            sat_recs[satellite] = rec_lst
-
-        all_res = []
-
-        counter = 0
-        total = len(csv_res)
-        for sat, recs in sat_recs.items():
-
-            self.print_msg(f"Getting images for {sat}:", indent=False)
-
-            for idx, rec in enumerate(recs):
-                self.print_msg(f"Getting image {counter + 1} of {total}", False)
-
-                counter += 1
-
-                # If no satellite given, the record is an aerial image
-                if sat is None or sat == '':
-                    if 'photo number' in rec.keys():
-                        sat = 'NAPL'
-                    elif 'photo name' in rec.keys():
-                        sat = 'sgap'
-
-                res = []
-                if 'sequence id' in rec.keys():
-                    # If Sequence Id is in the CSV file
-                    rec_id = rec.get('sequence id')
-                    if rec_id is None:
-                        rec_id = rec.get('sequence id')
-                    colls = self._get_collection(sat)
-
-                    if rec_id == '':
-                        continue
-
-                    # Get the results
-                    for coll in colls:
-                        res = self.eodms_rapi.get_record(coll, rec_id)
-                        
-                        if 'errors' in res and \
-                                res.get('errors').find('404') > -1:
-                            continue
-
-                        if len(res) > 0:
-                            break
-
-                else:
-                    msg = "Could not determine a unique field from the " \
-                                      "CSV results."
-                    self.print_msg(msg, heading='warning')
-                    self.logger.warning(msg)
-                    self.results = image.ImageList(self)
-                    return self.results
-
-                if isinstance(res, list):
-                    all_res += res
-                else:
-                    all_res.append(res)
-
-        # Convert results to ImageList
+        # Convert CSV records to ImageList directly for DDS download.
         self.results = image.ImageList(self)
-        self.results.ingest_results(all_res)
+        self.results.ingest_csv(csv_res)
+
+        if self.results.count() == 0:
+            msg = "Could not determine any images from CSV rows. Ensure " \
+                  "the CSV contains 'Archive ID' values."
+            self.print_msg(msg, heading='warning')
+            self.logger.warning(msg)
 
         return self.results
 
@@ -936,11 +1046,11 @@ class EodmsUtils:
         if item is None:
             if self.eodms_rapi.auth_err:
                 msg = "\nAn authentication error has occurred while " \
-                    "trying to access the EODMS RAPI. Please ensure " \
+                    f"trying to access the EODMS STAC. Please ensure " \
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html. Once your account is ready, you can " \
-                    "run 'python eodms_cli.py --configure credentials' to " \
+                    "run 'python eodms_prompt.py --configure credentials' to " \
                     "add your new credentials to the configuration file."
             else:
                 msg = "Failed to retrieve a list of available collections."
@@ -951,7 +1061,7 @@ class EodmsUtils:
             err_msg = item.get_msgs(True)
             if err_msg.find('401 Client Error') > -1:
                 msg = "An authentication error has occurred while " \
-                    "trying to access the EODMS RAPI.\n\nPlease ensure " \
+                    f"trying to access the EODMS {backend_label}.\n\nPlease ensure " \
                     "your account login is in good standing on the actual " \
                     "website, https://www.eodms-sgdot.nrcan-rncan.gc.ca/" \
                     "index-en.html."
@@ -966,32 +1076,7 @@ class EodmsUtils:
         """
         Checks the hit count for a specified search
         """
-
-        filters = self.rapi_search_args.get('filters')
-        features = self.rapi_search_args.get('features')
-        dates = self.rapi_search_args.get('dates')
-        result_fields = self.rapi_search_args.get('resultFields')
-        max_res = self.rapi_search_args.get('maxResults')
-
-        # Get hit count
-        print(f"\nGetting hit count...")
-        hit_count_res = self.eodms_rapi.search(self.coll_id, filters, features, 
-                                           dates, result_fields, max_res, 
-                                           hit_count=True)
-        
-        if isinstance(hit_count_res, QueryError):
-            err_msg = hit_count_res.get_msgs(True)
-            self.print_msg(err_msg, heading='warning')
-            self.logger.warning(err_msg)
-            return None
-        elif isinstance(hit_count_res, dict):
-            hit_count = hit_count_res.get('hitCount')
-
-            msg = f"Hit Count for Search: {hit_count}"
-            print(f"\n{msg}")
-            self.logger.info(msg)
-
-            return hit_count
+        return None
 
     def cleanup_folders(self):
         """
@@ -1085,6 +1170,7 @@ class EodmsUtils:
 
         aaa_api = aaa.AAA_API(username, password, environment=environment)
         self.dds_api = dds.DDS_API(aaa_api, environment=environment)
+        self.search_api = Search_API(aaa_api=aaa_api, environment=environment)
 
         # Add CLI version info to User-Agent in header
         if 'rapi_session' in dir(self.eodms_rapi):
@@ -1092,7 +1178,40 @@ class EodmsUtils:
                                                 f"EODMSCLI/{self.version}", 
                                                 True)
 
-        self.field_mapper = field.EodFieldMapper(self, self.eodms_rapi)
+    def _get_search_api(self):
+        if self.search_api is None:
+            environment = 'staging' if self.eodms_domain else 'prod'
+            aaa_api = getattr(self.dds_api, 'aaa', None)
+            self.search_api = Search_API(aaa_api=aaa_api,
+                                         environment=environment)
+        return self.search_api
+
+    def _search_stac(self, coll_id, filters=None, features=None, dates=None,
+                     max_results=None):
+        """Runs a STAC search and returns normalized records."""
+        search_api = self._get_search_api()
+
+        bbox = _stac_feature_to_bbox(features)
+        datetime_str = _parse_dates_to_stac(dates)
+        limit = int(max_results) if max_results else 1000
+
+        cql2_filter = filters.strip() if isinstance(filters, str) \
+            and filters.strip() else None
+
+        search_kwargs = {}
+        if cql2_filter:
+            search_kwargs['filter'] = cql2_filter
+            search_kwargs['filter_lang'] = 'cql2-text'
+
+        items = search_api.stac_search(
+            collections=[coll_id],
+            bbox=bbox,
+            datetime=datetime_str,
+            limit=limit,
+            **search_kwargs,
+        )
+
+        return [_normalize_stac_item(it) for it in items]
 
     def download_aws(self, aws_imgs):
         """
@@ -1158,7 +1277,8 @@ class EodmsUtils:
                             method='write',
                             miniters=1,
                             total=float(fsize),
-                            desc=os.path.basename(dest_fn)
+                            desc=os.path.basename(dest_fn),
+                            dynamic_ncols=True,
                     ) as file_out:
                         for chunk in stream.iter_content(chunk_size=1024):
                             file_out.write(chunk)
@@ -1266,7 +1386,13 @@ class EodmsUtils:
         if isinstance(in_title, list):
             in_title = in_title[0]
 
-        for k, v in self.eodms_rapi.get_collections().items():
+        collections = self.get_collections()
+        if isinstance(collections, list):
+            collections = {c['id']: {'title': c.get('title', c['id']),
+                                     'aliases': c.get('aliases', [])}
+                           for c in collections}
+
+        for k, v in collections.items():
             if v['title'].find(in_title) > -1:
                 return k
 
@@ -1278,6 +1404,52 @@ class EodmsUtils:
         """
 
         return self.eodms_rapi
+
+    def get_collections(self, as_list=False):
+        """Returns collections from Search_API/STAC."""
+        search_api = self._get_search_api()
+
+        collections = []
+        for coll in search_api.client.get_collections():
+            collections.append({
+                'id': coll.id,
+                'title': getattr(coll, 'title', None) or coll.id,
+                'aliases': []
+            })
+
+        if as_list:
+            return collections
+
+        return {c['id']: {'title': c['title'], 'aliases': c['aliases']}
+                for c in collections}
+
+    def get_available_fields(self, coll_id, field_type='title'):
+        """Returns available queryables for a collection."""
+        search_api = self._get_search_api()
+
+        try:
+            collection = search_api.client.get_collection(coll_id)
+            if collection is None:
+                return None
+            queryables = collection.get_queryables()
+            props = queryables.get('properties', {}) \
+                if isinstance(queryables, dict) else {}
+            fields = {k: v for k, v in props.items()}
+            return {'results': fields, 'query': fields}
+        except Exception:
+            return None
+
+    def print_queryables(self, coll_id):
+        """Prints queryables for a collection using Search_API."""
+        search_api = self._get_search_api()
+        try:
+            coll = search_api.client.get_collection(coll_id)
+            if coll is None:
+                return False
+            search_api.print_queryables(coll)
+            return True
+        except Exception:
+            return False
 
     def get_colour(self, **kwargs): 
         """
@@ -1326,7 +1498,12 @@ class EodmsUtils:
         :rtype: str
         """
 
-        collections = self.eodms_rapi.get_collections()
+        collections = self.get_collections()
+        if isinstance(collections, list):
+            collections = {c['id']: {'title': c.get('title', c['id']),
+                                     'aliases': c.get('aliases', [])}
+                           for c in collections}
+
         for k, v in collections.items():
             if k.find(coll_id) > -1 or v['title'].find(coll_id) > -1:
                 return k
@@ -1360,10 +1537,8 @@ class EodmsUtils:
         
         record_ids = []
         for ok in order_keys:
-            filters = {'Order Key': ('=', ok)}
-            self.eodms_rapi.search(coll_id, filters)
-
-            res = self.eodms_rapi.get_results()
+            filters = f"\"Order Key\" = '{ok}'"
+            res = self._search_stac(coll_id, filters=filters)
             if len(res) > 0:
                 record_ids = [r.get('recordId') for r in res]
 
@@ -1681,78 +1856,33 @@ class EodmsUtils:
 
                 if self.coll_id in filters.keys():
                     coll_filts = filters[self.coll_id]
-                    filt_parse = self._parse_filters(coll_filts)
-                    if isinstance(filt_parse, str):
-                        filt_parse = {}
+                    # For STAC, a raw CQL2 string is passed straight through.
+                    if isinstance(coll_filts, str):
+                        filt_parse = coll_filts
+                    else:
+                        filt_parse = self._parse_filters(coll_filts)
+                        if isinstance(filt_parse, str):
+                            filt_parse = {}
                 else:
                     filt_parse = {}
             else:
                 filt_parse = {}
-
-            result_fields = []
-            if filt_parse is not None:
-                av_fields = self.eodms_rapi.get_available_fields(self.coll_id,
-                                                                 'title')
-
-                if av_fields is None:
-                    return None
-
-                result_fields.extend(k for k in filt_parse.keys() 
-                    if k in av_fields['results'])
 
             # Create search method arguments dictionary:
             self.rapi_search_args = {
                 "filters": filt_parse, 
                 "features": feats, 
                 "dates": dates, 
-                "resultFields": result_fields, 
                 "maxResults": max_images
             }
 
-            # Send a query to the EODMSRAPI object
-            print(f"\nSending query to EODMSRAPI with the following "
+            print(f"\nSending query to STAC with the following "
                   f"parameters:")
             for k, v in self.rapi_search_args.items():
                 print(f"  {k}: {v}")
 
-            # Check hit count for the search
-            hit_count = self.check_hit_count()
-
-            if hit_count is None or hit_count == 0:
-                if hit_count is None:
-                    msg = "Could not determine the hit count of images."
-                else:
-                    msg = "Sorry, no results found for given AOI or filters."
-                self.print_msg(msg, heading="error")
-                self.logger.error(msg)
-                self.exit_cli()
-
-            if max_images is None or max_images == '' or max_images > hit_count:
-                max_images = hit_count
-
-            if max_images > 1500:
-                msg = f"""The hit count for this search is too high. The RAPI will most likely timeout. 
-Please separate your searches into separate commands, narrowing your searches with other filters (such as adding a date range(s)).
-Example:
-{self.prompter.cli_syntax} -d <yymmddThhmmss>-<yymmddThhmmss>"""
-                self.print_msg(msg, indent=False, heading='warning', 
-                               wrap_text=False)
-
-                ask_msg = "Would you like to continue with the 1500 latest " \
-                    "results returned from RAPI?"
-                answer = self.prompter.get_input(ask_msg, required=False, 
-                                                 default='n', 
-                                                 options=['Yes', 'No'])
-
-                if answer.lower().find('n') > -1:
-                    sys.exit()
-
-                max_images = 1500
-
-            self.eodms_rapi.search(self.coll_id, filt_parse, feats, dates,
-                                   result_fields, max_images)
-
-            res = self.eodms_rapi.get_results()
+            res = self._search_stac(self.coll_id, filt_parse, feats, dates,
+                                    max_images)
 
             # Add this collection's results to all results
             all_res += res
@@ -1816,7 +1946,11 @@ Example:
         :rtype: str or boolean
         """
 
-        colls = self.eodms_rapi.get_collections()
+        colls = self.get_collections()
+        if isinstance(colls, list):
+            colls = {c['id']: {'title': c.get('title', c['id']),
+                               'aliases': c.get('aliases', [])}
+                     for c in colls}
 
         aliases = [v['aliases'] for v in colls.values()]
 
@@ -1987,9 +2121,36 @@ Example:
             self.logger.error(err_msg)
             return False
 
-        # Check if filter name is valid
-        coll_fields = self.field_mapper.get_fields(coll_id)
+        return self._validate_stac_filters(filt_items, coll_id)
 
+    def _validate_stac_filters(self, filt_items, coll_id):
+        av_fields = self.get_available_fields(coll_id, 'title')
+        if av_fields is None:
+            av_fields = {'results': {}}
+
+        field_map = {k.lower(): k for k in av_fields.get('results', {})}
+        filts = filt_items.split(',')
+
+        for f in filts:
+            ops = [x for x in self.operators if x in f]
+            if len(ops) == 0:
+                err_msg = f"Filter '{f}' entered incorrectly."
+                self.print_msg(err_msg, heading='error')
+                self.logger.error(err_msg)
+                return False
+
+            key = f.split(ops[0])[0].strip()
+            if key.lower() not in field_map:
+                if hasattr(self, 'logger'):
+                    self.logger.debug(
+                        f"CQL2 filter field '{key}' not in advertised queryables "
+                        f"for '{coll_id}'; allowing CQL2 to resolve at search time."
+                    )
+
+        return filt_items
+
+    def _validate_rapi_filters(self, filt_items, coll_id):
+        coll_fields = self.field_mapper.get_fields(coll_id)
         filts = filt_items.split(',')
 
         for f in filts:
@@ -2088,16 +2249,39 @@ class EodmsProcess(EodmsUtils):
         aws_download = params.get('aws')
         no_order = params.get('no_order')
 
-        # Validate AOI
+        # Validate AOI and handle single vs multiple AOIs
+        multiple_aois = False
+        aoi_list = None
+        
         if aoi is not None:
-            if os.path.exists(aoi):
-                aoi_check = self.validate_file(aoi, True)
-                if not aoi_check:
-                    msg = "The provided input file is not a valid AOI file."
+            # Check if aoi is a file path
+            if isinstance(aoi, str) and os.path.exists(aoi):
+                # Parse the AOI file
+                try:
+                    from eodms_prompt import parse_aoi_file
+                    aoi_list = parse_aoi_file(aoi)
+                    if aoi_list and len(aoi_list) > 1:
+                        multiple_aois = True
+                        # For single AOI, extract the WKT
+                    elif aoi_list and len(aoi_list) == 1:
+                        aoi = aoi_list[0]['wkt']
+                        aoi_list = None
+                    else:
+                        msg = "No valid polygons found in AOI file."
+                        self.print_msg(msg, heading="warning")
+                        self.logger.warning(msg)
+                        aoi = None
+                except Exception as e:
+                    msg = f"Error parsing AOI file: {str(e)}"
                     self.print_msg(msg, heading="warning")
                     self.logger.warning(msg)
                     aoi = None
-            else:
+            elif isinstance(aoi, list):
+                # Multiple AOIs already parsed
+                multiple_aois = True
+                aoi_list = aoi
+            elif isinstance(aoi, str):
+                # Assume it's a WKT string
                 if not self.eodms_geo.is_wkt(aoi):
                     msg = "The provided WKT feature is not valid."
                     self.print_msg(msg, heading="warning")
@@ -2124,10 +2308,52 @@ class EodmsProcess(EodmsUtils):
         if not isinstance(dates, list):
             dates = self._parse_dates(dates)
 
-        # Send query to EODMSRAPI
-        query_imgs = self.query_entries(collections, filters=filters,
-                                        aoi=aoi, dates=dates,
-                                        max_images=max_images)
+        # Search logic for multiple AOIs
+        if multiple_aois and aoi_list:
+            # Only support one collection for multi-AOI search
+            if len(collections) != 1:
+                msg = "Multiple AOI search only supports a single collection."
+                self.print_msg(msg, heading="error")
+                self.logger.error(msg)
+                self.exit_cli(1)
+            collection = collections[0]
+            # Prepare args for search_multiple_geometries
+            search_api = Search_API()
+            # Dates: convert to ISO 8601 if needed
+            datetime_range = None
+            if dates:
+                from scripts.utils import _parse_dates_to_stac
+                datetime_range = _parse_dates_to_stac(dates)
+            # Filters: get for this collection
+            filter_text = None
+            if filters and collection in filters:
+                filter_text = filters[collection]
+            # Call search_multiple_geometries
+            results = search_api.search_multiple_geometries(
+                s_intersect_list=aoi_list,
+                collection=collection,
+                datetime_range=datetime_range,
+                bbox=None,
+                limit=max_images if max_images else 100,
+                filter_text=filter_text
+            )
+            # Normalize results to ensure required keys for ingest_results
+            from . import image
+            norm = None
+            try:
+                from scripts.utils import _normalize_record
+                norm = _normalize_record
+            except ImportError:
+                pass
+            if norm:
+                results = [norm(r) for r in results]
+            query_imgs = image.ImageList(self)
+            query_imgs.ingest_results(results)
+        else:
+            # Single AOI: use existing logic
+            query_imgs = self.query_entries(collections, filters=filters,
+                                            aoi=aoi, dates=dates,
+                                            max_images=max_images)
 
         if overlap is not None \
                 and not overlap == '' \
@@ -2261,11 +2487,12 @@ class EodmsProcess(EodmsUtils):
         self.cur_res = query_imgs
 
         if no_order:
+            print("\nNo order option selected. Exporting results and ending process.")
             self.eodms_geo.export_results(query_imgs, self.output)
             self.exit_cli()
 
         #############################################
-        # Order Images
+        # Download Images
         #############################################
 
         # Parse out AWS
@@ -2348,6 +2575,79 @@ class EodmsProcess(EodmsUtils):
         self.cur_res = query_imgs
 
         # Parse out AWS
+        if aws_download:
+            eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
+        else:
+            eodms_imgs = query_imgs
+            aws_imgs = None
+
+        ###############################################
+        # Get Items and Download from DDS API
+        ###############################################
+
+        aws_downloads = None
+        if aws_imgs:
+            aws_downloads = self.download_aws(aws_imgs)
+            eodms_imgs.add_images(aws_downloads)
+
+        self._get_dds_images(eodms_imgs)
+
+        self._finish_process(eodms_imgs)
+
+    def order_uuids(self, params):
+        """
+        Orders and downloads a single or set of images using UUID(s).
+        Uses the search API to validate UUIDs instead of RAPI.
+
+        :param params: A dictionary containing the arguments and values.
+        :type  params: dict
+        """
+
+        coll_id = params.get('collection')
+        uuid_list = params.get('uuid')
+        self.output = params.get('output')
+        no_order = params.get('no_order')
+
+        # Log the parameters
+        self.log_parameters(params)
+
+        # Create info folder, if it doesn't exist, to store CSV files
+        start_str = self._set_result_fn()
+
+        self.logger.info(f"Process start time: {start_str}")
+
+        #############################################
+        # Search for Items by UUID
+        #############################################
+
+        search_api = self._get_search_api()
+        
+        # Parse UUIDs
+        uuids = [u.strip() for u in uuid_list.split(',')]
+        
+        imageList = []
+        for uuid_val in uuids:
+            # Build a minimal record that ImageList/DDS pipeline accepts.
+            imageList.append({
+                'archiveId': uuid_val,
+                'image_uuid': uuid_val,
+                'recordId': uuid_val,
+                'collectionId': coll_id,
+                'title': uuid_val
+            })
+
+        query_imgs = image.ImageList(self)
+        query_imgs.ingest_results(imageList)
+
+        if no_order:
+            self.eodms_geo.export_results(query_imgs, self.output)
+            self.exit_cli()
+
+        # Update the self.cur_res for output results
+        self.cur_res = query_imgs
+
+        # Check for AWS downloads (if applicable)
+        aws_download = params.get('aws')
         if aws_download:
             eodms_imgs, aws_imgs = self._parse_aws(query_imgs)
         else:

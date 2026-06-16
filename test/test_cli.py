@@ -1,216 +1,157 @@
-##############################################################################
-#
-# Copyright (c) His Majesty the King in Right of Canada, as
-# represented by the Minister of Natural Resources, 2023
-# 
-# Licensed under the MIT license
-# (see LICENSE or <http://opensource.org/licenses/MIT>) All files in the 
-# project carrying such notice may not be copied, modified, or distributed 
-# except according to those terms.
-# 
-##############################################################################
-
-__title__ = 'EODMS-CLI Tester'
-__author__ = 'Kevin Ballantyne'
-__copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
-                'as represented by the Minister of Natural Resources, 2023.'
-__license__ = 'MIT License'
-__description__ = 'Performs various tests of the EODMS-CLI.'
-__email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
-
-import sys
-import os
-import click
-import subprocess as sp
-import traceback
-import eodms_rapi
-
 import unittest
+import os
+import sys
+import csv
 from unittest.mock import patch
+
+from click.testing import CliRunner
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from eodms_cli import cli
 
 
 class TestEodmsCli(unittest.TestCase):
 
-    username = os.getenv('EODMS_USER')
-    if username is None:
-        username = ''
+    def setUp(self):
+        self.runner = CliRunner()
 
-    password = os.environ.get('EODMS_PASSWORD')
-    if password is None:
-        password = ''
+    def _assert_help(self, args, expected_tokens):
+        result = self.runner.invoke(cli, args)
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        for token in expected_tokens:
+            self.assertIn(token, result.output)
 
-    def _print_header(self, title):
+    def test_root_help_lists_all_commands(self):
+        self._assert_help(
+            ["--help"],
+            [
+                "configure",
+                "search",
+                "process",
+                "download",
+            ],
+        )
 
-        try:
-            terminal_sizes = os.get_terminal_size()
-            term_width = terminal_sizes.columns - 2
-        except:
-            term_width = 80
+    def test_configure_command_help(self):
+        self._assert_help(
+            ["configure", "--help"],
+            [
+                "--username",
+                "--password",
+                "--show",
+            ],
+        )
 
-        line = "#" * int(term_width / 2)
+    def test_search_command_help(self):
+        self._assert_help(
+            ["search", "--help"],
+            [
+                "--collection",
+                "--input",
+                "--list",
+                "--queryables",
+                "--output",
+            ],
+        )
 
-        print("\n" + line.center(term_width))
-        print("EODMS-CLI - Command-line Test".center(term_width))
-        print(title.center(term_width))
-        print(line.center(term_width) + "\n")
+    def test_search_input_tsv_appends_search_fields(self):
+        class FakeSearchApi:
+            def __init__(self):
+                self.calls = []
 
-    def add_creds(self):
+            def stac_search(self, collections, limit, filter, filter_lang):
+                self.calls.append(
+                    {
+                        "collections": collections,
+                        "limit": limit,
+                        "filter": filter,
+                        "filter_lang": filter_lang,
+                    }
+                )
+                results = []
+                if "MATCH_ONE" in filter:
+                    results.append({
+                        "id": "uuid-123",
+                        "properties": {
+                            "order_key": "MATCH_ONE",
+                            "spatial_resolution": "30",
+                            "datetime": "2026-06-09T12:00:00Z",
+                        },
+                    })
+                if "MISS_ONE" in filter:
+                    return results
+                return results
 
-        if self.username is not None and not self.username == '':
-            self.command.insert(2, '-u')
-            self.command.insert(3, self.username)
+        fake_search = FakeSearchApi()
 
-        if self.password is not None and not self.password == '':
-            self.command.insert(2, '-p')
-            self.command.insert(3, self.password)
+        with self.runner.isolated_filesystem():
+            input_path = "orders.tsv"
+            output_path = "results.tsv"
 
-    def capture(self):
+            with open(input_path, "w", encoding="utf-8", newline="") as in_f:
+                writer = csv.DictWriter(in_f, fieldnames=["order_keys", "note"], delimiter="\t")
+                writer.writeheader()
+                writer.writerow({"order_keys": "MATCH_ONE", "note": "first"})
+                writer.writerow({"order_keys": "MISS_ONE", "note": "second"})
 
-        if isinstance(self.command, list):
-            self.command_str = ' '.join(self.command)
-        else:
-            self.command_str = self.command
+            with patch("eodms_cli.resolve_credentials", return_value=(None, None)), \
+                 patch("eodms_cli.make_aaa", return_value=None), \
+                 patch("eodms_cli.make_search", return_value=fake_search):
+                result = self.runner.invoke(
+                    cli,
+                    [
+                        "search",
+                        "--input",
+                        input_path,
+                        "--collection",
+                        "RCMImageProducts",
+                        "--output",
+                        output_path,
+                    ],
+                )
 
-        # proc = sp.Popen(command, stdout=sp.PIPE, stderr=sp.PIPE)
-        # out, err = proc.communicate()
+            self.assertEqual(result.exit_code, 0, msg=result.output)
+            self.assertIn("matched 1 order_key value(s)", result.output)
 
-        process = sp.Popen(self.command_str, shell=True, bufsize=1,
-                           stdout=sp.PIPE, stderr=sp.STDOUT,
-                           encoding='utf-8', errors='replace')
-        while True:
-            realtime_output = process.stdout.readline()
-            if realtime_output == '' and process.poll() is not None:
-                break
-            if realtime_output:
-                print(realtime_output.strip(), flush=False)
-                sys.stdout.flush()
+            with open(output_path, "r", encoding="utf-8", newline="") as out_f:
+                rows = list(csv.DictReader(out_f, delimiter="\t"))
 
-        out, err = process.communicate()
+            self.assertEqual(["order_keys", "note", "spatial_resolution", "timestamp", "uuid", "thumbnail_url"], list(rows[0].keys()))
+            self.assertEqual("30", rows[0]["spatial_resolution"])
+            self.assertEqual("2026-06-09T12:00:00Z", rows[0]["timestamp"])
+            self.assertEqual("uuid-123", rows[0]["uuid"])
+            self.assertEqual("", rows[0]["thumbnail_url"])
+            self.assertEqual("", rows[1]["spatial_resolution"])
+            self.assertEqual("", rows[1]["timestamp"])
+            self.assertEqual("", rows[1]["uuid"])
+            self.assertEqual("", rows[1]["thumbnail_url"])
+            self.assertEqual(1, len(fake_search.calls))
+            self.assertIn("MATCH_ONE", fake_search.calls[0]["filter"])
+            self.assertIn("MISS_ONE", fake_search.calls[0]["filter"])
 
-        return out, err, process.returncode
+    def test_process_command_help(self):
+        self._assert_help(
+            ["process", "--help"],
+            [
+                "--process_id",
+                "--describe",
+                "--submit",
+                "--download_dir",
+            ],
+        )
 
-    def test_process1(self):
-
-        self._print_header("Process 1")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-c', 'RCMImageProducts,Radarsat2',
-                   '-d', '20190101-20220527',
-                   '-i', 'files/NCR_AOI.geojson',
-                   '-max', '2',
-                   '-prc', 'full',
-                   '-ov', '30',
-                   '-f', '"RCMImageProducts.beam_mnemonic like 16M%,'
-                         'RCMImageProducts.product_type=SLC,'
-                         'Radarsat2.beam_mnemonic like EH%,'
-                         'Radarsat2.transmit_polarization=H"',
-                   '-o', 'files/test1_output.geojson',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
-
-    def test_process2(self):
-
-        self._print_header("Process 2")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-i', 'files/EODMS_Results.csv',
-                   '-max', '4',
-                   '-prc', 'order_csv',
-                   '-o', 'files/test2_output.geojson',
-                   '-nord',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
-
-    def test_process3(self):
-
-        self._print_header("Process 3")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-i', 'RCMImageProducts:13531983,RCMImageProducts:13531917,'
-                         'Radarsat2:13532412,Radarsat1:5053934',
-                   '-prc', 'record_id',
-                   '-a',
-                   '-o', 'files/test3_output.geojson',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
-
-    def test_process4(self):
-
-        self._print_header("Process 4")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-prc', 'download_restored_items',
-                   '-i', 'files/20260216_155955_ItemsRestoring.json',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
-
-    def test_process5(self):
-
-        self._print_header("Process 5")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-st', 'files/sar_toolbox_request.json',
-                   '-prc', 'order_st',
-                   '-o', 'files/test5_output.geojson',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
-
-    def test_searchonly(self):
-
-        self._print_header("Search Only")
-
-        self.command = ["python", "../eodms_cli.py",
-                   '-c', 'RCMImageProducts,Radarsat2',
-                   '-d', '20190101-20220527',
-                   '-i', 'files/NCR_AOI.geojson',
-                   '-prc', 'full',
-                   '-max', '5',
-                   '-ov', '30',
-                   '-f', '"RCMImageProducts.beam_mnemonic like 16M%,'
-                         'RCMImageProducts.product_type=SLC,'
-                         'Radarsat2.beam_mnemonic like EH%,'
-                         'Radarsat2.transmit_polarization=H"',
-                   '-o', 'files/test6_output.geojson',
-                   '-nord',
-                   '-s']
-
-        self.add_creds()
-
-        # print(f"self.command: {self.command}")
-
-        out, err, exitcode = self.capture()
-        assert (not exitcode == 1)
+    def test_download_command_help(self):
+        self._assert_help(
+            ["download", "--help"],
+            [
+                "--uuid",
+                "--input",
+                "--download-available",
+                "--dl_dir",
+            ],
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

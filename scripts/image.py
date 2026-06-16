@@ -65,12 +65,12 @@ class Image:
 
     def get_record_id(self):
         """
-        Gets the Record Id of the image.
+        Gets the unique archive ID of the image.
         
         Returns:
-            str or int: The Record Id of the image.
+            str: The archive ID (unique identifier).
         """
-        return self.metadata.get('recordId')
+        return self.metadata.get('archiveId')
 
     def get_coll_id(self):
         """
@@ -129,10 +129,14 @@ class Image:
         return self.metadata.get('thisRecordUrl')
     
     def get_image_uuid(self):
-        if 'archiveId' in self.metadata:
-            return self.metadata.get('archiveId')
-        elif 'image_uuid' in self.metadata:
-            return self.metadata.get('image_uuid')
+        """Get the unique archive ID.
+        
+        Records are normalized at ingest time to use archiveId.
+        
+        :return: The unique image identifier
+        :rtype: str
+        """
+        return self.metadata.get('archiveId')
 
     def get_metadata(self, entry=None):
         """
@@ -435,26 +439,63 @@ class ImageList:
         :type  is_csv: list
         """
 
+        from scripts.utils import _normalize_record
+        
         img_ids = []
         for r in results:
             if 'errors' in r.keys():
                 continue
 
-            if 'archiveId' in r:
-                unique_id = r.get('archiveId')
-            elif 'image_uuid' in r:
-                unique_id = r.get('image_uuid')
-            elif 'recordId' in r:
-                unique_id = r.get('recordId')
+            # Normalize record to standard format
+            r_norm = _normalize_record(r)
+            unique_id = r_norm.get('archiveId')
             
-            if unique_id in img_ids:
+            if not unique_id or unique_id in img_ids:
                 continue
 
             image = Image()
             if is_csv:
-                image.parse_row(r)
+                image.parse_row(r_norm)
             else:
-                image.parse_record(r)
+                image.parse_record(r_norm)
+            self.img_lst.append(image)
+            img_ids.append(unique_id)
+
+    def ingest_csv(self, records):
+        """Ingest records from an EODMS UI CSV and normalize key fields.
+
+        Expected CSV headers are lower-cased by csv_util.import_eodms_csv().
+        """
+        from scripts.utils import _normalize_record
+
+        img_ids = []
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+
+            # Normalize to standard format
+            rec_norm = _normalize_record(rec)
+            
+            # Fall back to deriving collection from satellite/title when needed.
+            coll_id = rec_norm.get('collectionId')
+            if not coll_id and self.eod is not None:
+                coll_hint = rec_norm.get('satellite') or rec_norm.get('title')
+                if coll_hint:
+                    mapped = self.eod.get_collid_by_name(coll_hint)
+                    if isinstance(mapped, list):
+                        coll_id = mapped[0] if len(mapped) > 0 else None
+                    else:
+                        coll_id = mapped
+                    if coll_id:
+                        rec_norm['collectionId'] = coll_id
+
+            unique_id = rec_norm.get('archiveId')
+
+            if not unique_id or unique_id in img_ids:
+                continue
+
+            image = Image()
+            image.parse_row(rec_norm)
             self.img_lst.append(image)
             img_ids.append(unique_id)
 

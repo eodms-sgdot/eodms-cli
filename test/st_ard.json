@@ -1,0 +1,25 @@
+{
+    "items": [
+        {
+            "collectionId": "RCMImageProducts",
+            "recordId": "32522100",
+            "parameters": {}
+        }
+    ],
+    "destinations": [],
+    "vapRequest": {
+        "sequence": {
+            "sequence_1": "32522100_ard"
+        },
+        "method": {
+            "method-901-1": {
+                "Category": "900",
+                "Method": "901",
+                "LabelName": "32522100_ard"
+            }
+        },
+        "deliveryLocation": "DOWNLOAD",
+        "AllPol": "on",
+        "pr_users_username": null
+    }
+}

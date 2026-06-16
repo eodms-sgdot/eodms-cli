@@ -20,13 +20,17 @@ import logging
 
 class ConfigUtils:
 
-    def __init__(self, eod=None):
+    def __init__(self, eod=None, config_path=None):
         # Set the configuration filepath
         old_config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
                                       'eodmscli_config.ini')
 
-        self.config_fn = os.path.join(os.sep, os.path.expanduser('~'), '.eodms',
-                                      'config.ini')
+        self.config_fn = config_path or os.path.join(
+            os.sep,
+            os.path.expanduser('~'),
+            '.eodms',
+            'config.ini',
+        )
         self.eod = eod
 
         if os.path.exists(old_config_fn):
@@ -37,7 +41,8 @@ class ConfigUtils:
 
         # Create configparser
         self.config_info = configparser.ConfigParser(comment_prefixes='/',
-                                                     allow_no_value=True)
+                                                     allow_no_value=True,
+                                                     interpolation=None)
 
         self.logger = logging.getLogger('eodms')
 
@@ -69,10 +74,10 @@ class ConfigUtils:
                                  "colourize": 'True'},
                             "Credentials":
                                 {"# Username of the eodms account used to "
-                                 "access the rapi": None,
+                                 "access search/process/download/rapi": None,
                                  "username": '',
                                  "# Password of the eodms account used to "
-                                 "access the rapi": None,
+                                 "access search/process/download/rapi": None,
                                  "password": ''},
                             "RAPI":
                                 {"# Number of attempts made to the rapi when "
@@ -99,7 +104,21 @@ class ConfigUtils:
                                  },
                             "DDS":
                                 {"# Number of concurrent downloads for the DDS": None,
-                                 "concurrent_downloads": '10'
+                                 "concurrent_downloads": '10',
+                                 "# Backoff wait in seconds between queued DDS poll attempts": None,
+                                 "backoff_interval": '60',
+                                 "# Legacy alias recognized for backoff_interval": None,
+                                 "back_interval": '60'
+                                },
+                            "Search":
+                                {"# Default number of days to search back when no --datetime is provided": None,
+                                 "default_date_range_days": '90'
+                                 },
+                            "Logging":
+                                {"# Logging threshold (DEBUG, INFO, WARNING, ERROR, CRITICAL or numeric)": None,
+                                 "level": "INFO",
+                                 "# Python strftime format used for log timestamps": None,
+                                 "datefmt": "%Y-%m-%d %H:%M:%S"
                                 }
                             }
 
@@ -178,7 +197,7 @@ class ConfigUtils:
 
         if in_sect == '-h':
             print(f"""
-Usage: eodms_cli.py --configure [OPTIONS]
+Usage: eodms_prompt.py --configure [OPTIONS]
             
     Sets the parameters in the configuration file
     
@@ -264,6 +283,42 @@ Options:
             if option in self.config_dict[section].keys():
                 return self.config_dict[section][option]
 
+    @staticmethod
+    def parse_log_level(raw_level, default_level=logging.INFO):
+        """Parse a logging level name/number from config text."""
+        if raw_level is None:
+            return default_level
+
+        level_text = str(raw_level).strip()
+        if level_text == '':
+            return default_level
+
+        if level_text.isdigit():
+            return int(level_text)
+
+        level_name = level_text.upper()
+        mapped = getattr(logging, level_name, None)
+        if isinstance(mapped, int):
+            return mapped
+
+        return default_level
+
+    def get_logging_level(self, default_level=logging.INFO):
+        """Return configured logging level with default fallback."""
+        return self.parse_log_level(self.get('Logging', 'level'), default_level)
+
+    def get_logging_datefmt(self, default_datefmt):
+        """Return configured logging datefmt with default fallback."""
+        datefmt = self.get('Logging', 'datefmt')
+        if datefmt is None:
+            return default_datefmt
+
+        datefmt_text = str(datefmt).strip()
+        if datefmt_text == '':
+            return default_datefmt
+
+        return datefmt_text
+
     def set(self, section, option, value):
         """
         Sets a value in the config_dict
@@ -297,7 +352,7 @@ Options:
         self._set_dict('Script', 'Script', 'keep_downloads')
         self._set_dict('Script', 'Script', 'colourize')
 
-        cr = ['Credentials', 'RAPI']  # For backwards compatibility
+        cr = ['Credentials', 'RAPI']  # For backwards compatibility (legacy creds)
         self._set_dict('Credentials', cr, 'username')
         self._set_dict('Credentials', cr, 'password')
 
@@ -311,6 +366,13 @@ Options:
 
         sr = ['Script', 'DDS']  # For backwards compatibility
         self._set_dict('DDS', 'DDS', 'concurrent_downloads')
+        self._set_dict('DDS', 'DDS', 'backoff_interval')
+        self._set_dict('DDS', 'DDS', 'back_interval')
+
+        self._set_dict('Search', 'Search', 'default_date_range_days')
+
+        self._set_dict('Logging', 'Logging', 'level')
+        self._set_dict('Logging', 'Logging', 'datefmt')
 
     def write(self):
         """
