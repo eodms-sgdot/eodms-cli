@@ -58,7 +58,7 @@ _CLI_LOG_DATEFMT = CLI_DEFAULT_LOG_DATEFMT
 _CLI_LOG_LEVEL = CLI_DEFAULT_LOG_LEVEL
 _SEARCH_UA_PATCHED = False
 _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
-_CLI_UA_VERSION = "2026.06.03"
+_CLI_UA_VERSION = "2026.06.16"
 _SPINNER_WRITE_LOCK = threading.Lock()
 
 # Let tqdm recalculate bar width when terminal dimensions change.
@@ -2454,6 +2454,8 @@ def order_st_cmd(
               help="Optional end datetime filter for order retrieval.")
 @click.option("--list", "list_orders", is_flag=True,
               help="List orders in the last 30 days and exit (no download).")
+@click.option("--order-id", "order_id_filter", required=False, default=None,
+              help="Fetch a specific order by ID with --list (skips date-range query).")
 @click.option("--order-status", required=False, default=None,
               help="Optional status filter for --list (example: AVAILABLE_FOR_DOWNLOAD).")
 @click.option("--download-available", is_flag=True,
@@ -2475,6 +2477,7 @@ def download_available_cmd(
     dtstart: Optional[str],
     dtend: Optional[str],
     list_orders: bool,
+    order_id_filter: Optional[str],
     order_status: Optional[str],
     download_available: bool,
     download_dir: str,
@@ -2683,6 +2686,19 @@ def download_available_cmd(
     rapi_api = EODMSRAPI(username, password)
 
     if list_orders:
+        if order_id_filter:
+            click.echo(f"Getting order: {order_id_filter}...")
+            payload = _safe_rapi_call(rapi_api.get_order, order_id_filter)
+            items = _safe_rapi_call(rapi_api.collect_order_items, payload) if payload else []
+            if not items:
+                click.echo(f"No items found for order {order_id_filter}.")
+                return
+
+            click.echo(f"\nFound {len(items)} item(s) in order {order_id_filter}.")
+            for item in items:
+                click.echo(json.dumps(item, indent=2, ensure_ascii=True))
+            return
+
         if dtstart and dtend:
             list_dtstart = _parse_iso_datetime(dtstart)
             list_dtend = _parse_iso_datetime(dtend)

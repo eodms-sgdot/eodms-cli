@@ -329,16 +329,10 @@ SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic Radiometry, Polarime
 
 Ok, `Analysis Ready Data` looks good. How is it called?
 
-```bash
-> py eodms_cli.py process --process_id SAR_Toolbox --input-structure
-
-Coming soon....
-```
-
-At the moment, `SAR_Toolbox`'s `items` block takes `recordId`, which we don't have for our 3m image. Let us look it up using `uuid` from above:
+At the moment `SAR_Toolbox` and `Processing Service` have separate submission structures (they will all be under `OGC API - Processes` based Processing Service in future). `SAR_Toolbox`'s `items` block takes `recordId` not `uuid`, which we don't have for our 3m image. Let us look it up using `uuid` from above:
 
 ```bash
-> python eodms_cli.py search --uuid2record -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD%
+> python eodms_cli.py search --uuid2record -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014
 
 ...
 | EODMSRAPI | 2026-05-22 16:08:00 | RAPI Query URL: https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/search?collection=RCMImageProducts&query=%28CATALOG_IMAGE.START_DATETIME%3E%3D%272025-02-20T11%3A04%3A27Z%27+AND+CATALOG_IMAGE.START_DATETIME%3C%3D%272025-02-21T11%3A04%3A27Z%27%29+AND+ARCHIVE_IMAGE.ORDER_KEY%3D%27RCM2_OK3294733_PK3492600_1_3MCP36_20250220_110427_CH_CV_GRD%27&resultField=CATALOG_IMAGE.THE_GEOM_4326%2CSENSOR_BEAM.SPATIAL_RESOLUTION%2CARCHIVE_IMAGE.UNIQUE_IDENTIFIER&format=json&maxResults=5
@@ -360,11 +354,17 @@ https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/order
 
 {"items": [{"collectionId": "RCMImageProducts", "recordId": "32522100", "parameters": {}}], "destinations": [], "vapRequest": {"sequence": {"sequence_1": "32522100_ard"}, "method": {"method-901-1": {"Category": "900", "Method": "901", "LabelName": "32522100_ard"}}, "deliveryLocation": "DOWNLOAD", "AllPol": "on", "pr_users_username": null}}
 
+```
+
+Wait...
+
+```
+
 [
   {
     "recordId": "32522100",
     "itemId": "10948941",
-    "orderId": "3168001",
+    "orderId": "3253864",
     "collectionId": "RCMImageProducts",
     "status": "AVAILABLE_FOR_STREAM",
     "dateRapiOrdered": "2026-05-22T18:05:20.531184-04:00"
@@ -372,10 +372,10 @@ https://www.eodms-sgdot.nrcan-rncan.gc.ca/wes/rapi/order
 ]
 ```
 
-We can check on it using...
+There we go. Submitted w/ orderId=3253864. We can check on it using...
 
 ```bash
-> python eodms_cli.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
+> py eodms_cli.py download --list --order-id 3253864
 
 ...
   [4]  order_id : 3168001
@@ -389,11 +389,11 @@ We can check on it using...
 ...
 ```
 
-Not ready yet. Check again later
+Not ready yet. Needs to say AVAILABLE_FOR_DOWNLOAD, not AVAILABLE_FOR_STREAM. Check again later...
 
 
 ```bash
-> python eodms_cli.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --list
+> py eodms_cli.py download --list --order-id 3253864
 
 ...
   "order_id": "3168001",
@@ -405,10 +405,10 @@ Not ready yet. Check again later
 ...
 ```
 
-All done. Download the whole directory using
+Says AVAILABLE_FOR_DOWNLOAD. Download the whole directory using
 
 ```bash
-> python eodms_cli.py download -c RCMImageProducts -u %EODMS_USER% -p %EODMS_PASSWORD% --order-items order:3168001       
+> py eodms_cli.py download --download-available      
 
 Found 1 AVAILABLE_FOR_DOWNLOAD item(s).
 Downloading 1 item(s) to .\downloads
@@ -419,7 +419,7 @@ Downloading 1 item(s) to .\downloads
 ...
 ```
 
-The whole package now locally, ready to use.
+CEOS ARD downloaded locally, ready to use!
 
 ```bash
 > ls .\downloads\RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_HH_HV_GRD               
@@ -434,7 +434,6 @@ RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_localIncAngle.tif
 RCM1_OK3584454_PK3585363_1_5M19_20250429_110414_product.xml
 RCM_EULA_GC_v3-1_20210202_UNCLASSIFIED.pdf
 ```
-
 
 ## Contact
 
