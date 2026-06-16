@@ -33,6 +33,7 @@ from shapely.geometry import shape
 
 from eodms import Processes_API, aaa, dds, search
 from scripts import config_util
+from scripts.__version__ import EODMS_CLI_VERSION
 try:
     from eodms.errors import EODMSError
     EODMS_SERVICE_ERRORS = (EODMSError,)
@@ -58,7 +59,7 @@ _CLI_LOG_DATEFMT = CLI_DEFAULT_LOG_DATEFMT
 _CLI_LOG_LEVEL = CLI_DEFAULT_LOG_LEVEL
 _SEARCH_UA_PATCHED = False
 _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
-_CLI_UA_VERSION = "2026.06.16"
+_CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 
 # Let tqdm recalculate bar width when terminal dimensions change.
@@ -2677,7 +2678,7 @@ def download_available_cmd(
             "--username and --password are required for order listing/downloading."
         )
 
-    if not order_items and not list_orders and not download_available:
+    if not order_items and not order_id_filter and not list_orders and not download_available:
         raise click.ClickException(
             "Use --download-available to download AVAILABLE_FOR_DOWNLOAD items, "
             "or use --list to list only."
@@ -2764,8 +2765,15 @@ def download_available_cmd(
     downloadable_items: List[Dict[str, Any]] = []
     filtered_items: List[Dict[str, Any]] = []
 
-    if order_items:
-        order_ids, item_ids = parse_legacy_order_items(order_items)
+    if order_items or order_id_filter:
+        if order_id_filter:
+            payload = _safe_rapi_call(rapi_api.get_order, order_id_filter)
+            downloadable_items.extend(_safe_rapi_call(rapi_api.collect_order_items, payload))
+
+        order_ids: List[str] = []
+        item_ids: List[str] = []
+        if order_items:
+            order_ids, item_ids = parse_legacy_order_items(order_items)
 
         for order_id in order_ids:
             payload = _safe_rapi_call(rapi_api.get_order, order_id)

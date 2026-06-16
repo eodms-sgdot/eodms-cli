@@ -17,7 +17,7 @@ __copyright__ = 'Copyright (c) His Majesty the King in Right of Canada, ' \
 __license__ = 'MIT License'
 __description__ = 'Script with prompts used to search, order and download imagery from ' \
                   'the EODMS'
-__version__ = '4.1.2'
+__version__ = ''
 __maintainer__ = 'EODMS'
 __email__ = 'eodms-sgdot@nrcan-rncan.gc.ca'
 
@@ -61,6 +61,9 @@ from scripts import utils as eod_util
 from scripts import field
 from scripts import config_util
 from scripts import sar
+from scripts.__version__ import EODMS_PROMPT_VERSION
+
+__version__ = EODMS_PROMPT_VERSION
 
 # from utils import csv_util
 # from utils import image
