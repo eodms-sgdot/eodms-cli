@@ -19,12 +19,20 @@ import logging.handlers as handlers
 import time
 import threading
 import re
+import posixpath
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from urllib.error import URLError
-from urllib.parse import quote, urlencode, unquote, urlsplit
-from urllib.request import urlopen
+from html.parser import HTMLParser
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode, unquote, urljoin, urlsplit
+from urllib.request import (
+    HTTPBasicAuthHandler,
+    HTTPPasswordMgrWithDefaultRealm,
+    Request,
+    build_opener,
+    urlopen,
+)
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -1321,6 +1329,247 @@ def _unique_destination_path(destination_dir: str, file_name: str) -> str:
         idx += 1
 
 
+class _DirectoryHrefParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        if str(tag).lower() != "a":
+            return
+
+        for key, value in attrs:
+            if str(key).lower() == "href" and value:
+                self.hrefs.append(str(value))
+                break
+
+
+def _build_http_opener_for_cart(base_url: str, username: Optional[str], password: Optional[str]):
+    handlers = []
+    if username and password:
+        parsed = urlsplit(base_url)
+        top_level_url = f"{parsed.scheme}://{parsed.netloc}"
+        password_mgr = HTTPPasswordMgrWithDefaultRealm()
+        password_mgr.add_password(None, top_level_url, username, password)
+        password_mgr.add_password(None, base_url, username, password)
+        handlers.append(HTTPBasicAuthHandler(password_mgr))
+
+    return build_opener(*handlers)
+
+
+def _open_cart_http_url(opener, url: str):
+    req = Request(
+        url,
+        headers={"User-Agent": f"eodms-cli/{_resolve_cli_user_agent_version()}"},
+    )
+    return opener.open(req)
+
+
+def _extract_cart_links(html_text: str, current_url: str) -> List[str]:
+    parser = _DirectoryHrefParser()
+    parser.feed(html_text)
+
+    links: List[str] = []
+    for raw_href in parser.hrefs:
+        href = str(raw_href or "").strip()
+        if not href:
+            continue
+        lowered = href.lower()
+        if lowered.startswith("#") or lowered.startswith("?"):
+            continue
+        if lowered.startswith("javascript:") or lowered.startswith("mailto:"):
+            continue
+        links.append(urljoin(current_url, href))
+
+    return links
+
+
+def _to_relative_cart_file_path(file_url: str, root_url: str) -> str:
+    file_parts = urlsplit(file_url)
+    root_parts = urlsplit(root_url)
+
+    file_path = unquote(file_parts.path or "")
+    root_path = unquote(root_parts.path or "")
+    if not root_path.endswith("/"):
+        root_path = f"{root_path}/"
+
+    if file_path.startswith(root_path):
+        rel_path = file_path[len(root_path):]
+    else:
+        rel_path = os.path.basename(file_path)
+
+    return rel_path.lstrip("/")
+
+
+def _safe_cart_output_path(destination_dir: str, relative_path: str) -> Optional[str]:
+    rel_parts = [part for part in str(relative_path).split("/") if part not in {"", ".", ".."}]
+    if not rel_parts:
+        return None
+
+    candidate = os.path.abspath(os.path.join(destination_dir, *rel_parts))
+    destination_abs = os.path.abspath(destination_dir)
+    if candidate != destination_abs and not candidate.startswith(destination_abs + os.sep):
+        return None
+
+    return candidate
+
+
+def download_http_cart_directory(
+    cart_url: str,
+    download_dir: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    manifest_file: Optional[str] = None,
+) -> Dict[str, int]:
+    parsed = urlsplit(str(cart_url or "").strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise click.ClickException(f"Cart URL must use http/https: {cart_url}")
+
+    root_url = str(cart_url or "").strip()
+    if not root_url.endswith("/"):
+        root_url = f"{root_url}/"
+
+    root_parts = urlsplit(root_url)
+    root_prefix_path = unquote(root_parts.path or "")
+    if not root_prefix_path.endswith("/"):
+        root_prefix_path = f"{root_prefix_path}/"
+
+    opener = _build_http_opener_for_cart(root_url, username, password)
+    destination = os.path.abspath(download_dir)
+    os.makedirs(destination, exist_ok=True)
+
+    queue: List[str] = [root_url]
+    visited_dirs: set = set()
+    downloaded = 0
+    skipped_existing = 0
+    errors = 0
+
+    while queue:
+        current_url = queue.pop(0)
+        if current_url in visited_dirs:
+            continue
+        visited_dirs.add(current_url)
+
+        try:
+            with _open_cart_http_url(opener, current_url) as resp:
+                page = resp.read().decode("utf-8", errors="replace")
+        except HTTPError as exc:
+            if exc.code == 401 and not (username and password):
+                raise click.ClickException(
+                    f"HTTP 401 for cart URL '{cart_url}'. Provide --username and --password "
+                    "(or configure credentials)."
+                )
+
+            errors += 1
+            click.echo(f"Failed to list directory '{current_url}': HTTP {exc.code}")
+            continue
+        except URLError as exc:
+            errors += 1
+            click.echo(f"Failed to list directory '{current_url}': {exc}")
+            continue
+
+        child_links = _extract_cart_links(page, current_url)
+        for link_url in child_links:
+            link_parts = urlsplit(link_url)
+            if link_parts.scheme != root_parts.scheme or link_parts.netloc != root_parts.netloc:
+                continue
+
+            path = unquote(link_parts.path or "")
+            normalized_path = posixpath.normpath(path)
+            if path.endswith("/") and not normalized_path.endswith("/"):
+                normalized_path = f"{normalized_path}/"
+
+            if not normalized_path.startswith(root_prefix_path):
+                continue
+
+            if (link_parts.path or "").endswith("/"):
+                if link_url not in visited_dirs:
+                    queue.append(link_url)
+                continue
+
+            relative_file_path = _to_relative_cart_file_path(link_url, root_url)
+            local_path = _safe_cart_output_path(destination, relative_file_path)
+            if not local_path:
+                continue
+
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            if os.path.exists(local_path):
+                skipped_existing += 1
+                if manifest_file:
+                    _record_dds_retry(
+                        retry_file=manifest_file,
+                        collection="http-cart",
+                        item_uuid=relative_file_path,
+                        status="SkippedExisting",
+                        source="http-cart",
+                        file_name=os.path.basename(local_path),
+                        file_path=local_path,
+                        detail=f"url={link_url}",
+                        update_existing_only=False,
+                    )
+                continue
+
+            try:
+                with _open_cart_http_url(opener, link_url) as resp, open(local_path, "wb") as out_f:
+                    while True:
+                        chunk = resp.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                downloaded += 1
+                click.echo(f"Saved cart file to {local_path}")
+
+                if manifest_file:
+                    _record_dds_retry(
+                        retry_file=manifest_file,
+                        collection="http-cart",
+                        item_uuid=relative_file_path,
+                        status="Downloaded",
+                        source="http-cart",
+                        file_name=os.path.basename(local_path),
+                        file_path=local_path,
+                        detail=f"url={link_url}",
+                        update_existing_only=False,
+                    )
+            except HTTPError as exc:
+                errors += 1
+                click.echo(f"Failed to download '{link_url}': HTTP {exc.code}")
+                if manifest_file:
+                    _record_dds_retry(
+                        retry_file=manifest_file,
+                        collection="http-cart",
+                        item_uuid=relative_file_path,
+                        status="DownloadError",
+                        http_response_code=exc.code,
+                        source="http-cart",
+                        file_name=os.path.basename(local_path),
+                        file_path=local_path,
+                        detail=f"url={link_url}",
+                        update_existing_only=False,
+                    )
+            except URLError as exc:
+                errors += 1
+                click.echo(f"Failed to download '{link_url}': {exc}")
+                if manifest_file:
+                    _record_dds_retry(
+                        retry_file=manifest_file,
+                        collection="http-cart",
+                        item_uuid=relative_file_path,
+                        status="DownloadError",
+                        source="http-cart",
+                        file_name=os.path.basename(local_path),
+                        file_path=local_path,
+                        detail=f"url={link_url}, error={exc}",
+                        update_existing_only=False,
+                    )
+
+    return {
+        "downloaded": downloaded,
+        "skipped_existing": skipped_existing,
+        "errors": errors,
+    }
+
+
 def download_public_stac_assets(search_api, collection: str, item_uuid: str, download_dir: str,
                                 manifest_file: Optional[str] = None) -> int:
     item_info = search_api.get_item(collection, item_uuid)
@@ -2465,6 +2714,8 @@ def order_st_cmd(
               help="Destination directory for downloads.")
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
+@click.option("--cart-url", "cart_urls", required=False, multiple=True,
+              help="HTTP cart directory URL to recursively download. Can be provided multiple times.")
 @handle_service_errors
 def download_available_cmd(
     username: Optional[str],
@@ -2482,6 +2733,7 @@ def download_available_cmd(
     order_status: Optional[str],
     download_available: bool,
     download_dir: str,
+    cart_urls: Tuple[str, ...],
 ):
     """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
 
@@ -2491,6 +2743,49 @@ def download_available_cmd(
 
     if uuid and input_file:
         raise click.ClickException("Use either --uuid or --input, not both.")
+
+    if cart_urls:
+        if any([uuid, input_file, order_items, order_id_filter, list_orders, download_available]):
+            raise click.ClickException(
+                "--cart-url cannot be combined with UUID/input/order download options."
+            )
+
+        manifest_file_for_run = _resolve_downloads_manifest_path(download_dir)
+        click.echo(f"Download manifest path: {os.path.abspath(manifest_file_for_run)}")
+
+        total_downloaded = 0
+        total_skipped_existing = 0
+        total_errors = 0
+        failed_carts = 0
+
+        for cart_url in cart_urls:
+            click.echo(f"Recursively downloading cart URL: {cart_url}")
+            try:
+                summary = download_http_cart_directory(
+                    cart_url=cart_url,
+                    download_dir=download_dir,
+                    username=username,
+                    password=password,
+                    manifest_file=manifest_file_for_run,
+                )
+            except click.ClickException as exc:
+                failed_carts += 1
+                click.echo(f"Cart download failed for {cart_url}: {exc}")
+                continue
+
+            total_downloaded += int(summary.get("downloaded", 0) or 0)
+            total_skipped_existing += int(summary.get("skipped_existing", 0) or 0)
+            total_errors += int(summary.get("errors", 0) or 0)
+
+        if failed_carts == len(cart_urls):
+            raise click.ClickException("All cart URL downloads failed.")
+
+        click.echo(
+            "Cart download summary: "
+            f"downloaded={total_downloaded}, skipped_existing={total_skipped_existing}, "
+            f"errors={total_errors}, failed_cart_urls={failed_carts}"
+        )
+        return
 
     if input_file:
         features = _load_download_items(input_file)
