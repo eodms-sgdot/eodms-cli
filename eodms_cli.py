@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import fiona
-from shapely.geometry import shape
+from shapely.geometry import mapping, shape
 
 from eodms import Processes_API, aaa, dds, search
 from scripts import config_util
@@ -69,6 +69,7 @@ _SEARCH_UA_PATCHED = False
 _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
+SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
 
 # Let tqdm recalculate bar width when terminal dimensions change.
 os.environ.setdefault("TQDM_DYNAMIC_NCOLS", "1")
@@ -446,9 +447,151 @@ def _write_tsv_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str
         raise click.ClickException(f"Failed to write TSV output '{output_file}': {exc}")
 
 
+def _write_input_rows_geojson(output_file: str, rows: List[Dict[str, Any]], geometry_field: str = "geometry") -> int:
+    """Write matched input rows as a GeoJSON FeatureCollection.
+
+    Only rows with a valid GeoJSON object in `geometry_field` are emitted.
+    """
+    features: List[Dict[str, Any]] = []
+
+    for row in rows:
+        raw_geometry = row.get(geometry_field)
+        geometry_obj: Optional[Dict[str, Any]] = None
+
+        if isinstance(raw_geometry, dict):
+            geometry_obj = raw_geometry
+        elif isinstance(raw_geometry, str):
+            raw_geometry = raw_geometry.strip()
+            if raw_geometry:
+                try:
+                    parsed = json.loads(raw_geometry)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    geometry_obj = parsed
+
+        if not isinstance(geometry_obj, dict):
+            continue
+
+        try:
+            # Validate and normalize geometry via Shapely before writing GeoJSON.
+            parsed_geom = shape(geometry_obj)
+            if parsed_geom.is_empty:
+                continue
+            geometry_obj = mapping(parsed_geom)
+        except Exception:
+            continue
+
+        properties = {
+            str(key): value
+            for key, value in row.items()
+            if key != geometry_field
+        }
+
+        features.append({
+            "type": "Feature",
+            "geometry": geometry_obj,
+            "properties": properties,
+        })
+
+    with open(output_file, "w", encoding="utf-8") as out_f:
+        json.dump({"type": "FeatureCollection", "features": features}, out_f, indent=2)
+
+    return len(features)
+
+
 def _get_tsv_order_key_column(fieldnames: List[str]) -> Optional[str]:
     normalized = {str(name).strip().lower(): name for name in fieldnames}
-    return normalized.get("order_keys") or normalized.get("order_key")
+    return (
+        normalized.get("order_keys")
+        or normalized.get("order_key")
+        or normalized.get("orderkey")
+    )
+
+
+def _get_tsv_datetime_column(fieldnames: List[str]) -> Optional[str]:
+    normalized = {str(name).strip().lower(): name for name in fieldnames}
+    return (
+        normalized.get("datetime")
+        or normalized.get("datetime_start")
+        or normalized.get("timestamp")
+    )
+
+
+def _extract_item_title(item: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(item, dict):
+        return None
+
+    value = item.get("title")
+    if value is not None and str(value).strip():
+        return str(value)
+
+    props = item.get("properties")
+    if isinstance(props, dict):
+        value = props.get("title")
+        if value is not None and str(value).strip():
+            return str(value)
+
+    return None
+
+
+def _matches_title_or_order_key(item: Dict[str, Any], order_key: str) -> bool:
+    if not order_key:
+        return False
+
+    expected = str(order_key).strip()
+    if not expected:
+        return False
+
+    item_order_key = _extract_order_key(item)
+    if item_order_key and str(item_order_key).strip() == expected:
+        return True
+
+    item_title = _extract_item_title(item)
+    if item_title and expected in str(item_title):
+        return True
+
+    return False
+
+
+def _extract_search_dates_for_row(datetime_value: str) -> List[str]:
+    """Return calendar date(s) (YYYY-MM-DD) covered by a datetime value/range."""
+
+    def _coerce_to_utc_datetime(raw_value: str) -> Optional[datetime]:
+        parsed = _parse_iso_datetime(raw_value)
+        if parsed is not None:
+            return parsed
+
+        try:
+            date_only = datetime.strptime(raw_value, "%Y-%m-%d")
+            return date_only.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    value = str(datetime_value or "").strip()
+    if not value:
+        return []
+
+    if "/" in value:
+        start_raw, end_raw = value.split("/", 1)
+    else:
+        start_raw, end_raw = value, value
+
+    start_dt = _coerce_to_utc_datetime(str(start_raw).strip())
+    end_dt = _coerce_to_utc_datetime(str(end_raw).strip())
+    if start_dt is None or end_dt is None:
+        return []
+
+    start_date = min(start_dt, end_dt).date()
+    end_date = max(start_dt, end_dt).date()
+
+    dates: List[str] = []
+    cursor = start_date
+    while cursor <= end_date:
+        dates.append(cursor.isoformat())
+        cursor += timedelta(days=1)
+
+    return dates
 
 
 def _extract_search_spatial_resolution(item: Dict[str, Any]) -> Optional[str]:
@@ -2055,6 +2198,47 @@ def _load_json_input(raw: Optional[str], label: str) -> Optional[Dict[str, Any]]
         ) from exc
 
 
+def _fetch_sar_toolbox_schema() -> Dict[str, Any]:
+    try:
+        with urlopen(SAR_TOOLBOX_SCHEMA_URL) as resp:
+            body = resp.read().decode("utf-8")
+        schema_json = json.loads(body)
+    except (URLError, ValueError) as exc:
+        raise click.ClickException(f"Failed to fetch SAR Toolbox schema: {exc}") from exc
+
+    if not isinstance(schema_json, dict):
+        raise click.ClickException("Failed to fetch SAR Toolbox schema: expected a JSON object.")
+
+    return schema_json
+
+
+def _extract_sar_toolbox_category_names(schema_json: Dict[str, Any]) -> List[str]:
+    categories = schema_json.get("categories")
+    if not isinstance(categories, list):
+        return []
+
+    extracted: List[Tuple[int, str]] = []
+    for idx, category in enumerate(categories):
+        if not isinstance(category, dict):
+            continue
+
+        raw_name = category.get("name")
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+
+        display_order = category.get("display_order")
+        try:
+            sort_key = int(display_order)
+        except (TypeError, ValueError):
+            sort_key = idx
+
+        extracted.append((sort_key, name))
+
+    extracted.sort(key=lambda entry: (entry[0], entry[1].lower()))
+    return [name for _, name in extracted]
+
+
 def _print_process_summary(processes_json: Dict[str, Any]) -> None:
     all_processes = processes_json.get("processes", [])
     click.echo("\nProcessing Service:\n")
@@ -2065,10 +2249,17 @@ def _print_process_summary(processes_json: Dict[str, Any]) -> None:
         click.echo(f"* {process_id} (v{version}): {description}")
 
     click.echo("\nSAR Toolbox:\n")
-    click.echo(
-        "* SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic "
-        "Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts"
-    )
+    try:
+        schema_json = _fetch_sar_toolbox_schema()
+        category_names = _extract_sar_toolbox_category_names(schema_json)
+    except click.ClickException as exc:
+        click.echo(f"* SAR_Toolbox: categories unavailable ({exc})")
+        return
+
+    if category_names:
+        click.echo(f"* SAR_Toolbox categories: {', '.join(category_names)}")
+    else:
+        click.echo("* SAR_Toolbox: no categories found in remote schema")
 
 
 def _example_scalar_from_schema(schema: Dict[str, Any], input_name: str) -> Any:
@@ -2216,9 +2407,9 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
 @click.option("--aoi", required=False, default=None, type=click.Path(exists=True),
               help="Path to geospatial AOI file with 1-5 polygons.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="Input TSV file with order_key/order_keys column; requires --collection and --output.")
+              help="Input TSV with order_key/order_keys and datetime columns; requires --collection and --output.")
 @click.option("--output", "-o", required=False, default=None,
-              help="Output GeoJSON file for search results, or TSV file when using --input.")
+              help="Output file path (GeoJSON or TSV).")
 @click.option("--env", "-e", required=False, default="prod",
               help='Environment (default: "prod").')
 @handle_service_errors
@@ -2365,51 +2556,84 @@ def search_cmd(
 
         input_fields, input_rows = _read_tsv_rows(input_file)
         order_key_column = _get_tsv_order_key_column(input_fields)
-        if not order_key_column:
-            raise click.ClickException("Input TSV must contain an 'order_keys' or 'order_key' column.")
+        datetime_column = _get_tsv_datetime_column(input_fields)
+        if not order_key_column or not datetime_column:
+            raise click.ClickException(
+                "Input TSV must contain both order_key/order_keys and datetime columns."
+            )
 
         search_api = make_search(aaa_api, env)
         output_fields = list(input_fields)
-        for field_name in ("spatial_resolution", "timestamp", "uuid", "thumbnail_url"):
+        for field_name in ("uuid", "geometry"):
             if field_name not in output_fields:
                 output_fields.append(field_name)
 
-        ordered_keys = [str(row.get(order_key_column) or "").strip() for row in input_rows]
-        items_by_order_key = _search_items_by_order_keys(search_api, collection, ordered_keys, chunk_size=100)
+        row_date_ranges: List[List[str]] = []
+        unique_date_ranges = set()
+        for row in input_rows:
+            datetime_value = str(row.get(datetime_column) or "").strip()
+            date_values = _extract_search_dates_for_row(datetime_value)
+            date_ranges = [f"{date_value}/{date_value}" for date_value in date_values]
+            row_date_ranges.append(date_ranges)
+            unique_date_ranges.update(date_ranges)
+
+        items_by_date_range: Dict[str, List[Dict[str, Any]]] = {}
+        for date_range in sorted(unique_date_ranges):
+            items = search_api.search_multiple_geometries(
+                s_intersect_list=[{"name": None, "wkt": None}],
+                collection=collection,
+                datetime_range=date_range,
+                bbox=bbox_list,
+                limit=limit,
+                filter_text=filter_text,
+            )
+            items_by_date_range[date_range] = items or []
 
         matched_count = 0
-        for row in input_rows:
-            row["spatial_resolution"] = ""
-            row["timestamp"] = ""
+        for row, date_ranges in zip(input_rows, row_date_ranges):
             row["uuid"] = ""
-            row["thumbnail_url"] = ""
+            row["geometry"] = ""
 
             order_key = str(row.get(order_key_column) or "").strip()
-            if not order_key:
+            if not order_key or not date_ranges:
                 continue
 
-            first_item = items_by_order_key.get(order_key)
-            if not first_item:
+            matched_item = None
+            for date_range in date_ranges:
+                items = items_by_date_range.get(date_range) or []
+                for item in items:
+                    if _matches_title_or_order_key(item, order_key):
+                        matched_item = item
+                        break
+                if matched_item:
+                    break
+
+            if not matched_item:
                 continue
 
-            spatial_resolution = _extract_search_spatial_resolution(first_item)
-            item_timestamp = _extract_search_timestamp(first_item)
-            item_uuid = _extract_item_uuid(first_item)
-            thumbnail_url = _extract_thumbnail_url(first_item)
-
-            if spatial_resolution is not None:
-                row["spatial_resolution"] = spatial_resolution
-            if item_timestamp is not None:
-                row["timestamp"] = item_timestamp
+            item_uuid = _extract_item_uuid(matched_item)
             if item_uuid is not None:
                 row["uuid"] = item_uuid
-            if thumbnail_url is not None:
-                row["thumbnail_url"] = thumbnail_url
+
+            item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
+            if isinstance(item_geometry, dict):
+                row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
 
             matched_count += 1
 
-        _write_tsv_rows(output, output_fields, input_rows)
-        click.echo(f"Saved {len(input_rows)} row(s) to {output}; matched {matched_count} order_key value(s).")
+        output_ext = os.path.splitext(str(output))[1].lower()
+        if output_ext in (".geojson", ".json"):
+            feature_count = _write_input_rows_geojson(output, input_rows, geometry_field="geometry")
+            click.echo(
+                f"Saved {feature_count} feature(s) to {output}; "
+                f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
+            )
+        else:
+            _write_tsv_rows(output, output_fields, input_rows)
+            click.echo(
+                f"Saved {len(input_rows)} row(s) to {output}; "
+                f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
+            )
         return
 
     if not collection:
@@ -2546,13 +2770,7 @@ def order_st_cmd(
             raise click.UsageError("--process_id is required with --describe")
 
         if str(process_id).strip() == "SAR_Toolbox":
-            schema_url = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
-            try:
-                with urlopen(schema_url) as resp:
-                    body = resp.read().decode("utf-8")
-                schema_json = json.loads(body)
-            except (URLError, ValueError) as exc:
-                raise click.ClickException(f"Failed to fetch SAR Toolbox schema: {exc}")
+            schema_json = _fetch_sar_toolbox_schema()
 
             click.echo(json.dumps(schema_json, indent=4))
             if output:
