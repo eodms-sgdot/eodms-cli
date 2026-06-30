@@ -417,7 +417,7 @@ def save_items_geojson(items: Optional[List[Dict[str, Any]]], output_file: str) 
     with open(output_file, "w", encoding="utf-8") as out_f:
         json.dump(feature_collection, out_f, indent=2)
 
-    click.echo(f"Saved {len(feature_collection['features'])} item(s) to {output_file}")
+    click.echo(f"Saved {len(feature_collection['features'])} item(s) to {os.path.abspath(output_file)}")
 
 
 def _read_tsv_rows(input_file: str) -> Tuple[List[str], List[Dict[str, str]]]:
@@ -1660,7 +1660,7 @@ def download_http_cart_directory(
                             break
                         out_f.write(chunk)
                 downloaded += 1
-                click.echo(f"Saved cart file to {local_path}")
+                click.echo(f"Saved cart file to {os.path.abspath(local_path)}")
 
                 if manifest_file:
                     _record_dds_retry(
@@ -1785,7 +1785,7 @@ def download_public_stac_assets(search_api, collection: str, item_uuid: str, dow
             continue
 
         downloaded_count += 1
-        click.echo(f"Saved asset to {out_path}")
+        click.echo(f"Saved asset to {os.path.abspath(out_path)}")
         if manifest_file:
             _record_dds_retry(
                 retry_file=manifest_file,
@@ -2365,7 +2365,7 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
         if not os.path.exists(cfg_path):
             raise click.ClickException(f"Config file not found: {cfg_path}")
 
-        click.echo(f"Config file: {cfg_path}")
+        click.echo(f"Config file: {os.path.abspath(cfg_path)}")
         click.echo()
         with open(cfg_path, "r", encoding="utf-8") as cfg_file:
             click.echo(cfg_file.read().rstrip())
@@ -2375,7 +2375,7 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
         raise click.ClickException("--username and --password are required unless --show is used.")
 
     cfg_path = _save_credentials_to_config(username=username, password=password)
-    click.echo(f"Saved credentials to {cfg_path}")
+    click.echo(f"Saved credentials to {os.path.abspath(cfg_path)}")
 
 
 @cli.command("search")
@@ -2622,16 +2622,17 @@ def search_cmd(
             matched_count += 1
 
         output_ext = os.path.splitext(str(output))[1].lower()
+        output_abs = os.path.abspath(output)
         if output_ext in (".geojson", ".json"):
             feature_count = _write_input_rows_geojson(output, input_rows, geometry_field="geometry")
             click.echo(
-                f"Saved {feature_count} feature(s) to {output}; "
+                f"Saved {feature_count} feature(s) to {output_abs}; "
                 f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
             )
         else:
             _write_tsv_rows(output, output_fields, input_rows)
             click.echo(
-                f"Saved {len(input_rows)} row(s) to {output}; "
+                f"Saved {len(input_rows)} row(s) to {output_abs}; "
                 f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
             )
         return
@@ -2776,7 +2777,7 @@ def order_st_cmd(
             if output:
                 with open(output, "w", encoding="utf-8") as out_f:
                     json.dump(schema_json, out_f, indent=2)
-                click.echo(f"Saved SAR Toolbox schema to {output}")
+                click.echo(f"Saved SAR Toolbox schema to {os.path.abspath(output)}")
             return
 
         process_json = proc_api.get_process(process_id)
@@ -2789,7 +2790,7 @@ def order_st_cmd(
         if output:
             with open(output, "w", encoding="utf-8") as out_f:
                 json.dump(process_json, out_f, indent=2)
-            click.echo(f"Saved process description to {output}")
+            click.echo(f"Saved process description to {os.path.abspath(output)}")
         return
 
     submitted_job_id = None
@@ -2823,7 +2824,7 @@ def order_st_cmd(
             if output:
                 with open(output, "w", encoding="utf-8") as out_f:
                     json.dump(submit_json, out_f, indent=2)
-                click.echo(f"Saved submission response to {output}")
+                click.echo(f"Saved submission response to {os.path.abspath(output)}")
 
             if download_dir:
                 order_id = _extract_first_order_id(submit_json)
@@ -2871,7 +2872,7 @@ def order_st_cmd(
         if output:
             with open(output, "w", encoding="utf-8") as out_f:
                 json.dump(submit_json, out_f, indent=2)
-            click.echo(f"Saved submission response to {output}")
+            click.echo(f"Saved submission response to {os.path.abspath(output)}")
 
     target_job_id = job_id or submitted_job_id
 
