@@ -3,7 +3,7 @@ EODMS Command-line Interface (EODMS-CLI)
 
 ## Overview
 
-The **EODMS-CLI** is used to search, order and download imagery from the EODMS using API interfaces.
+The **EODMS-CLI** is used to search, process and download imagery from the EODMS using API interfaces.
 
 ## eodms-py Integration Contract
 
@@ -27,13 +27,13 @@ The EODMS-CLI was designed using **Python 3.10**.
 
 | Package Name    | Use                                                       | URL                                         |
 |-----------------|-----------------------------------------------------------|---------------------------------------------|
-| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://github.com/eodms-sgdot/py-eodms-rapi |
 | eodms-py        | The EODMS Python package.                                 | https://github.com/eodms-sgdot/eodms-py     |
+| py-eodms-rapi   | The EODMS RAPI Python package.                            | https://github.com/eodms-sgdot/py-eodms-rapi|
 | Requests        | Used to access the RAPI URL.                              | https://pypi.org/project/requests/          |
 | dateparser      | Used to parse a date like "24 hours".                     | https://pypi.org/project/dateparser/        |
 | geomet          | Used to import WKT geometry text.                         | https://pypi.org/project/geomet/            |
 | click           | Used for the command-line input.                          | https://pypi.org/project/click/             |
-| fiona           | Used for vector geospatial file I/O (e.g., shapefiles).  | https://pypi.org/project/Fiona/             |
+| fiona           | Used for vector geospatial file I/O (e.g., shapefiles).   | https://pypi.org/project/Fiona/             |
 | shapely         | Used to determine the percentage of overlap with the AOI. | https://pypi.org/project/Shapely/           |
 | python-dateutil | Used to parse dates.                                      | https://pypi.org/project/python-dateutil/   |
 | tqdm            | Used to access the RAPI and download files.               | https://pypi.org/project/tqdm/              |
@@ -63,6 +63,51 @@ The EODMS-CLI was designed using **Python 3.10**.
 	```
 	
 NOTE: Depending on your installation of Python, you may have to run ```python3 eodms_cli.py --help```.
+
+### Interactive Prompt Script
+
+This repository also ships with **eodms_prompt.py** (formerly `eodms_cli`), the interactive prompt-oriented workflow that supports legacy search, order and download flows alongside SAR Toolbox submission helpers.
+
+Show the prompt script help:
+
+```bash
+> python eodms_prompt.py --help
+```
+
+Run the prompt interactively and answer questions at each step:
+
+```bash
+> python eodms_prompt.py
+```
+
+Supported prompt process values for `--process` / `-r` are:
+
+- `full`: Search and optionally order/download imagery.
+- `order_csv`: Order/download using a CSV exported from the EODMS UI.
+- `uuid`: Order/download one or more items by UUID using `--collection`.
+- `download_restored_items`: Download requests that were previously in `ItemsRestoring`.
+- `order_st`: Submit a SAR Toolbox order from a JSON request file.
+- `download_available`: Download SAR Toolbox items that are ready with `AVAILABLE_FOR_DOWNLOAD`.
+
+For non-interactive runs, combine the needed arguments with `--silent`.
+
+Order a known UUID from a collection:
+
+```bash
+> python eodms_prompt.py -r uuid -c RCMImageProducts --uuid 342ea023-5a9d-5157-b494-e24ec7a3b014 -u %EODMS_USER% -p %EODMS_PASSWORD% --silent
+```
+
+Submit a SAR Toolbox request using a JSON file:
+
+```bash
+> python eodms_prompt.py -r order_st -st test\st_ard.json -u %EODMS_USER% -p %EODMS_PASSWORD% --silent
+```
+
+Download all SAR Toolbox items that are ready:
+
+```bash
+> python eodms_prompt.py -r download_available -u %EODMS_USER% -p %EODMS_PASSWORD% --silent
+```
 	
 ## Configuration
 
@@ -103,7 +148,7 @@ To update eodms-cli and its dependencies, follow these steps:
     > python eodms_cli.py --help
 	```
 
-## User Guide
+## End-to-end Example
 
 ### List Commands
 
