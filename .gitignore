@@ -74,3 +74,4 @@ log/
 /data
 *.tsv
 *.json
+*.csv

@@ -358,6 +358,19 @@ def _load_dds_concurrent_downloads(config_path: Optional[str] = None) -> int:
     return DEFAULT_DDS_CONCURRENT_DOWNLOADS
 
 
+def _load_search_input_chunk_size(config_path: Optional[str] = None) -> int:
+    cfg = _load_config_utils(config_path)
+    value = str(cfg.get("Search", "input_chunk_size") or "").strip()
+    try:
+        parsed = int(value)
+        if parsed > 0:
+            return parsed
+    except ValueError:
+        pass
+
+    return 10
+
+
 def _save_credentials_to_config(username: str, password: str,
                                 config_path: Optional[str] = None) -> str:
     cfg = _load_config_utils(config_path)
@@ -420,23 +433,35 @@ def save_items_geojson(items: Optional[List[Dict[str, Any]]], output_file: str) 
     click.echo(f"Saved {len(feature_collection['features'])} item(s) to {os.path.abspath(output_file)}")
 
 
-def _read_tsv_rows(input_file: str) -> Tuple[List[str], List[Dict[str, str]]]:
+def _get_delimiter_for_file(file_path: str) -> str:
+    """Return delimiter based on file extension (CSV or TSV)."""
+    lower_name = str(file_path or "").strip().lower()
+    if lower_name.endswith(".csv"):
+        return ","
+    return "\t"
+
+
+def _read_tabular_rows(input_file: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    """Read CSV or TSV rows based on file extension."""
+    delimiter = _get_delimiter_for_file(input_file)
     try:
         with open(input_file, "r", encoding="utf-8-sig", newline="") as src:
-            reader = csv.DictReader(src, delimiter="\t")
+            reader = csv.DictReader(src, delimiter=delimiter)
             if not reader.fieldnames:
-                raise click.ClickException("Input TSV must include a header row.")
+                raise click.ClickException("Input file must include a header row.")
             return list(reader.fieldnames), [dict(row) for row in reader]
     except click.ClickException:
         raise
     except Exception as exc:
-        raise click.ClickException(f"Failed to read TSV input '{input_file}': {exc}")
+        raise click.ClickException(f"Failed to read input '{input_file}': {exc}")
 
 
-def _write_tsv_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str, Any]]) -> None:
+def _write_tabular_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str, Any]]) -> None:
+    """Write CSV or TSV rows based on output file extension."""
+    delimiter = _get_delimiter_for_file(output_file)
     try:
         with open(output_file, "w", encoding="utf-8", newline="") as out_f:
-            writer = csv.DictWriter(out_f, fieldnames=fieldnames, delimiter="\t")
+            writer = csv.DictWriter(out_f, fieldnames=fieldnames, delimiter=delimiter)
             writer.writeheader()
             for row in rows:
                 writer.writerow({
@@ -444,7 +469,17 @@ def _write_tsv_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str
                     for field_name in fieldnames
                 })
     except Exception as exc:
-        raise click.ClickException(f"Failed to write TSV output '{output_file}': {exc}")
+        raise click.ClickException(f"Failed to write output '{output_file}': {exc}")
+
+
+def _read_tsv_rows(input_file: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    """Deprecated: use _read_tabular_rows instead."""
+    return _read_tabular_rows(input_file)
+
+
+def _write_tsv_rows(output_file: str, fieldnames: List[str], rows: List[Dict[str, Any]]) -> None:
+    """Deprecated: use _write_tabular_rows instead."""
+    _write_tabular_rows(output_file, fieldnames, rows)
 
 
 def _write_input_rows_geojson(output_file: str, rows: List[Dict[str, Any]], geometry_field: str = "geometry") -> int:
@@ -2412,6 +2447,8 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
               help="Output file path (GeoJSON or TSV).")
 @click.option("--env", "-e", required=False, default="prod",
               help='Environment (default: "prod").')
+@click.option("--anonymous", is_flag=True,
+              help="Search anonymously (skip EODMS authentication/authorization).")
 @handle_service_errors
 def search_cmd(
     username: Optional[str],
@@ -2432,14 +2469,18 @@ def search_cmd(
     input_file: Optional[str],
     output: Optional[str],
     env: str,
+    anonymous: bool,
 ):
     """STAC geotemporal/queryables and GeoJSON/TSV output."""
 
-    username, password = resolve_credentials(username, password)
+    if anonymous:
+        username, password = None, None
+        aaa_api = None
+    else:
+        username, password = resolve_credentials(username, password)
+        aaa_api = make_aaa(username, password, env)
 
     bbox_list = parse_bbox(bbox)
-
-    aaa_api = make_aaa(username, password, env)
 
     if list_collections:
         search_api = make_search(aaa_api, env)
@@ -2554,72 +2595,68 @@ def search_cmd(
         if not output:
             raise click.ClickException("--output is required with --input.")
 
-        input_fields, input_rows = _read_tsv_rows(input_file)
+        input_fields, input_rows = _read_tabular_rows(input_file)
         order_key_column = _get_tsv_order_key_column(input_fields)
-        datetime_column = _get_tsv_datetime_column(input_fields)
-        if not order_key_column or not datetime_column:
+        if not order_key_column:
             raise click.ClickException(
-                "Input TSV must contain both order_key/order_keys and datetime columns."
+                "Input file must contain an order_key/order_keys column."
             )
 
         search_api = make_search(aaa_api, env)
         output_fields = list(input_fields)
-        for field_name in ("uuid", "geometry"):
+        for field_name in ("uuid", "geometry", "spatial_resolution", "timestamp"):
             if field_name not in output_fields:
                 output_fields.append(field_name)
 
-        row_date_ranges: List[List[str]] = []
-        unique_date_ranges = set()
-        for row in input_rows:
-            datetime_value = str(row.get(datetime_column) or "").strip()
-            date_values = _extract_search_dates_for_row(datetime_value)
-            date_ranges = [f"{date_value}/{date_value}" for date_value in date_values]
-            row_date_ranges.append(date_ranges)
-            unique_date_ranges.update(date_ranges)
-
-        items_by_date_range: Dict[str, List[Dict[str, Any]]] = {}
-        for date_range in sorted(unique_date_ranges):
-            items = search_api.search_multiple_geometries(
-                s_intersect_list=[{"name": None, "wkt": None}],
-                collection=collection,
-                datetime_range=date_range,
-                bbox=bbox_list,
-                limit=limit,
-                filter_text=filter_text,
-            )
-            items_by_date_range[date_range] = items or []
-
+        chunk_size = _load_search_input_chunk_size()
         matched_count = 0
-        for row, date_ranges in zip(input_rows, row_date_ranges):
+        total_rows = len(input_rows)
+
+        # Initialize enrichment fields
+        for row in input_rows:
             row["uuid"] = ""
             row["geometry"] = ""
+            row["spatial_resolution"] = ""
+            row["timestamp"] = ""
 
-            order_key = str(row.get(order_key_column) or "").strip()
-            if not order_key or not date_ranges:
-                continue
+        # Process rows in chunks
+        for chunk_idx in range(0, total_rows, chunk_size):
+            chunk_end = min(chunk_idx + chunk_size, total_rows)
+            chunk_rows = input_rows[chunk_idx:chunk_end]
 
-            matched_item = None
-            for date_range in date_ranges:
-                items = items_by_date_range.get(date_range) or []
-                for item in items:
-                    if _matches_title_or_order_key(item, order_key):
-                        matched_item = item
-                        break
-                if matched_item:
-                    break
+            chunk_order_keys = [
+                str(row.get(order_key_column) or "").strip()
+                for row in chunk_rows
+                if str(row.get(order_key_column) or "").strip()
+            ]
 
-            if not matched_item:
-                continue
+            if chunk_order_keys:
+                items_by_order_key = _search_items_by_order_keys(
+                    search_api, collection, chunk_order_keys, chunk_size=100
+                )
 
-            item_uuid = _extract_item_uuid(matched_item)
-            if item_uuid is not None:
-                row["uuid"] = item_uuid
+                for row in chunk_rows:
+                    order_key_val = str(row.get(order_key_column) or "").strip()
+                    if not order_key_val:
+                        continue
+                    matched_item = items_by_order_key.get(order_key_val)
+                    if not matched_item:
+                        continue
+                    item_uuid = _extract_item_uuid(matched_item)
+                    if item_uuid is not None:
+                        row["uuid"] = item_uuid
+                    item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
+                    if isinstance(item_geometry, dict):
+                        row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
+                    item_spatial_res = _extract_search_spatial_resolution(matched_item)
+                    if item_spatial_res is not None:
+                        row["spatial_resolution"] = item_spatial_res
+                    item_timestamp = _extract_search_timestamp(matched_item)
+                    if item_timestamp is not None:
+                        row["timestamp"] = item_timestamp
+                    matched_count += 1
 
-            item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
-            if isinstance(item_geometry, dict):
-                row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
-
-            matched_count += 1
+            click.echo(f"Processed rows {chunk_idx + 1} to {chunk_end} of {total_rows}...")
 
         output_ext = os.path.splitext(str(output))[1].lower()
         output_abs = os.path.abspath(output)
@@ -2627,13 +2664,13 @@ def search_cmd(
             feature_count = _write_input_rows_geojson(output, input_rows, geometry_field="geometry")
             click.echo(
                 f"Saved {feature_count} feature(s) to {output_abs}; "
-                f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
+                f"processed {total_rows} input row(s) in chunks of {chunk_size}; matched {matched_count} row(s)."
             )
         else:
-            _write_tsv_rows(output, output_fields, input_rows)
+            _write_tabular_rows(output, output_fields, input_rows)
             click.echo(
-                f"Saved {len(input_rows)} row(s) to {output_abs}; "
-                f"searched {len(unique_date_ranges)} calendar day(s); matched {matched_count} row(s)."
+                f"Saved {total_rows} row(s) to {output_abs}; "
+                f"processed {total_rows} input row(s) in chunks of {chunk_size}; matched {matched_count} row(s)."
             )
         return
 
