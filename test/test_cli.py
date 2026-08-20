@@ -2,13 +2,14 @@ import unittest
 import os
 import sys
 import csv
+import json
 from unittest.mock import patch
 
 from click.testing import CliRunner
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eodms_cli import cli
+from eodms_cli import cli, download_dds_item
 
 
 class TestEodmsCli(unittest.TestCase):
@@ -151,6 +152,41 @@ class TestEodmsCli(unittest.TestCase):
                 "--dl_dir",
             ],
         )
+
+    def test_dds_manifest_includes_download_url_expires(self):
+        class FakeDdsApi:
+            def get_item(self, collection, item_uuid):
+                return {
+                    "status": "Available",
+                    "download_url": "https://example.test/files/item.zip?Signature=abc&Expires=1787241600",
+                    "download_expires": 1787241600,
+                    "download_expires_at": "2026-08-20T16:00:00Z",
+                    "http_response_code": 200,
+                }
+
+            def download_item(self, download_dir):
+                return os.path.join(download_dir, "item.zip")
+
+        with self.runner.isolated_filesystem():
+            os.makedirs("downloads", exist_ok=True)
+
+            result = download_dds_item(
+                FakeDdsApi(),
+                "RCMImageProducts",
+                "item-uuid",
+                "downloads",
+                retry_file=os.path.join("downloads", "downloads.jsonl"),
+                update_retry_existing_only=False,
+            )
+
+            self.assertEqual("Downloaded", result["status"])
+
+            with open(os.path.join("downloads", "downloads.jsonl"), "r", encoding="utf-8") as in_f:
+                rows = [json.loads(line) for line in in_f if line.strip()]
+
+            self.assertEqual(1, len(rows))
+            self.assertEqual(1787241600, rows[0]["download_expires"])
+            self.assertEqual("2026-08-20T16:00:00Z", rows[0]["download_expires_at"])
 
 
 if __name__ == "__main__":

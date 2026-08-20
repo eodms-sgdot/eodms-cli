@@ -718,8 +718,13 @@ def _chunk_values(values: List[str], chunk_size: int) -> List[List[str]]:
     return [values[idx:idx + resolved_chunk_size] for idx in range(0, len(values), resolved_chunk_size)]
 
 
-def _search_items_by_filter(search_api, collection: str, filter_text: str, limit: int) -> List[Dict[str, Any]]:
+def _search_items_by_filter(search_api, collection: str, filter_text: str, limit: int, log_attempt: bool = False) -> List[Dict[str, Any]]:
     resolved_limit = max(1, int(limit or 1))
+
+    if log_attempt:
+        logging.getLogger("eodms_cli").debug(
+            f"STAC search: collection={collection}, filter={filter_text[:100]}..., limit={resolved_limit}"
+        )
 
     try:
         items = search_api.stac_search(
@@ -749,8 +754,9 @@ def _search_items_by_filter(search_api, collection: str, filter_text: str, limit
 
 
 def _search_items_by_order_keys(search_api, collection: str, order_keys: List[str],
-                                chunk_size: int = 100) -> Dict[str, Dict[str, Any]]:
-    matched_items: Dict[str, Dict[str, Any]] = {}
+                                chunk_size: int = 100, log_attempts: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+    """Search for items by order_keys. Returns all matching items grouped by order_key."""
+    matched_items: Dict[str, List[Dict[str, Any]]] = {}
     cleaned_order_keys = []
     seen_order_keys = set()
 
@@ -773,14 +779,17 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
             search_api,
             collection,
             f"({chunk_filter})",
-            limit=len(order_key_chunk),
+            limit=len(order_key_chunk) * 10,  # Allow multiple items per order_key
+            log_attempt=log_attempts,
         )
 
         for item in items:
             found_order_key = _extract_order_key(item)
-            if not found_order_key or found_order_key in matched_items:
+            if not found_order_key:
                 continue
-            matched_items[found_order_key] = item
+            if found_order_key not in matched_items:
+                matched_items[found_order_key] = []
+            matched_items[found_order_key].append(item)
 
     return matched_items
 
@@ -1011,6 +1020,8 @@ def _append_dds_retry_item(
     source: Optional[str] = None,
     file_name: Optional[str] = None,
     file_path: Optional[str] = None,
+    download_expires: Optional[int] = None,
+    download_expires_at: Optional[str] = None,
     detail: Optional[str] = None,
     update_existing_only: bool = False,
 ) -> bool:
@@ -1057,6 +1068,8 @@ def _append_dds_retry_item(
                     "source": str(row.get("source") or "").strip(),
                     "file_name": str(row.get("file_name") or "").strip(),
                     "file_path": str(row.get("file_path") or "").strip(),
+                    "download_expires": row.get("download_expires"),
+                    "download_expires_at": str(row.get("download_expires_at") or "").strip(),
                     "detail": str(row.get("detail") or "").strip(),
                 }
 
@@ -1095,6 +1108,16 @@ def _append_dds_retry_item(
         current_row.pop("file_path", None)
     else:
         current_row["file_path"] = str(file_path).strip()
+
+    if download_expires is None:
+        current_row.pop("download_expires", None)
+    else:
+        current_row["download_expires"] = int(download_expires)
+
+    if download_expires_at is None:
+        current_row.pop("download_expires_at", None)
+    else:
+        current_row["download_expires_at"] = str(download_expires_at).strip()
 
     if detail is None:
         current_row.pop("detail", None)
@@ -1158,6 +1181,8 @@ def _compact_dds_retry_file(retry_file: str) -> int:
                 "source": str(row.get("source") or "").strip(),
                 "file_name": str(row.get("file_name") or "").strip(),
                 "file_path": str(row.get("file_path") or "").strip(),
+                "download_expires": row.get("download_expires"),
+                "download_expires_at": str(row.get("download_expires_at") or "").strip(),
                 "detail": str(row.get("detail") or "").strip(),
             }
 
@@ -1183,6 +1208,8 @@ def _record_dds_retry(
     source: Optional[str] = None,
     file_name: Optional[str] = None,
     file_path: Optional[str] = None,
+    download_expires: Optional[int] = None,
+    download_expires_at: Optional[str] = None,
     detail: Optional[str] = None,
     update_existing_only: bool = False,
 ) -> Dict[str, Any]:
@@ -1202,6 +1229,8 @@ def _record_dds_retry(
         source=source,
         file_name=file_name,
         file_path=file_path,
+        download_expires=download_expires,
+        download_expires_at=download_expires_at,
         detail=detail,
         update_existing_only=update_existing_only,
     )
@@ -1223,6 +1252,8 @@ def _record_dds_retry(
             "source": source,
             "file_name": file_name,
             "file_path": file_path,
+            "download_expires": download_expires,
+            "download_expires_at": download_expires_at,
             "detail": detail,
         }
 
@@ -1231,9 +1262,10 @@ def _record_dds_retry(
     extra_source = f", source={source}" if source else ""
     extra_file_name = f", file_name={file_name}" if file_name else ""
     extra_file_path = f", file_path={file_path}" if file_path else ""
+    extra_expires = f", download_expires={download_expires}" if download_expires is not None else ""
     click.echo(
         f"Download manifest updated: collection={collection}, uuid={item_uuid}, "
-        f"status={status}{extra_source}{extra_http}{extra_file_name}{extra_file_path}{extra_detail}, "
+        f"status={status}{extra_source}{extra_http}{extra_file_name}{extra_file_path}{extra_expires}{extra_detail}, "
         f"manifest={retry_rel_path}"
     )
     if status.lower().find("restoring") > -1 or status.lower().find("queued") > -1:
@@ -1253,6 +1285,8 @@ def _record_dds_retry(
         "source": source,
         "file_name": file_name,
         "file_path": file_path,
+        "download_expires": download_expires,
+        "download_expires_at": download_expires_at,
         "detail": detail,
     }
 
@@ -1343,6 +1377,8 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
         normalized_status = _normalize_status(status_value)
         item_timestamp = _extract_dds_timestamp(item_info)
         item_http_response_code = _extract_http_status_code(item_info)
+        item_download_expires = item_info.get("download_expires")
+        item_download_expires_at = item_info.get("download_expires_at")
 
         if normalized_status == "QUEUED":
             _record_dds_retry(
@@ -1433,6 +1469,8 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                     source="dds",
                     file_name=expected_file_name,
                     file_path=expected_file_path,
+                    download_expires=item_download_expires,
+                    download_expires_at=item_download_expires_at,
                     update_existing_only=update_retry_existing_only,
                 )
 
@@ -1455,6 +1493,8 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                 file_name=expected_file_name,
                 file_path=(os.path.join(resolved_download_dir, expected_file_name)
                            if expected_file_name else None),
+                download_expires=item_download_expires,
+                download_expires_at=item_download_expires_at,
                 detail=str(exc),
                 update_existing_only=update_retry_existing_only,
             )
@@ -1475,6 +1515,8 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
             source="dds",
             file_name=expected_file_name,
             file_path=resolved_path,
+            download_expires=item_download_expires,
+            download_expires_at=item_download_expires_at,
             update_existing_only=update_retry_existing_only,
         )
 
@@ -2620,6 +2662,7 @@ def search_cmd(
             row["timestamp"] = ""
 
         # Process rows in chunks
+        expanded_output_rows: List[Dict[str, Any]] = []
         for chunk_idx in range(0, total_rows, chunk_size):
             chunk_end = min(chunk_idx + chunk_size, total_rows)
             chunk_rows = input_rows[chunk_idx:chunk_end]
@@ -2638,39 +2681,99 @@ def search_cmd(
                 for row in chunk_rows:
                     order_key_val = str(row.get(order_key_column) or "").strip()
                     if not order_key_val:
+                        expanded_output_rows.append(row)
                         continue
-                    matched_item = items_by_order_key.get(order_key_val)
-                    if not matched_item:
+                    matched_items_list = items_by_order_key.get(order_key_val, [])
+                    if not matched_items_list:
+                        expanded_output_rows.append(row)
                         continue
-                    item_uuid = _extract_item_uuid(matched_item)
-                    if item_uuid is not None:
-                        row["uuid"] = item_uuid
-                    item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
-                    if isinstance(item_geometry, dict):
-                        row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
-                    item_spatial_res = _extract_search_spatial_resolution(matched_item)
-                    if item_spatial_res is not None:
-                        row["spatial_resolution"] = item_spatial_res
-                    item_timestamp = _extract_search_timestamp(matched_item)
-                    if item_timestamp is not None:
-                        row["timestamp"] = item_timestamp
-                    matched_count += 1
+                    # Create one output row per matched item
+                    for matched_item in matched_items_list:
+                        enriched_row = dict(row)
+                        enriched_row["uuid"] = ""
+                        enriched_row["geometry"] = ""
+                        enriched_row["spatial_resolution"] = ""
+                        enriched_row["timestamp"] = ""
+                        item_uuid = _extract_item_uuid(matched_item)
+                        if item_uuid is not None:
+                            enriched_row["uuid"] = item_uuid
+                        item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
+                        if isinstance(item_geometry, dict):
+                            enriched_row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
+                        item_spatial_res = _extract_search_spatial_resolution(matched_item)
+                        if item_spatial_res is not None:
+                            enriched_row["spatial_resolution"] = item_spatial_res
+                        item_timestamp = _extract_search_timestamp(matched_item)
+                        if item_timestamp is not None:
+                            enriched_row["timestamp"] = item_timestamp
+                        expanded_output_rows.append(enriched_row)
+                        matched_count += 1
 
             click.echo(f"Processed rows {chunk_idx + 1} to {chunk_end} of {total_rows}...")
+
+        # Second pass: retry unmatched rows
+        unmatched_rows = [row for row in expanded_output_rows if not str(row.get("uuid") or "").strip()]
+        if unmatched_rows:
+            unmatched_order_keys = [
+                str(row.get(order_key_column) or "").strip()
+                for row in unmatched_rows
+                if str(row.get(order_key_column) or "").strip()
+            ]
+            if unmatched_order_keys:
+                click.echo(f"\nSecond pass: retrying {len(unmatched_order_keys)} unmatched order_key(s)...")
+                retry_items = _search_items_by_order_keys(
+                    search_api, collection, unmatched_order_keys, chunk_size=100, log_attempts=True
+                )
+                retry_rows: List[Dict[str, Any]] = []
+                for row in unmatched_rows:
+                    order_key_val = str(row.get(order_key_column) or "").strip()
+                    if not order_key_val:
+                        retry_rows.append(row)
+                        continue
+                    matched_items_list = retry_items.get(order_key_val, [])
+                    if not matched_items_list:
+                        logging.getLogger("eodms_cli").debug(f"No match found in second pass for order_key={order_key_val}")
+                        retry_rows.append(row)
+                        continue
+                    # Create one output row per matched item
+                    for matched_item in matched_items_list:
+                        enriched_row = dict(row)
+                        enriched_row["uuid"] = ""
+                        enriched_row["geometry"] = ""
+                        enriched_row["spatial_resolution"] = ""
+                        enriched_row["timestamp"] = ""
+                        item_uuid = _extract_item_uuid(matched_item)
+                        if item_uuid is not None:
+                            enriched_row["uuid"] = item_uuid
+                        item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
+                        if isinstance(item_geometry, dict):
+                            enriched_row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
+                        item_spatial_res = _extract_search_spatial_resolution(matched_item)
+                        if item_spatial_res is not None:
+                            enriched_row["spatial_resolution"] = item_spatial_res
+                        item_timestamp = _extract_search_timestamp(matched_item)
+                        if item_timestamp is not None:
+                            enriched_row["timestamp"] = item_timestamp
+                        retry_rows.append(enriched_row)
+                        matched_count += 1
+                        click.echo(f"  Matched in second pass: {order_key_val}")
+                expanded_output_rows = retry_rows
 
         output_ext = os.path.splitext(str(output))[1].lower()
         output_abs = os.path.abspath(output)
         if output_ext in (".geojson", ".json"):
-            feature_count = _write_input_rows_geojson(output, input_rows, geometry_field="geometry")
+            feature_count = _write_input_rows_geojson(output, expanded_output_rows, geometry_field="geometry")
             click.echo(
                 f"Saved {feature_count} feature(s) to {output_abs}; "
-                f"processed {total_rows} input row(s) in chunks of {chunk_size}; matched {matched_count} row(s)."
+                f"processed {total_rows} input row(s) in chunks of {chunk_size}; "
+                f"expanded to {len(expanded_output_rows)} output row(s) (multiple results per order_key); matched {matched_count} item(s)."
             )
         else:
-            _write_tabular_rows(output, output_fields, input_rows)
+            _write_tabular_rows(output, output_fields, expanded_output_rows)
             click.echo(
-                f"Saved {total_rows} row(s) to {output_abs}; "
-                f"processed {total_rows} input row(s) in chunks of {chunk_size}; matched {matched_count} row(s)."
+                f"Saved {len(expanded_output_rows)} row(s) to {output_abs}; "
+                f"processed {total_rows} input row(s) in chunks of {chunk_size}; "
+                f"expanded to {len(expanded_output_rows)} output row(s) (multiple results per order_key); matched {matched_count} item(s)."
             )
         return
 
