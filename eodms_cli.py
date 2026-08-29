@@ -252,10 +252,19 @@ def _setup_package_logger(log_path: str, level: int = logging.INFO,
 
     file_handler = None
     stream_handler = None
-    for handler in list(package_logger.handlers):
+    cli_logger = logging.getLogger("eodms_cli")
+    target_path = os.path.abspath(log_path)
+    for handler in cli_logger.handlers:
         if isinstance(handler, handlers.RotatingFileHandler):
             existing_path = getattr(handler, "baseFilename", None)
             if existing_path and os.path.abspath(existing_path) == target_path:
+                file_handler = handler
+                break
+
+    for handler in list(package_logger.handlers):
+        if isinstance(handler, handlers.RotatingFileHandler):
+            existing_path = getattr(handler, "baseFilename", None)
+            if file_handler is handler or (existing_path and os.path.abspath(existing_path) == target_path):
                 file_handler = handler
             else:
                 package_logger.removeHandler(handler)
@@ -272,6 +281,7 @@ def _setup_package_logger(log_path: str, level: int = logging.INFO,
             backupCount=2,
             encoding="utf-8",
         )
+    if file_handler not in package_logger.handlers:
         package_logger.addHandler(file_handler)
 
     if stream_handler is None:
@@ -639,9 +649,9 @@ def _extract_search_spatial_resolution(item: Dict[str, Any]) -> Optional[str]:
         containers.append(props)
 
     for container in containers:
-        for key in ("spatial_resolution", "spatialResolution", "SPATIAL_RESOLUTION"):
-            value = container.get(key)
-            if value is not None and str(value).strip():
+        for key, value in container.items():
+            normalized_key = re.sub(r"[^a-z0-9]", "", str(key).lower())
+            if normalized_key == "spatialresolution" and value is not None and str(value).strip():
                 return str(value)
 
     return None
@@ -727,21 +737,24 @@ def _search_items_by_filter(search_api, collection: str, filter_text: str, limit
         )
 
     try:
-        items = search_api.stac_search(
-            collections=[collection],
-            limit=resolved_limit,
-            filter=filter_text,
-            filter_lang="cql2-text",
-        )
-    except (AttributeError, TypeError):
-        items = search_api.search_multiple_geometries(
-            s_intersect_list=[{"name": None, "wkt": None}],
-            collection=collection,
-            datetime_range=None,
-            bbox=None,
-            limit=resolved_limit,
-            filter_text=filter_text,
-        )
+        try:
+            items = search_api.stac_search(
+                collections=[collection],
+                limit=resolved_limit,
+                filter=filter_text,
+                filter_lang="cql2-text",
+            )
+        except (AttributeError, TypeError):
+            items = search_api.search_multiple_geometries(
+                s_intersect_list=[{"name": None, "wkt": None}],
+                collection=collection,
+                datetime_range=None,
+                bbox=None,
+                limit=resolved_limit,
+                filter_text=filter_text,
+            )
+    except Exception:
+        raise
 
     if items is None:
         return []
@@ -754,7 +767,8 @@ def _search_items_by_filter(search_api, collection: str, filter_text: str, limit
 
 
 def _search_items_by_order_keys(search_api, collection: str, order_keys: List[str],
-                                chunk_size: int = 100, log_attempts: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+                                chunk_size: int = 100, log_attempts: bool = False,
+                                additional_filter: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
     """Search for items by order_keys. Returns all matching items grouped by order_key."""
     matched_items: Dict[str, List[Dict[str, Any]]] = {}
     cleaned_order_keys = []
@@ -775,6 +789,8 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
             f"order_key = {_quote_cql2_text_string(order_key)}"
             for order_key in order_key_chunk
         )
+        if additional_filter:
+            chunk_filter = f"({chunk_filter}) AND ({additional_filter})"
         items = _search_items_by_filter(
             search_api,
             collection,
@@ -810,9 +826,10 @@ def make_dds(aaa_api, environment: str):
 def make_search(aaa_api, environment: str):
     _patch_search_user_agent()
     try:
-        return search.Search_API(aaa_api=aaa_api, environment=environment)
+        search_api = search.Search_API(aaa_api=aaa_api, environment=environment)
     except TypeError:
-        return search.Search_API(aaa_api, environment)
+        search_api = search.Search_API(aaa_api, environment)
+    return search_api
 
 
 def make_processes(aaa_api, environment: str):
@@ -2484,7 +2501,7 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
 @click.option("--aoi", required=False, default=None, type=click.Path(exists=True),
               help="Path to geospatial AOI file with 1-5 polygons.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="Input TSV with order_key/order_keys and datetime columns; requires --collection and --output.")
+              help="Input CSV/TSV with search columns; requires --collection and --output.")
 @click.option("--output", "-o", required=False, default=None,
               help="Output file path (GeoJSON or TSV).")
 @click.option("--env", "-e", required=False, default="prod",
@@ -2675,7 +2692,8 @@ def search_cmd(
 
             if chunk_order_keys:
                 items_by_order_key = _search_items_by_order_keys(
-                    search_api, collection, chunk_order_keys, chunk_size=100
+                    search_api, collection, chunk_order_keys, chunk_size=100,
+                    additional_filter=filter_text,
                 )
 
                 for row in chunk_rows:
@@ -2714,6 +2732,7 @@ def search_cmd(
         # Second pass: retry unmatched rows
         unmatched_rows = [row for row in expanded_output_rows if not str(row.get("uuid") or "").strip()]
         if unmatched_rows:
+            matched_rows = [row for row in expanded_output_rows if str(row.get("uuid") or "").strip()]
             unmatched_order_keys = [
                 str(row.get(order_key_column) or "").strip()
                 for row in unmatched_rows
@@ -2722,7 +2741,8 @@ def search_cmd(
             if unmatched_order_keys:
                 click.echo(f"\nSecond pass: retrying {len(unmatched_order_keys)} unmatched order_key(s)...")
                 retry_items = _search_items_by_order_keys(
-                    search_api, collection, unmatched_order_keys, chunk_size=100, log_attempts=True
+                    search_api, collection, unmatched_order_keys, chunk_size=100, log_attempts=True,
+                    additional_filter=filter_text,
                 )
                 retry_rows: List[Dict[str, Any]] = []
                 for row in unmatched_rows:
@@ -2757,7 +2777,7 @@ def search_cmd(
                         retry_rows.append(enriched_row)
                         matched_count += 1
                         click.echo(f"  Matched in second pass: {order_key_val}")
-                expanded_output_rows = retry_rows
+                expanded_output_rows = matched_rows + retry_rows
 
         output_ext = os.path.splitext(str(output))[1].lower()
         output_abs = os.path.abspath(output)

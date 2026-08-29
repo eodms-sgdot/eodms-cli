@@ -9,7 +9,7 @@ from click.testing import CliRunner
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eodms_cli import cli, download_dds_item
+from eodms_cli import cli, download_dds_item, _search_items_by_filter
 
 
 class TestEodmsCli(unittest.TestCase):
@@ -113,23 +113,68 @@ class TestEodmsCli(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 0, msg=result.output)
-            self.assertIn("matched 1 order_key value(s)", result.output)
+            self.assertIn("matched 1 item(s)", result.output)
 
             with open(output_path, "r", encoding="utf-8", newline="") as out_f:
                 rows = list(csv.DictReader(out_f, delimiter="\t"))
 
-            self.assertEqual(["order_keys", "note", "spatial_resolution", "timestamp", "uuid", "thumbnail_url"], list(rows[0].keys()))
+            self.assertEqual(["order_keys", "note", "uuid", "geometry", "spatial_resolution", "timestamp"], list(rows[0].keys()))
             self.assertEqual("30", rows[0]["spatial_resolution"])
             self.assertEqual("2026-06-09T12:00:00Z", rows[0]["timestamp"])
             self.assertEqual("uuid-123", rows[0]["uuid"])
-            self.assertEqual("", rows[0]["thumbnail_url"])
             self.assertEqual("", rows[1]["spatial_resolution"])
             self.assertEqual("", rows[1]["timestamp"])
             self.assertEqual("", rows[1]["uuid"])
-            self.assertEqual("", rows[1]["thumbnail_url"])
-            self.assertEqual(1, len(fake_search.calls))
+            self.assertEqual(2, len(fake_search.calls))
             self.assertIn("MATCH_ONE", fake_search.calls[0]["filter"])
             self.assertIn("MISS_ONE", fake_search.calls[0]["filter"])
+
+    def test_search_input_writes_spatial_resolution_from_result(self):
+        class FakeSearchApi:
+            def stac_search(self, collections, limit, filter, filter_lang):
+                return [{
+                    "id": "uuid-800",
+                    "properties": {
+                        "order_key": "A2133_036",
+                        "spatialResolution": 800,
+                    },
+                }]
+
+        with self.runner.isolated_filesystem():
+            with open("input.csv", "w", encoding="utf-8", newline="") as in_f:
+                writer = csv.DictWriter(in_f, fieldnames=["order_key"])
+                writer.writeheader()
+                writer.writerow({"order_key": "A2133_036"})
+
+            with patch("eodms_cli.resolve_credentials", return_value=(None, None)), \
+                 patch("eodms_cli.make_aaa", return_value=None), \
+                 patch("eodms_cli.make_search", return_value=FakeSearchApi()):
+                result = self.runner.invoke(cli, [
+                    "search", "--input", "input.csv", "--collection", "NAPL", "--output", "output.csv",
+                ])
+
+            self.assertEqual(result.exit_code, 0, msg=result.output)
+            with open("output.csv", "r", encoding="utf-8", newline="") as out_f:
+                rows = list(csv.DictReader(out_f))
+            self.assertEqual("800", rows[0]["spatial_resolution"])
+
+    def test_search_input_requires_order_key_column(self):
+        with self.runner.isolated_filesystem():
+            with open("input.csv", "w", encoding="utf-8", newline="") as in_f:
+                writer = csv.DictWriter(in_f, fieldnames=["ROLL", "PHOTO"])
+                writer.writeheader()
+                writer.writerow({"ROLL": "A2133", "PHOTO": "36"})
+
+            with patch("eodms_cli.resolve_credentials", return_value=(None, None)), \
+                 patch("eodms_cli.make_aaa", return_value=None):
+                result = self.runner.invoke(cli, [
+                    "search", "--input", "input.csv", "--collection", "NAPL",
+                    "--output", "output.csv",
+                ])
+
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("Input file must contain an order_key/order_keys column.", result.output)
+
 
     def test_process_command_help(self):
         self._assert_help(
