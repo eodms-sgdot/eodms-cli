@@ -55,7 +55,7 @@ from eodms_rapi import EODMSRAPI, QueryError
 DEFAULT_DDS_BACKOFF_SECONDS = 60
 DEFAULT_DDS_CONCURRENT_DOWNLOADS = 10
 DEFAULT_DOWNLOADS_MANIFEST_NAME = "downloads.jsonl"
-DEFAULT_DDS_RETRY_FILE = os.path.join(".\\downloads", DEFAULT_DOWNLOADS_MANIFEST_NAME)
+DEFAULT_DDS_RETRY_FILE = os.path.join("downloads", DEFAULT_DOWNLOADS_MANIFEST_NAME)
 MAX_DDS_QUEUED_WAITS = 10
 CLI_DEFAULT_LOG_NAME = "eodms_cli.log"
 CLI_DEFAULT_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
@@ -75,8 +75,22 @@ SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-t
 os.environ.setdefault("TQDM_DYNAMIC_NCOLS", "1")
 
 
+def _normalize_download_dir(download_dir: Optional[str]) -> str:
+    if download_dir is None:
+        return "downloads"
+
+    value = str(download_dir).strip()
+    if not value or value in {".", os.curdir}:
+        return "downloads"
+
+    normalized = os.path.normpath(value.replace("\\", os.sep))
+    if normalized in {".", os.curdir}:
+        return "downloads"
+    return normalized
+
+
 def _resolve_downloads_manifest_path(download_dir: str) -> str:
-    destination = os.path.abspath(download_dir)
+    destination = os.path.abspath(_normalize_download_dir(download_dir))
     return os.path.join(destination, DEFAULT_DOWNLOADS_MANIFEST_NAME)
 
 
@@ -1341,6 +1355,8 @@ def download_dds_item(dds_api, collection: str, item_uuid: str, download_dir: st
                       queued_backoff_seconds: int = DEFAULT_DDS_BACKOFF_SECONDS,
                       retry_file: str = DEFAULT_DDS_RETRY_FILE,
                       update_retry_existing_only: bool = True) -> Optional[Dict[str, Any]]:
+    download_dir = _normalize_download_dir(download_dir)
+    retry_file = _resolve_downloads_manifest_path(download_dir) if not retry_file else retry_file
     waits = 0
 
     while True:
@@ -3089,7 +3105,7 @@ def order_st_cmd(
               help="Optional status filter for --list (example: AVAILABLE_FOR_DOWNLOAD).")
 @click.option("--download-available", is_flag=True,
               help="Download AVAILABLE_FOR_DOWNLOAD order items (required for default bulk download mode).")
-@click.option("--dl_dir", "download_dir", required=False, default=".\\downloads",
+@click.option("--dl_dir", "download_dir", required=False, default="downloads",
               help="Destination directory for downloads.")
 @click.option("--download-dir", "download_dir", required=False,
               help="Destination directory for downloads.")
@@ -3116,6 +3132,7 @@ def download_available_cmd(
 ):
     """Download by UUID (public STAC assets or DDS) and legacy RAPI order-item downloads."""
 
+    download_dir = _normalize_download_dir(download_dir)
     username, password = resolve_credentials(username, password)
     dds_backoff_seconds = _load_dds_backoff_interval()
     dds_concurrent_downloads = _load_dds_concurrent_downloads()

@@ -198,6 +198,13 @@ class TestEodmsCli(unittest.TestCase):
             ],
         )
 
+    def test_download_dir_default_is_platform_appropriate(self):
+        from eodms_cli import _normalize_download_dir
+
+        self.assertEqual("downloads", _normalize_download_dir(".\\downloads"))
+        self.assertEqual("downloads", _normalize_download_dir("downloads"))
+        self.assertNotIn("\\", _normalize_download_dir(".\\downloads"))
+
     def test_dds_manifest_includes_download_url_expires(self):
         class FakeDdsApi:
             def get_item(self, collection, item_uuid):
