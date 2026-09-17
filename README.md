@@ -122,7 +122,7 @@ In the config file, you can:
 - Set the timeout interval for querying and ordering
 - Set the minimum dates for keeping downloaded images and results files
 
-For more in-depth information on the configuration file, visit [Config File](https://github.com/eodms-sgdot/eodms-cli/wiki/Config-File).
+For more in-depth information on the configuration file, see the example template in [config.ini](config.ini).
 
 ## Updating
 
