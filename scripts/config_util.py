@@ -374,15 +374,27 @@ Options:
         self._set_dict('Logging', 'Logging', 'level')
         self._set_dict('Logging', 'Logging', 'datefmt')
 
+    def _sanitized_config_dict(self):
+        """Return config values only; ignore placeholder comment keys that are not valid option names."""
+        clean_sections = {}
+        for section, options in self.config_dict.items():
+            clean_options = {}
+            for key, value in options.items():
+                if isinstance(key, str) and key.lstrip().startswith('#'):
+                    continue
+                clean_options[key] = value
+            clean_sections[section] = clean_options
+        return clean_sections
+
     def write(self):
         """
         Writes the config_dict to the config.ini file.
         """
 
         self.config_info.clear()
-        self.config_info.read_dict(self.config_dict)
+        self.config_info.read_dict(self._sanitized_config_dict())
 
-        cfgfile = open(self.config_fn, 'w')
+        cfgfile = open(self.config_fn, 'w', encoding='utf-8')
         self.config_info.write(cfgfile, space_around_delimiters=True)
         cfgfile.close()
 
@@ -414,7 +426,7 @@ Options:
             self.update_dict()
 
         self.config_info.clear()
-        self.config_info.read_dict(self.config_dict)
+        self.config_info.read_dict(self._sanitized_config_dict())
 
         self.write()
 

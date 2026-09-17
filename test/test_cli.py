@@ -3,11 +3,14 @@ import os
 import sys
 import csv
 import json
+import tempfile
 from unittest.mock import patch
 
 from click.testing import CliRunner
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scripts import config_util
 
 from eodms_cli import cli, download_dds_item, _search_items_by_filter
 
@@ -204,6 +207,19 @@ class TestEodmsCli(unittest.TestCase):
         self.assertEqual("downloads", _normalize_download_dir(".\\downloads"))
         self.assertEqual("downloads", _normalize_download_dir("downloads"))
         self.assertNotIn("\\", _normalize_download_dir(".\\downloads"))
+
+    def test_config_write_does_not_use_comment_strings_as_option_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg_path = os.path.join(temp_dir, "config.ini")
+            cfg = config_util.ConfigUtils(config_path=cfg_path)
+            cfg.write()
+
+            with open(cfg_path, "r", encoding="utf-8") as fh:
+                contents = fh.read()
+
+            self.assertIn("[Paths]", contents)
+            self.assertIn("downloads =", contents)
+            self.assertIn("[Credentials]", contents)
 
     def test_dds_manifest_includes_download_url_expires(self):
         class FakeDdsApi:
