@@ -1193,7 +1193,7 @@ class EodmsUtils:
 
         bbox = _stac_feature_to_bbox(features)
         datetime_str = _parse_dates_to_stac(dates)
-        limit = int(max_results) if max_results else 1000
+        limit = int(max_results) if max_results else None
 
         cql2_filter = filters.strip() if isinstance(filters, str) \
             and filters.strip() else None

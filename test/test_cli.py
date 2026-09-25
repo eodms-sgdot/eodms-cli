@@ -116,18 +116,18 @@ class TestEodmsCli(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 0, msg=result.output)
-            self.assertIn("matched 1 item(s)", result.output)
+            self.assertIn("matched 1 order_key(s)", result.output)
 
             with open(output_path, "r", encoding="utf-8", newline="") as out_f:
                 rows = list(csv.DictReader(out_f, delimiter="\t"))
 
-            self.assertEqual(["order_keys", "note", "uuid", "geometry", "spatial_resolution", "timestamp"], list(rows[0].keys()))
+            self.assertEqual(["order_keys", "note", "uuids", "geometry", "spatial_resolution", "timestamp"], list(rows[0].keys()))
             self.assertEqual("30", rows[0]["spatial_resolution"])
             self.assertEqual("2026-06-09T12:00:00Z", rows[0]["timestamp"])
-            self.assertEqual("uuid-123", rows[0]["uuid"])
+            self.assertEqual("uuid-123", rows[0]["uuids"])
             self.assertEqual("", rows[1]["spatial_resolution"])
             self.assertEqual("", rows[1]["timestamp"])
-            self.assertEqual("", rows[1]["uuid"])
+            self.assertEqual("", rows[1]["uuids"])
             self.assertEqual(2, len(fake_search.calls))
             self.assertIn("MATCH_ONE", fake_search.calls[0]["filter"])
             self.assertIn("MISS_ONE", fake_search.calls[0]["filter"])
@@ -160,6 +160,57 @@ class TestEodmsCli(unittest.TestCase):
             with open("output.csv", "r", encoding="utf-8", newline="") as out_f:
                 rows = list(csv.DictReader(out_f))
             self.assertEqual("800", rows[0]["spatial_resolution"])
+
+    def test_search_input_consolidates_multiple_hits_into_one_row(self):
+        class FakeSearchApi:
+            def stac_search(self, collections, limit, filter, filter_lang):
+                if "CA74_069" in filter:
+                    return [
+                        {
+                            "id": "8c30662a-ffbb-5e25-8654-9d7d078eea75",
+                            "geometry": {"type": "Polygon", "coordinates": [[[0, 0]]]},
+                            "properties": {
+                                "order_key": "CA74_069",
+                                "spatial_resolution": "800",
+                                "datetime": "1924-07-01T00:00:00+00:00",
+                            },
+                        },
+                        {
+                            "id": "8c30662a-ffbb-5e25-8654-9d7d078eea76",
+                            "geometry": {"type": "Polygon", "coordinates": [[[1, 1]]]},
+                            "properties": {
+                                "order_key": "CA74_069",
+                                "spatial_resolution": "2032",
+                                "datetime": "1924-07-01T00:00:00+00:00",
+                            },
+                        },
+                    ]
+                return []
+
+        with self.runner.isolated_filesystem():
+            with open("input.csv", "w", encoding="utf-8", newline="") as in_f:
+                writer = csv.DictWriter(in_f, fieldnames=["order_key"])
+                writer.writeheader()
+                writer.writerow({"order_key": "CA74_069"})
+
+            with patch("eodms_cli.resolve_credentials", return_value=(None, None)), \
+                 patch("eodms_cli.make_aaa", return_value=None), \
+                 patch("eodms_cli.make_search", return_value=FakeSearchApi()):
+                result = self.runner.invoke(cli, [
+                    "search", "--input", "input.csv", "--collection", "NAPL", "--output", "output.csv",
+                ])
+
+            self.assertEqual(result.exit_code, 0, msg=result.output)
+            with open("output.csv", "r", encoding="utf-8", newline="") as out_f:
+                rows = list(csv.DictReader(out_f))
+            self.assertEqual(1, len(rows))
+            self.assertEqual(
+                "8c30662a-ffbb-5e25-8654-9d7d078eea75;8c30662a-ffbb-5e25-8654-9d7d078eea76",
+                rows[0]["uuids"],
+            )
+            self.assertEqual("800;2032", rows[0]["spatial_resolution"])
+            self.assertEqual("1924-07-01T00:00:00+00:00", rows[0]["timestamp"])
+            self.assertEqual(json.dumps({"type": "Polygon", "coordinates": [[[0, 0]]]}, separators=(",", ":")), rows[0]["geometry"])
 
     def test_search_input_requires_order_key_column(self):
         with self.runner.isolated_filesystem():

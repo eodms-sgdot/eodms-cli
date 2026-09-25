@@ -594,6 +594,40 @@ def _extract_item_title(item: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _build_enriched_row(row: Dict[str, Any], matched_items_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Consolidate all matched items for an order_key into a single row.
+
+    uuid and spatial_resolution are ';'-joined across all hits; geometry and
+    timestamp are taken from the first hit only.
+    """
+    enriched_row = dict(row)
+    enriched_row["uuids"] = ""
+    enriched_row["geometry"] = ""
+    enriched_row["spatial_resolution"] = ""
+    enriched_row["timestamp"] = ""
+
+    uuids: List[str] = []
+    spatial_resolutions: List[str] = []
+    for index, matched_item in enumerate(matched_items_list):
+        item_uuid = _extract_item_uuid(matched_item)
+        if item_uuid is not None:
+            uuids.append(str(item_uuid))
+        item_spatial_res = _extract_search_spatial_resolution(matched_item)
+        if item_spatial_res is not None:
+            spatial_resolutions.append(str(item_spatial_res))
+        if index == 0:
+            item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
+            if isinstance(item_geometry, dict):
+                enriched_row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
+            item_timestamp = _extract_search_timestamp(matched_item)
+            if item_timestamp is not None:
+                enriched_row["timestamp"] = item_timestamp
+
+    enriched_row["uuids"] = ";".join(uuids)
+    enriched_row["spatial_resolution"] = ";".join(spatial_resolutions)
+    return enriched_row
+
+
 def _matches_title_or_order_key(item: Dict[str, Any], order_key: str) -> bool:
     if not order_key:
         return False
@@ -2508,8 +2542,8 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
               help='Temporal filter as ISO 8601 string/range (example: "2023-01-01/2023-12-31").')
 @click.option("--bbox", "-b", required=False, default=None,
               help="Bounding box as west,south,east,north")
-@click.option("--limit", "-l", required=False, default=1000, type=int,
-              help="Maximum number of items to fetch (default: 1000).")
+@click.option("--limit", "-l", required=False, default=None, type=int,
+              help="Maximum number of items to fetch (default: config.ini [RAPI].max_results, or 1000).")
 @click.option("--filter", "-f", "filter_text", required=False, default=None,
               help="CQL2 text filter expression.")
 @click.option("--s-intersect", "s_intersect", required=False, default=None,
@@ -2537,7 +2571,7 @@ def search_cmd(
     show_queryables: bool,
     datetime_range: Optional[str],
     bbox: Optional[str],
-    limit: int,
+    limit: Optional[int],
     filter_text: Optional[str],
     s_intersect: Optional[str],
     aoi: Optional[str],
@@ -2556,6 +2590,10 @@ def search_cmd(
         aaa_api = make_aaa(username, password, env)
 
     bbox_list = parse_bbox(bbox)
+
+    if limit is None:
+        cfg = _load_config_utils()
+        limit = int(cfg.get('RAPI', 'max_results') or '1000')
 
     if list_collections:
         search_api = make_search(aaa_api, env)
@@ -2679,7 +2717,7 @@ def search_cmd(
 
         search_api = make_search(aaa_api, env)
         output_fields = list(input_fields)
-        for field_name in ("uuid", "geometry", "spatial_resolution", "timestamp"):
+        for field_name in ("uuids", "geometry", "spatial_resolution", "timestamp"):
             if field_name not in output_fields:
                 output_fields.append(field_name)
 
@@ -2689,13 +2727,13 @@ def search_cmd(
 
         # Initialize enrichment fields
         for row in input_rows:
-            row["uuid"] = ""
+            row["uuids"] = ""
             row["geometry"] = ""
             row["spatial_resolution"] = ""
             row["timestamp"] = ""
 
-        # Process rows in chunks
-        expanded_output_rows: List[Dict[str, Any]] = []
+        # Process rows in chunks; all hits for an order_key are consolidated into a single row
+        output_rows: List[Dict[str, Any]] = []
         for chunk_idx in range(0, total_rows, chunk_size):
             chunk_end = min(chunk_idx + chunk_size, total_rows)
             chunk_rows = input_rows[chunk_idx:chunk_end]
@@ -2715,40 +2753,21 @@ def search_cmd(
                 for row in chunk_rows:
                     order_key_val = str(row.get(order_key_column) or "").strip()
                     if not order_key_val:
-                        expanded_output_rows.append(row)
+                        output_rows.append(row)
                         continue
                     matched_items_list = items_by_order_key.get(order_key_val, [])
                     if not matched_items_list:
-                        expanded_output_rows.append(row)
+                        output_rows.append(row)
                         continue
-                    # Create one output row per matched item
-                    for matched_item in matched_items_list:
-                        enriched_row = dict(row)
-                        enriched_row["uuid"] = ""
-                        enriched_row["geometry"] = ""
-                        enriched_row["spatial_resolution"] = ""
-                        enriched_row["timestamp"] = ""
-                        item_uuid = _extract_item_uuid(matched_item)
-                        if item_uuid is not None:
-                            enriched_row["uuid"] = item_uuid
-                        item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
-                        if isinstance(item_geometry, dict):
-                            enriched_row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
-                        item_spatial_res = _extract_search_spatial_resolution(matched_item)
-                        if item_spatial_res is not None:
-                            enriched_row["spatial_resolution"] = item_spatial_res
-                        item_timestamp = _extract_search_timestamp(matched_item)
-                        if item_timestamp is not None:
-                            enriched_row["timestamp"] = item_timestamp
-                        expanded_output_rows.append(enriched_row)
-                        matched_count += 1
+                    output_rows.append(_build_enriched_row(row, matched_items_list))
+                    matched_count += 1
 
             click.echo(f"Processed rows {chunk_idx + 1} to {chunk_end} of {total_rows}...")
 
         # Second pass: retry unmatched rows
-        unmatched_rows = [row for row in expanded_output_rows if not str(row.get("uuid") or "").strip()]
+        unmatched_rows = [row for row in output_rows if not str(row.get("uuids") or "").strip()]
         if unmatched_rows:
-            matched_rows = [row for row in expanded_output_rows if str(row.get("uuid") or "").strip()]
+            matched_rows = [row for row in output_rows if str(row.get("uuids") or "").strip()]
             unmatched_order_keys = [
                 str(row.get(order_key_column) or "").strip()
                 for row in unmatched_rows
@@ -2771,45 +2790,26 @@ def search_cmd(
                         logging.getLogger("eodms_cli").debug(f"No match found in second pass for order_key={order_key_val}")
                         retry_rows.append(row)
                         continue
-                    # Create one output row per matched item
-                    for matched_item in matched_items_list:
-                        enriched_row = dict(row)
-                        enriched_row["uuid"] = ""
-                        enriched_row["geometry"] = ""
-                        enriched_row["spatial_resolution"] = ""
-                        enriched_row["timestamp"] = ""
-                        item_uuid = _extract_item_uuid(matched_item)
-                        if item_uuid is not None:
-                            enriched_row["uuid"] = item_uuid
-                        item_geometry = matched_item.get("geometry") if isinstance(matched_item, dict) else None
-                        if isinstance(item_geometry, dict):
-                            enriched_row["geometry"] = json.dumps(item_geometry, separators=(",", ":"))
-                        item_spatial_res = _extract_search_spatial_resolution(matched_item)
-                        if item_spatial_res is not None:
-                            enriched_row["spatial_resolution"] = item_spatial_res
-                        item_timestamp = _extract_search_timestamp(matched_item)
-                        if item_timestamp is not None:
-                            enriched_row["timestamp"] = item_timestamp
-                        retry_rows.append(enriched_row)
-                        matched_count += 1
-                        click.echo(f"  Matched in second pass: {order_key_val}")
-                expanded_output_rows = matched_rows + retry_rows
+                    retry_rows.append(_build_enriched_row(row, matched_items_list))
+                    matched_count += 1
+                    click.echo(f"  Matched in second pass: {order_key_val}")
+                output_rows = matched_rows + retry_rows
 
         output_ext = os.path.splitext(str(output))[1].lower()
         output_abs = os.path.abspath(output)
         if output_ext in (".geojson", ".json"):
-            feature_count = _write_input_rows_geojson(output, expanded_output_rows, geometry_field="geometry")
+            feature_count = _write_input_rows_geojson(output, output_rows, geometry_field="geometry")
             click.echo(
                 f"Saved {feature_count} feature(s) to {output_abs}; "
                 f"processed {total_rows} input row(s) in chunks of {chunk_size}; "
-                f"expanded to {len(expanded_output_rows)} output row(s) (multiple results per order_key); matched {matched_count} item(s)."
+                f"matched {matched_count} order_key(s)."
             )
         else:
-            _write_tabular_rows(output, output_fields, expanded_output_rows)
+            _write_tabular_rows(output, output_fields, output_rows)
             click.echo(
-                f"Saved {len(expanded_output_rows)} row(s) to {output_abs}; "
+                f"Saved {len(output_rows)} row(s) to {output_abs}; "
                 f"processed {total_rows} input row(s) in chunks of {chunk_size}; "
-                f"expanded to {len(expanded_output_rows)} output row(s) (multiple results per order_key); matched {matched_count} item(s)."
+                f"matched {matched_count} order_key(s)."
             )
         return
 
