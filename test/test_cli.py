@@ -229,6 +229,38 @@ class TestEodmsCli(unittest.TestCase):
             self.assertNotEqual(result.exit_code, 0)
             self.assertIn("Input file must contain an order_key/order_keys column.", result.output)
 
+    def test_uuid2record_clears_accumulated_rapi_results(self):
+        class FakeSearchApi:
+            def get_item(self, collection, item_uuid):
+                return {"id": item_uuid, "properties": {"order_key": f"ORDER_{item_uuid}"}}
+
+        class FakeRapi:
+            def __init__(self, username, password):
+                self.results = []
+
+            def clear_results(self):
+                self.results = []
+
+            def search(self, collection, filters, max_results, dates=None):
+                order_key = filters["ARCHIVE_IMAGE.ORDER_KEY"][1][0]
+                self.results += [{"recordId": f"RECORD_{order_key}"}]
+
+            def get_results(self, result_type, show_progress=False):
+                return self.results
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=None), \
+             patch("eodms_cli.make_search", return_value=FakeSearchApi()), \
+             patch("eodms_cli.EODMSRAPI", FakeRapi):
+            result = self.runner.invoke(cli, [
+                "search", "--uuid2record", "--collection", "RCMImageProducts",
+                "--uuid", "UUID_ONE,UUID_TWO",
+            ])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn("UUID_ONE: order_key=ORDER_UUID_ONE; record_id=RECORD_ORDER_UUID_ONE", result.output)
+        self.assertIn("UUID_TWO: order_key=ORDER_UUID_TWO; record_id=RECORD_ORDER_UUID_TWO", result.output)
+
 
     def test_process_command_help(self):
         self._assert_help(

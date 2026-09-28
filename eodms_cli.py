@@ -2638,6 +2638,8 @@ def search_cmd(
                 if rapi_dates:
                     search_kwargs["dates"] = rapi_dates
 
+                if hasattr(rapi_api, "clear_results"):
+                    rapi_api.clear_results()
                 _safe_rapi_call(rapi_api.search, collection, **search_kwargs)
                 payload = _safe_rapi_call(rapi_api.get_results, "brief", show_progress=False)
             except Exception as exc:
