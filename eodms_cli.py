@@ -2058,8 +2058,51 @@ def _load_download_items_from_tsv(input_file: str) -> List[Dict[str, Any]]:
     return features
 
 
+def _load_download_items_from_csv(input_file: str) -> List[Dict[str, Any]]:
+    fieldnames, rows = _read_tabular_rows(input_file)
+
+    normalized = {str(name).strip().lower(): name for name in fieldnames}
+    uuid_col = (
+        normalized.get("archive id")
+        or normalized.get("archiveimageid")
+        or normalized.get("uuid")
+        or normalized.get("service uuid")
+        or normalized.get("id")
+        or normalized.get("item_id")
+        or normalized.get("itemid")
+    )
+    collection_col = (
+        normalized.get("collection")
+        or normalized.get("collection id")
+        or normalized.get("collectionid")
+    )
+
+    if not uuid_col:
+        raise click.ClickException(
+            "Input CSV for download must contain an 'Archive ID', 'uuid', "
+            "'id', or equivalent identifier column."
+        )
+
+    features: List[Dict[str, Any]] = []
+    for row in rows:
+        item_uuid = str(row.get(uuid_col) or "").strip()
+        if not item_uuid:
+            continue
+
+        feature: Dict[str, Any] = {"id": item_uuid}
+        if collection_col:
+            item_collection = str(row.get(collection_col) or "").strip()
+            if item_collection:
+                feature["collection"] = item_collection
+        features.append(feature)
+
+    return features
+
+
 def _load_download_items(input_file: str) -> List[Dict[str, Any]]:
     lower_name = str(input_file or "").strip().lower()
+    if lower_name.endswith(".csv"):
+        return _load_download_items_from_csv(input_file)
     if lower_name.endswith(".tsv"):
         return _load_download_items_from_tsv(input_file)
     return _load_download_items_from_geojson(input_file)
@@ -3086,7 +3129,7 @@ def order_st_cmd(
 @click.option("--uuid", required=False, default=None,
               help="Download UUID directly via STAC assets (public collections) or DDS.")
 @click.option("--input", "input_file", required=False, default=None, type=click.Path(exists=True),
-              help="Input file for download items (TSV, GeoJSON, JSON, or JSONL). Use downloads.jsonl here to replay tracked items.")
+              help="Input file for download items (CSV, TSV, GeoJSON, JSON, or JSONL). Use downloads.jsonl here to replay tracked items.")
 @click.option("--collection", "-c", required=False, default=None,
               help="Collection for --uuid download.")
 @click.option("--env", "-e", required=False, default="prod",

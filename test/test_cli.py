@@ -291,6 +291,21 @@ class TestEodmsCli(unittest.TestCase):
         self.assertEqual("downloads", _normalize_download_dir("downloads"))
         self.assertNotIn("\\", _normalize_download_dir(".\\downloads"))
 
+    def test_download_input_supports_wes_csv_archive_id(self):
+        from eodms_cli import _load_download_items
+
+        with self.runner.isolated_filesystem():
+            with open("results.csv", "w", encoding="utf-8", newline="") as out_f:
+                out_f.write(
+                    "Result Number,Satellite,Archive ID,Footprint\n"
+                    "1,RCM,93f7f839-b561-52e1-8659-6ab14f9bc19e,-93 64\n"
+                )
+
+            self.assertEqual(
+                [{"id": "93f7f839-b561-52e1-8659-6ab14f9bc19e"}],
+                _load_download_items("results.csv"),
+            )
+
     def test_config_write_does_not_use_comment_strings_as_option_names(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             cfg_path = os.path.join(temp_dir, "config.ini")
