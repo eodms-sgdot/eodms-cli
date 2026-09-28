@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.09.28
+
+- Fixed batched `search --uuid2record` lookups returning the first UUID's record ID for every UUID.
+
 ## 4.1.0 (2026-05-15)
 
 - Migration of search functionality from py-eodms-rapi, to eodms-py/STAC.
