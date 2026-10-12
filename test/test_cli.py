@@ -4,15 +4,18 @@ import sys
 import csv
 import json
 import tempfile
+from io import BytesIO
+from urllib.error import HTTPError
 from unittest.mock import patch
 
+from click import ClickException
 from click.testing import CliRunner
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts import config_util
 
-from eodms_cli import cli, download_dds_item, _search_items_by_filter
+from eodms_cli import cli, download_dds_item, _napl_api_request, _search_items_by_filter
 
 
 class TestEodmsCli(unittest.TestCase):
@@ -34,6 +37,7 @@ class TestEodmsCli(unittest.TestCase):
                 "search",
                 "process",
                 "download",
+                "napl",
             ],
         )
 
@@ -58,6 +62,147 @@ class TestEodmsCli(unittest.TestCase):
                 "--output",
             ],
         )
+
+    def test_napl_help_lists_options_and_order(self):
+        self._assert_help(["napl", "--help"], ["options", "order"])
+
+    def test_napl_options_fetches_public_options(self):
+        options = {
+            "media_types": ["Digital", "ContactPrint"],
+            "file_formats": ["Jpeg", "Tiff"],
+            "image_resolutions": [300, 600, 800],
+        }
+        with patch(
+            "eodms_cli.eodms_config.get_domain_config",
+            return_value={"domain": "https://napl.example"},
+        ) as domain_config, patch("eodms_cli._napl_api_request", return_value=options) as request:
+            result = self.runner.invoke(
+                cli,
+                ["napl", "options", "--env", "prod"],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn('"media_types"', result.output)
+        request.assert_called_once_with("https://napl.example", "order-options")
+        domain_config.assert_called_once_with("prod")
+
+    def test_napl_api_request_appends_relative_route_to_domain(self):
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def read(self):
+                return b'{"ready": true}'
+
+        with patch("eodms_cli.urlopen", return_value=FakeResponse()) as urlopen:
+            result = _napl_api_request("https://napl.example/", "order-options")
+
+        self.assertEqual(result, {"ready": True})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://napl.example/napl/v1/order-options")
+
+    def test_napl_api_request_reports_invalid_item_uuids(self):
+        rejected_uuid = "00000000-0000-0000-0000-000000000001"
+        response_body = json.dumps({
+            "error": "One or more items are not eligible NAPL catalog records.",
+            "invalid_items": [rejected_uuid],
+        }).encode("utf-8")
+        http_error = HTTPError(
+            "https://napl.example/napl/v1/orders",
+            422,
+            "Unprocessable Entity",
+            None,
+            BytesIO(response_body),
+        )
+
+        with patch("eodms_cli.urlopen", side_effect=http_error):
+            with self.assertRaises(ClickException) as error:
+                _napl_api_request("https://napl.example", "orders", method="POST", payload={})
+
+        self.assertIn(rejected_uuid, str(error.exception))
+
+    def test_napl_order_uses_aaa_token_and_posts_order(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()) as make_aaa, \
+               patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://napl.example"}) as domain_config, \
+             patch("eodms_cli._napl_api_request", return_value={"order_id": "order-1", "status": "SUCCESS"}) as request:
+            result = self.runner.invoke(
+                cli,
+                [
+                    "napl", "order", "--uuid", "item-uuid-1,item-uuid-2",
+                    "--media-type", "Digital", "--file-format", "Tiff",
+                    "--image-resolution", "800", "--idempotency-key", "request-1",
+                    "--yes",
+                ],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn("Idempotency-Key: request-1", result.output)
+        make_aaa.assert_called_once_with("user", "password", "staging")
+        domain_config.assert_called_once_with("staging")
+        request.assert_called_once_with(
+            "https://napl.example",
+            "orders",
+            method="POST",
+            payload={
+                "items": [
+                    {
+                        "unique_identifier": "item-uuid-1",
+                            "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800},
+                    },
+                    {
+                        "unique_identifier": "item-uuid-2",
+                            "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800},
+                    },
+                ]
+            },
+            headers={
+                "Authorization": "Bearer test-access-token",
+                "Idempotency-Key": "request-1",
+            },
+        )
+
+    def test_search_list_with_collection_shows_queryables(self):
+        collection = object()
+
+        class FakeSearchApi:
+            def __init__(self):
+                self.client = self
+                self.queryables_collections = []
+                self.collections_listed = False
+
+            def get_collection(self, collection_id):
+                self.requested_collection = collection_id
+                return collection
+
+            def print_queryables(self, collection_arg):
+                self.queryables_collections.append(collection_arg)
+
+            def print_collections(self):
+                self.collections_listed = True
+
+        fake_search = FakeSearchApi()
+        with patch("eodms_cli.resolve_credentials", return_value=(None, None)), \
+             patch("eodms_cli.make_aaa", return_value=None), \
+             patch("eodms_cli.make_search", return_value=fake_search):
+            result = self.runner.invoke(
+                cli,
+                ["search", "--list", "--collection", "RCMImageProducts"],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertEqual(fake_search.requested_collection, "RCMImageProducts")
+        self.assertEqual(fake_search.queryables_collections, [collection])
+        self.assertFalse(fake_search.collections_listed)
 
     def test_search_input_tsv_appends_search_fields(self):
         class FakeSearchApi:

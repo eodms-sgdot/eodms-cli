@@ -1,10 +1,11 @@
-"""eodms_cli (non-interactive) focused on eodms-py STAC/DDS workflows.
+"""eodms_cli (non-interactive) focused on eodms-py and NAPL workflows.
 
-This module provides the current command-driven CLI entrypoint with three
-core flows:
+This module provides the current command-driven CLI entrypoint with these
+flows:
 - `search`: STAC catalog discovery, queryables, and GeoJSON export.
 - `process`: OGC Processes list/inspect/submit/job workflows.
 - `download`: STAC asset, DDS UUID, and legacy RAPI order-item downloads.
+- `napl`: NAPL order options and order submission through the NAPL service.
 
 Legacy prompt-driven workflows are implemented separately in eodms_prompt.py.
 """
@@ -20,6 +21,7 @@ import time
 import threading
 import re
 import posixpath
+import uuid
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -39,7 +41,7 @@ import click
 import fiona
 from shapely.geometry import mapping, shape
 
-from eodms import Processes_API, aaa, dds, search
+from eodms import Processes_API, aaa, config as eodms_config, dds, search
 from scripts import config_util
 from scripts.__version__ import EODMS_CLI_VERSION
 try:
@@ -98,7 +100,7 @@ class OrderedHelpGroup(click.Group):
     """Group that prints commands in a custom help order."""
 
     def list_commands(self, ctx):
-        preferred = ["search", "process", "download"]
+        preferred = ["search", "process", "download", "napl"]
         remaining = sorted(name for name in self.commands if name not in preferred)
         return [name for name in preferred if name in self.commands] + remaining
 
@@ -885,6 +887,52 @@ def make_processes(aaa_api, environment: str):
         return Processes_API(aaa_api=aaa_api, environment=environment)
     except TypeError:
         return Processes_API(aaa_api, environment)
+
+
+def _napl_api_request(service_domain: str, path: str, method: str = "GET",
+                      payload: Optional[Dict[str, Any]] = None,
+                      headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    request_headers = {"Accept": "application/json"}
+    request_headers.update(headers or {})
+    body = None
+    if payload is not None:
+        request_headers["Content-Type"] = "application/json"
+        body = json.dumps(payload).encode("utf-8")
+
+    request = Request(
+        f"{service_domain.rstrip('/')}/napl/v1/{path.lstrip('/')}",
+        data=body,
+        headers=request_headers,
+        method=method,
+    )
+    try:
+        with urlopen(request, timeout=35) as response:
+            status = response.status
+            response_body = response.read()
+    except HTTPError as exc:
+        status = exc.code
+        response_body = exc.read()
+    except URLError as exc:
+        raise click.ClickException(f"Could not reach the NAPL order service: {exc.reason}") from exc
+
+    try:
+        response_data = json.loads(response_body.decode("utf-8")) if response_body else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        response_data = {"raw": response_body.decode("utf-8", errors="replace")}
+
+    if status < 200 or status >= 300:
+        if isinstance(response_data, dict):
+            message = response_data.get("message") or response_data.get("error") or response_data.get("detail")
+            invalid_items = response_data.get("invalid_items")
+            if invalid_items:
+                message = f"{message or 'Request rejected.'} Invalid item UUID(s): {', '.join(map(str, invalid_items))}"
+        else:
+            message = None
+        message = message or json.dumps(response_data)
+        raise click.ClickException(f"NAPL order service returned HTTP {status}: {message}")
+    if not isinstance(response_data, dict):
+        raise click.ClickException("NAPL order service returned an unexpected response.")
+    return response_data
 
 
 def _normalize_status(value: Optional[str]) -> str:
@@ -2565,12 +2613,118 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
     click.echo(f"Saved credentials to {os.path.abspath(cfg_path)}")
 
 
+@cli.group("napl")
+def napl_cmd():
+    """Inspect NAPL order options and submit NAPL orders."""
+
+
+@napl_cmd.command("options")
+@click.option("--env", "aaa_environment", default="staging",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment used for the service domain (default: staging).")
+def napl_options_cmd(aaa_environment: str):
+    """List the option IDs required to submit a NAPL order."""
+    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    options = _napl_api_request(service_domain, "order-options")
+    click.echo(json.dumps(options, indent=2))
+
+
+@napl_cmd.command("order")
+@click.option("--uuid", "item_uuids", multiple=True, required=True,
+              help="NAPL item UUID; repeat the option or provide comma-separated UUIDs.")
+@click.option("--media-type", required=True,
+              help="Media type value from `napl options`.")
+@click.option("--file-format", required=True,
+              help="File format value from `napl options`.")
+@click.option("--image-resolution", type=click.IntRange(min=1), required=True,
+              help="Image resolution in dpi from `napl options`.")
+@click.option("--idempotency-key", default=None,
+              help="Client key for safely retrying the same order request.")
+@click.option("--username", "username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "password", "-p", required=False, help="EODMS password.")
+@click.option("--env", "aaa_environment", default="staging",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment used for AAA and the service domain (default: staging).")
+@click.option("--yes", is_flag=True, help="Submit without interactive confirmation.")
+@handle_service_errors
+def napl_order_cmd(
+    item_uuids: Tuple[str, ...],
+    media_type: str,
+    file_format: str,
+    image_resolution: int,
+    idempotency_key: Optional[str],
+    username: Optional[str],
+    password: Optional[str],
+    aaa_environment: str,
+    yes: bool,
+):
+    """Submit one or more NAPL item UUIDs to the NAPL order service."""
+    uuid_values = [
+        value.strip()
+        for option_value in item_uuids
+        for value in option_value.split(",")
+        if value.strip()
+    ]
+    if not uuid_values:
+        raise click.ClickException("At least one non-empty --uuid value is required.")
+    if len(uuid_values) > 100:
+        raise click.ClickException("A NAPL order can contain at most 100 items.")
+
+    if not yes:
+        click.confirm(
+            f"Submit a NAPL order containing {len(uuid_values)} item(s)?",
+            default=False,
+            abort=True,
+        )
+
+    username, password = resolve_credentials(username, password)
+    if not username or not password:
+        raise click.ClickException("EODMS username and password are required to submit a NAPL order.")
+
+    aaa_api = make_aaa(username, password, aaa_environment.lower())
+    try:
+        access_token = aaa_api.get_access_token()
+    except EODMS_SERVICE_ERRORS:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Could not obtain an AAA access token: {exc}") from exc
+    if not access_token:
+        raise click.ClickException("Could not obtain an AAA access token. Check credentials and AAA availability.")
+
+    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    idempotency_key = idempotency_key or str(uuid.uuid4())
+    result = _napl_api_request(
+        service_domain,
+        "orders",
+        method="POST",
+        payload={
+            "items": [
+                {
+                    "unique_identifier": item_uuid,
+                    "options": {
+                        "media_type": media_type,
+                        "file_format": file_format,
+                        "image_resolution": image_resolution,
+                    },
+                }
+                for item_uuid in uuid_values
+            ]
+        },
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    click.echo(f"Idempotency-Key: {idempotency_key}")
+    click.echo(json.dumps(result, indent=2))
+
+
 @cli.command("search")
 @click.option("--username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "-p", required=False, help="EODMS password.")
 @click.option("--collection", "-c", required=False, help="Collection name.")
 @click.option("--list", "list_collections", is_flag=True,
-              help="List available STAC collections and exit.")
+              help="List STAC collections, or queryables for --collection, and exit.")
 @click.option("--uuid2record", "uuid2record", is_flag=True,
               help="Resolve UUID to order_key (search) then recordId (RAPI).")
 @click.option("--orderkey2uuid", "orderkey2uuid", is_flag=True,
@@ -2638,9 +2792,18 @@ def search_cmd(
         cfg = _load_config_utils()
         limit = int(cfg.get('RAPI', 'max_results') or '1000')
 
-    if list_collections:
+    if list_collections or show_queryables:
         search_api = make_search(aaa_api, env)
-        search_api.print_collections()
+        if collection:
+            coll = search_api.client.get_collection(collection)
+            if coll is None:
+                raise click.ClickException(f"Collection not found: {collection}")
+
+            search_api.print_queryables(coll)
+        elif show_queryables:
+            raise click.ClickException("--collection is required with --queryables.")
+        else:
+            search_api.print_collections()
         return
 
     if uuid2record and orderkey2uuid:
@@ -2733,18 +2896,6 @@ def search_cmd(
                 click.echo(f"{order_key_value}: uuid={item_uuid}")
             else:
                 click.echo(f"{order_key_value}: uuid not found")
-        return
-
-    if show_queryables:
-        if not collection:
-            raise click.ClickException("--collection is required with --queryables.")
-
-        search_api = make_search(aaa_api, env)
-        coll = search_api.client.get_collection(collection)
-        if coll is None:
-            raise click.ClickException(f"Collection not found: {collection}")
-
-        search_api.print_queryables(coll)
         return
 
     if input_file:

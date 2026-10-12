@@ -166,6 +166,7 @@ Commands:
   search    STAC geotemporal/queryables and GeoJSON output.
   process   Processing Service for RADARDAT data; Level-1, SAR Toolbox,...
   download  Data Delivery Service (DDS) Bulk downloads
+  napl      Inspect NAPL order options and submit NAPL orders.
 
 
 ### Search
@@ -288,6 +289,22 @@ Detected repeated page token during pagination; stopping to avoid an infinite lo
 Found 10 items (limited to 1000)
 Found 10 item(s).
 Saved 10 item(s) to may-ottawa.geojson
+
+### NAPL Orders
+
+Fetch the option IDs required by the NAPL order service:
+
+```bash
+> python eodms_cli.py napl options
+```
+
+Submit eligible NAPL UUIDs with the IDs returned by `napl options`:
+
+```bash
+> python eodms_cli.py napl order --uuid <item-uuid> --media-type Digital --file-format Tiff --image-resolution 800 -u %EODMS_USER% -p %EODMS_PASSWORD%
+```
+
+Use the option values exactly as returned by `napl options` (`media_type` and `file_format` are text; `image_resolution` is dpi). The command requests confirmation before submission; `--yes` skips that prompt. It obtains an AAA access token through `eodms-py` and resolves the service host from the same `--env` setting used by AAA, DDS, and Processing. The NAPL route is relative to that host at `/napl/v1`; staging is the default and routes notifications to the configured test mailbox. Do not use staging for production orders. `--idempotency-key` can be supplied to safely retry the same request.
 ```
 
 Tighten by collection-specifics. What are the queryables?
