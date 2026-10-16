@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts import config_util
 
-from eodms_cli import cli, download_dds_item, _napl_api_request, _search_items_by_filter
+from eodms_cli import cli, download_dds_item, _napl_api_request, _search_items_by_filter, _user_api_request
 
 
 class TestEodmsCli(unittest.TestCase):
@@ -38,6 +38,7 @@ class TestEodmsCli(unittest.TestCase):
                 "process",
                 "download",
                 "napl",
+                "user",
             ],
         )
 
@@ -65,6 +66,246 @@ class TestEodmsCli(unittest.TestCase):
 
     def test_napl_help_lists_options_and_order(self):
         self._assert_help(["napl", "--help"], ["options", "order"])
+
+    def test_user_help_lists_commands(self):
+        self._assert_help(["user", "--help"], ["get", "update", "change-password"])
+
+    def test_user_change_password_patches_profile_and_updates_matching_config(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "old-password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+             patch("eodms_cli._load_credentials_from_config", return_value=("user", "old-password")), \
+             patch("eodms_cli._save_credentials_to_config", return_value="config.ini") as save_credentials, \
+             patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "change-password", "--env", "prod"],
+                input="new-password-2026\nnew-password-2026\n",
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn("Password requirements: at least 15 characters.", result.output)
+        self.assertIn("Password changed successfully.", result.output)
+        request.assert_called_once_with(
+            "https://profile.example",
+            "user",
+            method="PATCH",
+            payload={"password": "new-password-2026"},
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+        save_credentials.assert_called_once_with("user", "new-password-2026")
+
+    def test_user_change_password_rejects_password_shorter_than_api_minimum(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "old-password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+             patch("eodms_cli._user_api_request") as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "change-password"],
+                input="short-pass\nshort-pass\n",
+            )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("at least 15 characters", result.output)
+        request.assert_not_called()
+
+    def test_user_update_rejects_password_payload(self):
+        with self.runner.isolated_filesystem():
+            with open("profile.json", "w", encoding="utf-8") as payload_file:
+                json.dump({"password": "new-secret"}, payload_file)
+
+            result = self.runner.invoke(cli, ["user", "update", "--payload-file", "profile.json"])
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Change passwords with `user change-password`", result.output)
+
+    def test_user_api_request_escapes_username_and_sends_patch_json(self):
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def read(self):
+                return b'{"updated": true}'
+
+        payload = {"email": "new@example.com"}
+        with patch("eodms_cli.urlopen", return_value=FakeResponse()) as urlopen:
+            response = _user_api_request(
+                "https://profile.example/",
+                "first.last@example.com",
+                method="PATCH",
+                payload=payload,
+                headers={"Authorization": "Bearer token"},
+            )
+
+        self.assertEqual(response, {"updated": True})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://profile.example/aaa/v1/users/first.last%40example.com")
+        self.assertEqual(request.get_method(), "PATCH")
+        self.assertEqual(json.loads(request.data.decode("utf-8")), payload)
+        self.assertEqual(request.get_header("Authorization"), "Bearer token")
+
+    def test_user_api_request_reports_retry_after_for_429(self):
+        retry_values = [
+            ("120", "Retry after "),
+            ("Tue, 13 Oct 2026 12:02:00 GMT", "Retry after 2026-10-13 12:02:00 UTC"),
+        ]
+        for retry_after, expected_hint in retry_values:
+            with self.subTest(retry_after=retry_after):
+                http_error = HTTPError(
+                    "https://profile.example/aaa/v1/users/user",
+                    429,
+                    "Too Many Requests",
+                    {"Retry-After": retry_after},
+                    BytesIO(b'{"message":"429 Too Many Requests"}'),
+                )
+                with patch("eodms_cli.urlopen", side_effect=http_error):
+                    with self.assertRaises(ClickException) as error:
+                        _user_api_request("https://profile.example", "user")
+
+                self.assertIn(expected_hint, str(error.exception))
+                self.assertIn("UTC", str(error.exception))
+
+    def test_user_api_request_notes_missing_retry_after_for_429(self):
+        http_error = HTTPError(
+            "https://profile.example/aaa/v1/users/user",
+            429,
+            "Too Many Requests",
+            {},
+            BytesIO(b'{"message":"429 Too Many Requests"}'),
+        )
+        with patch("eodms_cli.urlopen", side_effect=http_error):
+            with self.assertRaises(ClickException) as error:
+                _user_api_request("https://profile.example", "user")
+
+        self.assertIn("The server did not provide a Retry-After value.", str(error.exception))
+
+    def test_user_get_uses_aaa_token_and_selected_environment(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()) as make_aaa, \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}) as domain_config, \
+             patch("eodms_cli._user_api_request", return_value={"email": "user@example.com"}) as request:
+            result = self.runner.invoke(cli, ["user", "get", "--env", "prod"])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn('"email": "user@example.com"', result.output)
+        make_aaa.assert_called_once_with("user", "password", "prod")
+        domain_config.assert_called_once_with("prod")
+        request.assert_called_once_with(
+            "https://profile.example",
+            "user",
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_get_writes_json_to_output_file(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        profile = {"email": "user@example.com", "language": "English"}
+        with self.runner.isolated_filesystem():
+            with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+                 patch("eodms_cli._user_api_request", return_value=profile):
+                result = self.runner.invoke(cli, ["user", "get", "--output", "wm.json", "--env", "prod"])
+
+            self.assertEqual(result.exit_code, 0, msg=result.output)
+            self.assertIn("Saved user profile to", result.output)
+            with open("wm.json", "r", encoding="utf-8") as profile_file:
+                self.assertEqual(json.load(profile_file), profile)
+
+    def test_user_update_patches_json_payload(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        payload = {"language": "English", "surname": "Example"}
+        with self.runner.isolated_filesystem():
+            with open("profile.json", "w", encoding="utf-8") as payload_file:
+                json.dump(payload, payload_file)
+
+            with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+                 patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+                result = self.runner.invoke(
+                    cli,
+                    ["user", "update", "--payload-file", "profile.json", "--env", "prod"],
+                )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://profile.example",
+            "user",
+            method="PATCH",
+            payload=payload,
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_update_rejects_unsupported_payload_fields(self):
+        with self.runner.isolated_filesystem():
+            with open("profile.json", "w", encoding="utf-8") as payload_file:
+                json.dump({"phone": "555-0100"}, payload_file)
+
+            result = self.runner.invoke(cli, ["user", "update", "--payload-file", "profile.json"])
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Unsupported profile field(s): phone", result.output)
+
+    def test_user_update_accepts_get_profile_output_file(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        profile = {
+            "personal-information": {
+                "account-type": None,
+                "identification": {"name": {"given-name": "Will", "surname": "Updated"}},
+                "contact-information": {"address": None, "email": "will@example.com"},
+            },
+            "environment": None,
+            "organization": {"identification": {"organization-name": None}},
+        }
+        expected_patch = {
+            "email": "will@example.com",
+            "given_name": "Will",
+            "surname": "Updated",
+        }
+        with self.runner.isolated_filesystem():
+            with open("wm.json", "w", encoding="utf-8") as payload_file:
+                json.dump(profile, payload_file)
+
+            with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+                 patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+                result = self.runner.invoke(cli, ["user", "update", "--payload-file", "wm.json", "--env", "prod"])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://profile.example",
+            "user",
+            method="PATCH",
+            payload=expected_patch,
+            headers={"Authorization": "Bearer test-access-token"},
+        )
 
     def test_napl_options_fetches_public_options(self):
         options = {

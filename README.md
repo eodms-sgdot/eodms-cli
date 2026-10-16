@@ -124,6 +124,61 @@ In the config file, you can:
 
 For more in-depth information on the configuration file, see the example template in [config.ini](config.ini).
 
+## Beta User Profile API
+
+The beta user profile API endpoint is:
+
+```text
+https://<eodms-host>/aaa/v1/users/USERNAME
+```
+
+Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` with the account username. A `GET` request to this endpoint returns the user's profile. A `PATCH` request updates profile fields using a JSON request body. The currently supported keys are `language`, `address`, `email`, `surname`, `given_name` and `password`. Multiple fields can be updated in one request.
+
+The CLI provides `user get` to retrieve the profile, `user update` to apply a JSON patch, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
+
+```bash
+py eodms_cli.py user get --username USERNAME --env prod --output wm.json
+py eodms_cli.py user update --payload-file profile-update.json --username USERNAME --env prod
+py eodms_cli.py user change-password --username USERNAME --env prod
+```
+
+The password command prompts for the new password twice without displaying it. EODMS requires passwords to be at least 15 characters long. After a successful change, the command updates the local configured password when the changed account matches the configured username. Passwords are not accepted in `user update` payload files. The update file may be a partial JSON object with supported fields or a profile JSON file saved by `user get`; read-only response sections are ignored. Use `--payload-file -` to read JSON from standard input.
+
+For example, update the language:
+
+```json
+{"language": "English"}
+```
+
+Update the address:
+
+```json
+{
+  "address": {
+    "@type": "main",
+    "country": "Canada",
+    "province": "quebec",
+    "postal-code": "k1A 0y7"
+  }
+}
+```
+
+Other profile fields can be updated in the same way:
+
+```json
+{"email": "joe.public@faker.pizza"}
+```
+
+```json
+{"surname": "pub2"}
+```
+
+```json
+{"given_name": "New given name"}
+```
+
+Change the account password with `user change-password` rather than adding it to a JSON file.
+
 ## Updating
 
 To update eodms-cli and its dependencies, follow these steps:
@@ -157,7 +212,7 @@ To update eodms-cli and its dependencies, follow these steps:
 
 Usage: eodms_cli.py [OPTIONS] COMMAND [ARGS]...
 
-  EODMS CLI v2: STAC/DDS-first, non-interactive with minimal legacy ports.
+  Search, process, order, and download EODMS imagery; configure credentials and manage user profiles.
 
 Options:
   -h, --help  Show this message and exit.

@@ -6,6 +6,7 @@ flows:
 - `process`: OGC Processes list/inspect/submit/job workflows.
 - `download`: STAC asset, DDS UUID, and legacy RAPI order-item downloads.
 - `napl`: NAPL order options and order submission through the NAPL service.
+- `user`: authenticated EODMS user profile retrieval and updates.
 
 Legacy prompt-driven workflows are implemented separately in eodms_prompt.py.
 """
@@ -25,6 +26,7 @@ import uuid
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, unquote, urljoin, urlsplit
@@ -72,6 +74,8 @@ _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
+USER_PROFILE_FIELDS = {"language", "address", "email", "surname", "given_name"}
+MINIMUM_EODMS_PASSWORD_LENGTH = 15
 
 # Let tqdm recalculate bar width when terminal dimensions change.
 os.environ.setdefault("TQDM_DYNAMIC_NCOLS", "1")
@@ -100,7 +104,7 @@ class OrderedHelpGroup(click.Group):
     """Group that prints commands in a custom help order."""
 
     def list_commands(self, ctx):
-        preferred = ["search", "process", "download", "napl"]
+        preferred = ["search", "process", "download", "napl", "user"]
         remaining = sorted(name for name in self.commands if name not in preferred)
         return [name for name in preferred if name in self.commands] + remaining
 
@@ -933,6 +937,122 @@ def _napl_api_request(service_domain: str, path: str, method: str = "GET",
     if not isinstance(response_data, dict):
         raise click.ClickException("NAPL order service returned an unexpected response.")
     return response_data
+
+
+def _user_api_request(service_domain: str, username: str, method: str = "GET",
+                      payload: Optional[Dict[str, Any]] = None,
+                      headers: Optional[Dict[str, str]] = None) -> Any:
+    request_headers = {"Accept": "application/json"}
+    request_headers.update(headers or {})
+    body = None
+    if payload is not None:
+        request_headers["Content-Type"] = "application/json"
+        body = json.dumps(payload).encode("utf-8")
+
+    request = Request(
+        f"{service_domain.rstrip('/')}/aaa/v1/users/{quote(username, safe='')}",
+        data=body,
+        headers=request_headers,
+        method=method,
+    )
+    retry_after = None
+    try:
+        with urlopen(request, timeout=35) as response:
+            status = response.status
+            response_body = response.read()
+            response_headers = getattr(response, "headers", None)
+            retry_after = response_headers.get("Retry-After") if response_headers else None
+    except HTTPError as exc:
+        status = exc.code
+        response_body = exc.read()
+        retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    except URLError as exc:
+        raise click.ClickException(f"Could not reach the user profile API: {exc.reason}") from exc
+
+    try:
+        response_data = json.loads(response_body.decode("utf-8")) if response_body else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        response_data = response_body.decode("utf-8", errors="replace")
+
+    if status < 200 or status >= 300:
+        if isinstance(response_data, dict):
+            message = response_data.get("message") or response_data.get("error") or response_data.get("detail")
+        else:
+            message = None
+        message = message or json.dumps(response_data)
+        if status == 429:
+            retry_hint = _format_retry_after(retry_after)
+            message = f"{message}. {retry_hint or 'The server did not provide a Retry-After value.'}"
+        raise click.ClickException(f"User profile API returned HTTP {status}: {message}")
+    return response_data
+
+
+def _format_retry_after(value: Optional[str], now: Optional[datetime] = None) -> Optional[str]:
+    if not value:
+        return None
+
+    current_time = now or datetime.now(timezone.utc)
+    try:
+        delay_seconds = int(value.strip())
+        if delay_seconds < 0:
+            return None
+        retry_time = current_time + timedelta(seconds=delay_seconds)
+    except ValueError:
+        try:
+            retry_time = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_time.tzinfo is None:
+            retry_time = retry_time.replace(tzinfo=timezone.utc)
+        retry_time = retry_time.astimezone(timezone.utc)
+    except OverflowError:
+        return None
+
+    return f"Retry after {retry_time.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+
+
+def _prepare_user_profile_patch(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if "personal-information" not in payload:
+        return payload
+
+    profile_fields = USER_PROFILE_FIELDS | {"personal-information", "environment", "organization"}
+    unsupported_fields = sorted(set(payload) - profile_fields)
+    if unsupported_fields:
+        raise click.ClickException(
+            f"Unsupported profile field(s): {', '.join(unsupported_fields)}. "
+            f"Supported fields: {', '.join(sorted(USER_PROFILE_FIELDS))}."
+        )
+
+    personal_information = payload["personal-information"]
+    if not isinstance(personal_information, dict):
+        raise click.ClickException("The 'personal-information' profile section must be a JSON object.")
+
+    patch = {field: payload[field] for field in USER_PROFILE_FIELDS if field in payload}
+    patch.update({
+        field: personal_information[field]
+        for field in USER_PROFILE_FIELDS
+        if field in personal_information and personal_information[field] is not None
+    })
+
+    identification = personal_information.get("identification")
+    if isinstance(identification, dict):
+        name = identification.get("name")
+        if isinstance(name, dict):
+            for source_field, target_field in (("given-name", "given_name"), ("surname", "surname")):
+                value = name.get(source_field)
+                if value is not None:
+                    patch[target_field] = value
+
+    contact_information = personal_information.get("contact-information")
+    if isinstance(contact_information, dict):
+        for field in ("address", "email"):
+            value = contact_information.get(field)
+            if value is not None:
+                patch[field] = value
+
+    if not patch:
+        raise click.ClickException("The profile file contains no supported fields to update.")
+    return patch
 
 
 def _normalize_status(value: Optional[str]) -> str:
@@ -2573,7 +2693,7 @@ def _build_sample_payload(process_id: str, process_json: Dict[str, Any]) -> Dict
 
 @click.group(cls=OrderedHelpGroup, context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
-    """EODMS CLI v2: STAC/DDS-first, non-interactive with minimal legacy ports."""
+    """Search, process, order, and download EODMS imagery; configure credentials and manage user profiles."""
     try:
         _initialize_cli_logging()
     except Exception as exc:
@@ -2616,6 +2736,133 @@ def configure_cmd(username: Optional[str], password: Optional[str], show_config:
 @cli.group("napl")
 def napl_cmd():
     """Inspect NAPL order options and submit NAPL orders."""
+
+
+@cli.group("user")
+def user_cmd():
+    """Retrieve or update the authenticated EODMS user profile."""
+
+
+def _get_user_access_token(username: Optional[str], password: Optional[str], environment: str) -> Tuple[str, str]:
+    username, password = resolve_credentials(username, password)
+    if not username or not password:
+        raise click.ClickException("EODMS username and password are required to access a user profile.")
+
+    aaa_api = make_aaa(username, password, environment)
+    try:
+        access_token = aaa_api.get_access_token()
+    except Exception as exc:
+        raise click.ClickException(f"Could not obtain an AAA access token: {exc}") from exc
+    if not access_token:
+        raise click.ClickException("Could not obtain an AAA access token. Check credentials and AAA availability.")
+    return username, access_token
+
+
+@user_cmd.command("get")
+@click.option("--username", "username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "password", "-p", required=False, help="EODMS password.")
+@click.option("--output", "-o", default=None, type=click.Path(dir_okay=False),
+              help="Write the profile as JSON to this file instead of stdout.")
+@click.option("--env", "aaa_environment", default="staging",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment used for AAA and the user profile API (default: staging).")
+def user_get_cmd(username: Optional[str], password: Optional[str], output: Optional[str], aaa_environment: str):
+    """Print the authenticated user's profile."""
+    resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
+    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    profile = _user_api_request(
+        service_domain,
+        resolved_username,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    if output:
+        try:
+            with open(output, "w", encoding="utf-8") as output_file:
+                output_file.write(json.dumps(profile, indent=2))
+                output_file.write("\n")
+        except OSError as exc:
+            raise click.ClickException(f"Could not write user profile to '{output}': {exc}") from exc
+        click.echo(f"Saved user profile to {os.path.abspath(output)}")
+    else:
+        click.echo(json.dumps(profile, indent=2) if isinstance(profile, (dict, list)) else profile)
+
+
+@user_cmd.command("update")
+@click.option("--payload-file", required=True, type=click.File("r", encoding="utf-8"),
+              help="JSON object with profile fields to update; use '-' to read from stdin.")
+@click.option("--username", "username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "password", "-p", required=False, help="EODMS password.")
+@click.option("--env", "aaa_environment", default="staging",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment used for AAA and the user profile API (default: staging).")
+def user_update_cmd(payload_file: Any, username: Optional[str], password: Optional[str], aaa_environment: str):
+    """Update profile fields from a JSON file."""
+    try:
+        payload = json.load(payload_file)
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"Invalid JSON in --payload-file: {exc}") from exc
+    if not isinstance(payload, dict) or not payload:
+        raise click.ClickException("--payload-file must contain a non-empty JSON object.")
+    if "password" in payload:
+        raise click.ClickException("Change passwords with `user change-password` instead of a profile JSON file.")
+    payload = _prepare_user_profile_patch(payload)
+    unsupported_fields = sorted(set(payload) - USER_PROFILE_FIELDS)
+    if unsupported_fields:
+        raise click.ClickException(
+            f"Unsupported profile field(s): {', '.join(unsupported_fields)}. "
+            f"Supported fields: {', '.join(sorted(USER_PROFILE_FIELDS))}."
+        )
+
+    resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
+    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    result = _user_api_request(
+        service_domain,
+        resolved_username,
+        method="PATCH",
+        payload=payload,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    click.echo(json.dumps(result, indent=2) if isinstance(result, (dict, list)) else result)
+
+
+@user_cmd.command("change-password")
+@click.option("--username", "username", "-u", required=False, help="EODMS username.")
+@click.option("--password", "password", "-p", required=False, help="Current EODMS password.")
+@click.option("--env", "aaa_environment", default="staging",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment used for AAA and the user profile API (default: staging).")
+def user_change_password_cmd(username: Optional[str], password: Optional[str], aaa_environment: str):
+    """Change the authenticated user's password."""
+    resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
+    click.echo("Password requirements: at least 15 characters.")
+    new_password = click.prompt(
+        "New EODMS password",
+        hide_input=True,
+        confirmation_prompt="Confirm new EODMS password",
+    )
+    if len(new_password.encode("utf-8")) < MINIMUM_EODMS_PASSWORD_LENGTH:
+        raise click.ClickException("EODMS passwords must be at least 15 characters long.")
+
+    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    _user_api_request(
+        service_domain,
+        resolved_username,
+        method="PATCH",
+        payload={"password": new_password},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    stored_username, _ = _load_credentials_from_config()
+    if stored_username == resolved_username:
+        try:
+            cfg_path = _save_credentials_to_config(resolved_username, new_password)
+        except Exception as exc:
+            raise click.ClickException(
+                f"Password changed, but the updated credentials could not be saved: {exc}"
+            ) from exc
+        click.echo(f"Password changed successfully. Updated credentials in {os.path.abspath(cfg_path)}")
+    else:
+        click.echo("Password changed successfully.")
 
 
 @napl_cmd.command("options")
