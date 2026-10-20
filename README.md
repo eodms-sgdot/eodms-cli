@@ -136,13 +136,18 @@ Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` wi
 
 The CLI provides `user get` to retrieve the profile, `user update` to apply a JSON patch, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
 
+User commands default to production. Use `--env staging` to route both AAA authentication and profile requests to `https://www-staging-eodms.aws.nrcan-rncan.cloud`; user commands ignore `EODMS_STAGING_DOMAIN` for routing.
+
 ```bash
 py eodms_cli.py user get --username USERNAME --env prod --output wm.json
+py eodms_cli.py user update --email new@example.com --username USERNAME --env prod
 py eodms_cli.py user update --payload-file profile-update.json --username USERNAME --env prod
 py eodms_cli.py user change-password --username USERNAME --env prod
 ```
 
-The password command prompts for the new password twice without displaying it. EODMS requires passwords to be at least 15 characters long. After a successful change, the command updates the local configured password when the changed account matches the configured username. Passwords are not accepted in `user update` payload files. The update file may be a partial JSON object with supported fields or a profile JSON file saved by `user get`; read-only response sections are ignored. Use `--payload-file -` to read JSON from standard input.
+Use `--language`, `--email`, `--surname`, and `--given-name` to PATCH only the specified fields. `--address` takes a JSON object or an array of address objects, not plain text. Alternatively, provide a partial JSON object with `--payload-file`; the two input styles cannot be mixed. A full profile file saved by `user get` is accepted, but will PATCH every supported non-null field in it, so field options or a partial file are preferable when changing only selected values. Use `--payload-file -` to read JSON from standard input. Passwords are not accepted in profile update inputs.
+
+The password command prompts for the new password twice without displaying it. EODMS requires passwords to be at least 15 characters long. After a successful change, the command updates the local configured password when the changed account matches the configured username.
 
 For example, update the language:
 
@@ -162,6 +167,8 @@ Update the address:
   }
 }
 ```
+
+Pass an address object or address array directly with `--address` (quote/escape it for your shell), or put the partial object above in a JSON file and use `--payload-file`.
 
 Other profile fields can be updated in the same way:
 
@@ -282,6 +289,8 @@ Found 20 collection(s):
 
 Grab 20 results from the rcm-ard collection...
 
+Without `--limit`, searches process the requested date range in date windows and follow STAC pagination until all results are collected. The default window is one day; use `--window-days` to choose a larger window (for example, `--window-days 30` for monthly requests when searching across multiple years). The CLI does not request a page size; the server controls page size. Results repeated at date boundaries are deduplicated. Use `--limit` to cap the total number of results.
+
 ```bash
 > python eodms_cli.py search -c rcm-ard -l 20 -o rcm.geojson
 
@@ -347,17 +356,42 @@ Saved 10 item(s) to may-ottawa.geojson
 
 ### NAPL Orders
 
-Fetch the option IDs required by the NAPL order service:
+Fetch the option values required by the NAPL order service:
 
 ```bash
 > python eodms_cli.py napl options
 ```
 
-Submit eligible NAPL UUIDs with the IDs returned by `napl options`:
+Submit eligible NAPL UUIDs with the values returned by `napl options`:
 
 ```bash
 > python eodms_cli.py napl order --uuid <item-uuid> --media-type Digital --file-format Tiff --image-resolution 800 -u %EODMS_USER% -p %EODMS_PASSWORD%
 ```
+
+Add `--quantity 2` to request two units for each UUID line (default 1). Repeat `--uuid` or use comma-separated UUIDs to add lines; repeated UUIDs are preserved, not deduplicated. Quantities must be positive integers and count toward the service's hourly limit. Orders contain at most 100 lines.
+
+Media controls which fields are accepted: `Digital` requires `--file-format Jpeg|Tiff` and `--image-resolution`; `PaperPrint` requires `--file-format ContactPrint|Enlargement` but must omit `--image-resolution`. Other advertised media, such as `Diapositive`, must omit both flags. The same rules apply to `options.file_format` and `options.image_resolution` in item files: omit inapplicable keys rather than sending null values. Use `napl options` to inspect `media_type_options` and the available resolutions. `Enlargement` is singular.
+
+Other supported media include `Mosaic`, `ContactTransparency`, `Uncorrected`, and `TransparencyEnlargement`. Use the API identifiers without spaces on the command line; all omit both format and resolution flags.
+
+Use `--flight-line-index-map PDF` or `--flight-line-index-map Paper` to request a Flight Line Index Map for each UUID line. Omit the flag when not requested; no format is assumed. In an `--items-file` order, set `options.flight_line_index_map` independently on each line using the exact value `PDF` or `Paper`. Invalid values are rejected before authentication or submission. Do not combine the shared flag with `--items-file`.
+
+For different quantities or options on individual lines, use `--items-file order.json` instead of the UUID and shared option flags:
+
+```json
+{
+  "items": [
+    {"unique_identifier": "<item-uuid>", "quantity": 2, "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800, "flight_line_index_map": "PDF"}},
+    {"unique_identifier": "<item-uuid>", "quantity": 1, "options": {"media_type": "Digital", "file_format": "Jpeg", "image_resolution": 300, "flight_line_index_map": "Paper"}}
+  ]
+}
+```
+
+```bat
+py eodms_cli.py napl order --items-file order.json
+```
+
+The confirmation prompt shows line and unit totals. Successful responses display the readable integer `order_number` as `Order ID`, with a backend UUID fallback for older services. The full JSON response retains both identifiers when available.
 
 Use the option values exactly as returned by `napl options` (`media_type` and `file_format` are text; `image_resolution` is dpi). The command requests confirmation before submission; `--yes` skips that prompt. It obtains an AAA access token through `eodms-py` and resolves the service host from the same `--env` setting used by AAA, DDS, and Processing. The NAPL route is relative to that host at `/napl/v1`; staging is the default and routes notifications to the configured test mailbox. Do not use staging for production orders. `--idempotency-key` can be supplied to safely retry the same request.
 ```

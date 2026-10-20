@@ -75,10 +75,20 @@ _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
 USER_PROFILE_FIELDS = {"language", "address", "email", "surname", "given_name"}
+USER_STAGING_DOMAIN = "https://www-staging-eodms.aws.nrcan-rncan.cloud"
 MINIMUM_EODMS_PASSWORD_LENGTH = 15
 
-# Let tqdm recalculate bar width when terminal dimensions change.
-os.environ.setdefault("TQDM_DYNAMIC_NCOLS", "1")
+class _StacRateLimitInfoFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        is_stac_rate_limit = record.name.startswith("eodms.search") and (
+            "STAC request rate limited (429)" in message
+            or "429 response evidence for server team" in message
+        )
+        if is_stac_rate_limit:
+            record.levelno = logging.INFO
+            record.levelname = logging.getLevelName(logging.INFO)
+        return True
 
 
 def _normalize_download_dir(download_dir: Optional[str]) -> str:
@@ -93,6 +103,20 @@ def _normalize_download_dir(download_dir: Optional[str]) -> str:
     if normalized in {".", os.curdir}:
         return "downloads"
     return normalized
+
+
+def _print_search_progress(
+    current: int, total: Optional[int], label: str, suffix: str = ""
+) -> None:
+    bar_length = 40
+    if total:
+        filled = min(bar_length, int(bar_length * current / total))
+        bar = "▒" * filled + "-" * (bar_length - filled)
+        status = f"{current}/{total} [{bar}] {int(100 * current / total)}%"
+    else:
+        status = f"{current} items"
+    suffix_text = f" {suffix}" if suffix else ""
+    print(f"\r{label} {status}{suffix_text}", end="", flush=True)
 
 
 def _resolve_downloads_manifest_path(download_dir: str) -> str:
@@ -307,6 +331,10 @@ def _setup_package_logger(log_path: str, level: int = logging.INFO,
     if stream_handler is None:
         stream_handler = logging.StreamHandler()
         package_logger.addHandler(stream_handler)
+
+    for handler in (file_handler, stream_handler):
+        if not any(isinstance(log_filter, _StacRateLimitInfoFilter) for log_filter in handler.filters):
+            handler.addFilter(_StacRateLimitInfoFilter())
 
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)
@@ -780,6 +808,67 @@ def _quote_cql2_text_string(value: str) -> str:
 def _chunk_values(values: List[str], chunk_size: int) -> List[List[str]]:
     resolved_chunk_size = max(1, int(chunk_size or 1))
     return [values[idx:idx + resolved_chunk_size] for idx in range(0, len(values), resolved_chunk_size)]
+
+
+def _split_datetime_range_by_window(
+    datetime_range: str, window_days: int = 1
+) -> Optional[List[str]]:
+    if "/" not in datetime_range:
+        return [datetime_range]
+
+    if window_days < 1:
+        raise ValueError("The date window size must be at least one day.")
+
+    start_text, end_text = (part.strip() for part in datetime_range.split("/", 1))
+    if not start_text or not end_text or start_text == ".." or end_text == "..":
+        return None
+
+    def parse_bound(value: str, is_end: bool) -> datetime:
+        if re.fullmatch(r"\d{4}", value):
+            year = int(value)
+            if is_end:
+                return datetime(year, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)
+            return datetime(year, 1, 1, tzinfo=timezone.utc)
+
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            parsed = datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+            if is_end:
+                parsed += timedelta(days=1) - timedelta(microseconds=1)
+            return parsed
+
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    try:
+        start = parse_bound(start_text, is_end=False)
+        end = parse_bound(end_text, is_end=True)
+    except ValueError:
+        return None
+    if start > end:
+        raise ValueError("The --datetime range start must be before its end.")
+
+    date_range_days = (end.date() - start.date()).days + 1
+    if window_days > date_range_days:
+        raise ValueError(
+            f"--window-days cannot exceed the date range ({date_range_days} day(s))."
+        )
+
+    window_start_date = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
+    window_ranges = []
+    while window_start_date <= end:
+        window_end_bound = (
+            window_start_date + timedelta(days=window_days) - timedelta(microseconds=1)
+        )
+        window_start = max(start, window_start_date)
+        window_end = min(end, window_end_bound)
+        window_ranges.append(
+            f"{window_start.isoformat(timespec='microseconds').replace('+00:00', 'Z')}/"
+            f"{window_end.isoformat(timespec='microseconds').replace('+00:00', 'Z')}"
+        )
+        window_start_date += timedelta(days=window_days)
+    return window_ranges
 
 
 def _search_items_by_filter(search_api, collection: str, filter_text: str, limit: int, log_attempt: bool = False) -> List[Dict[str, Any]]:
@@ -2748,7 +2837,26 @@ def _get_user_access_token(username: Optional[str], password: Optional[str], env
     if not username or not password:
         raise click.ClickException("EODMS username and password are required to access a user profile.")
 
-    aaa_api = make_aaa(username, password, environment)
+    if environment == "staging":
+        get_domain_config = eodms_config.get_domain_config
+
+        def get_user_domain_config(target_environment="prod"):
+            if str(target_environment).lower() == "staging":
+                verify_ssl = next(
+                    (os.environ[name] for name in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA_BUNDLE")
+                     if os.environ.get(name)),
+                    False,
+                )
+                return {"domain": USER_STAGING_DOMAIN, "verify_ssl": verify_ssl}
+            return get_domain_config(target_environment)
+
+        eodms_config.get_domain_config = get_user_domain_config
+        try:
+            aaa_api = make_aaa(username, password, environment)
+        finally:
+            eodms_config.get_domain_config = get_domain_config
+    else:
+        aaa_api = make_aaa(username, password, environment)
     try:
         access_token = aaa_api.get_access_token()
     except Exception as exc:
@@ -2758,18 +2866,24 @@ def _get_user_access_token(username: Optional[str], password: Optional[str], env
     return username, access_token
 
 
+def _get_user_service_domain(environment: str) -> str:
+    if environment == "staging":
+        return USER_STAGING_DOMAIN
+    return str(eodms_config.get_domain_config(environment)["domain"]).rstrip("/")
+
+
 @user_cmd.command("get")
 @click.option("--username", "username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "password", "-p", required=False, help="EODMS password.")
 @click.option("--output", "-o", default=None, type=click.Path(dir_okay=False),
               help="Write the profile as JSON to this file instead of stdout.")
-@click.option("--env", "aaa_environment", default="staging",
+@click.option("--env", "aaa_environment", default="prod",
               type=click.Choice(["prod", "staging"], case_sensitive=False),
-              help="EODMS environment used for AAA and the user profile API (default: staging).")
+              help="EODMS environment used for AAA and the user profile API (default: prod).")
 def user_get_cmd(username: Optional[str], password: Optional[str], output: Optional[str], aaa_environment: str):
     """Print the authenticated user's profile."""
     resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
-    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    service_domain = _get_user_service_domain(aaa_environment.lower())
     profile = _user_api_request(
         service_domain,
         resolved_username,
@@ -2788,24 +2902,71 @@ def user_get_cmd(username: Optional[str], password: Optional[str], output: Optio
 
 
 @user_cmd.command("update")
-@click.option("--payload-file", required=True, type=click.File("r", encoding="utf-8"),
-              help="JSON object with profile fields to update; use '-' to read from stdin.")
+@click.option("--payload-file", default=None, type=click.File("r", encoding="utf-8"),
+              help="Optional partial JSON object; use '-' to read from stdin.")
+@click.option("--language", default=None, help="Set the profile language.")
+@click.option("--address", default=None,
+              help="Set the profile address as a JSON object or array.")
+@click.option("--email", default=None, help="Set the profile email address.")
+@click.option("--surname", default=None, help="Set the profile surname.")
+@click.option("--given-name", "given_name", default=None, help="Set the profile given name.")
 @click.option("--username", "username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "password", "-p", required=False, help="EODMS password.")
-@click.option("--env", "aaa_environment", default="staging",
+@click.option("--env", "aaa_environment", default="prod",
               type=click.Choice(["prod", "staging"], case_sensitive=False),
-              help="EODMS environment used for AAA and the user profile API (default: staging).")
-def user_update_cmd(payload_file: Any, username: Optional[str], password: Optional[str], aaa_environment: str):
-    """Update profile fields from a JSON file."""
-    try:
-        payload = json.load(payload_file)
-    except json.JSONDecodeError as exc:
-        raise click.ClickException(f"Invalid JSON in --payload-file: {exc}") from exc
-    if not isinstance(payload, dict) or not payload:
-        raise click.ClickException("--payload-file must contain a non-empty JSON object.")
+              help="EODMS environment used for AAA and the user profile API (default: prod).")
+def user_update_cmd(payload_file: Any, language: Optional[str], address: Optional[str], email: Optional[str],
+                    surname: Optional[str], given_name: Optional[str], username: Optional[str],
+                    password: Optional[str], aaa_environment: str):
+    """Update profile fields from options or a partial JSON file."""
+    address_value = None
+    if address is not None:
+        try:
+            address_value = json.loads(address)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(
+                "--address must be a JSON object or a non-empty array of objects."
+            ) from exc
+        if not isinstance(address_value, (dict, list)) or (
+            isinstance(address_value, list)
+            and (not address_value or any(not isinstance(entry, dict) for entry in address_value))
+        ):
+            raise click.ClickException(
+                "--address must be a JSON object or a non-empty array of objects."
+            )
+
+    option_payload = {
+        field: value
+        for field, value in {
+            "language": language,
+            "address": address_value,
+            "email": email,
+            "surname": surname,
+            "given_name": given_name,
+        }.items()
+        if value is not None
+    }
+    if payload_file is not None and option_payload:
+        raise click.ClickException("Use either --payload-file or profile field options, not both.")
+
+    if payload_file is not None:
+        try:
+            payload = json.load(payload_file)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(f"Invalid JSON in --payload-file: {exc}") from exc
+        if not isinstance(payload, dict) or not payload:
+            raise click.ClickException("--payload-file must contain a non-empty JSON object.")
+    else:
+        payload = option_payload
+        if not payload:
+            raise click.ClickException(
+                "Provide --payload-file or at least one profile field option to update."
+            )
+
     if "password" in payload:
         raise click.ClickException("Change passwords with `user change-password` instead of a profile JSON file.")
-    payload = _prepare_user_profile_patch(payload)
+    if payload_file is not None:
+        payload = _prepare_user_profile_patch(payload)
     unsupported_fields = sorted(set(payload) - USER_PROFILE_FIELDS)
     if unsupported_fields:
         raise click.ClickException(
@@ -2814,7 +2975,7 @@ def user_update_cmd(payload_file: Any, username: Optional[str], password: Option
         )
 
     resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
-    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    service_domain = _get_user_service_domain(aaa_environment.lower())
     result = _user_api_request(
         service_domain,
         resolved_username,
@@ -2828,9 +2989,9 @@ def user_update_cmd(payload_file: Any, username: Optional[str], password: Option
 @user_cmd.command("change-password")
 @click.option("--username", "username", "-u", required=False, help="EODMS username.")
 @click.option("--password", "password", "-p", required=False, help="Current EODMS password.")
-@click.option("--env", "aaa_environment", default="staging",
+@click.option("--env", "aaa_environment", default="prod",
               type=click.Choice(["prod", "staging"], case_sensitive=False),
-              help="EODMS environment used for AAA and the user profile API (default: staging).")
+              help="EODMS environment used for AAA and the user profile API (default: prod).")
 def user_change_password_cmd(username: Optional[str], password: Optional[str], aaa_environment: str):
     """Change the authenticated user's password."""
     resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
@@ -2843,7 +3004,7 @@ def user_change_password_cmd(username: Optional[str], password: Optional[str], a
     if len(new_password.encode("utf-8")) < MINIMUM_EODMS_PASSWORD_LENGTH:
         raise click.ClickException("EODMS passwords must be at least 15 characters long.")
 
-    service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
+    service_domain = _get_user_service_domain(aaa_environment.lower())
     _user_api_request(
         service_domain,
         resolved_username,
@@ -2870,21 +3031,27 @@ def user_change_password_cmd(username: Optional[str], password: Optional[str], a
               type=click.Choice(["prod", "staging"], case_sensitive=False),
               help="EODMS environment used for the service domain (default: staging).")
 def napl_options_cmd(aaa_environment: str):
-    """List the option IDs required to submit a NAPL order."""
+    """List the option values accepted when submitting a NAPL order."""
     service_domain = eodms_config.get_domain_config(aaa_environment.lower())["domain"]
     options = _napl_api_request(service_domain, "order-options")
     click.echo(json.dumps(options, indent=2))
 
 
 @napl_cmd.command("order")
-@click.option("--uuid", "item_uuids", multiple=True, required=True,
+@click.option("--uuid", "item_uuids", multiple=True,
               help="NAPL item UUID; repeat the option or provide comma-separated UUIDs.")
-@click.option("--media-type", required=True,
+@click.option("--media-type",
               help="Media type value from `napl options`.")
-@click.option("--file-format", required=True,
+@click.option("--file-format",
               help="File format value from `napl options`.")
-@click.option("--image-resolution", type=click.IntRange(min=1), required=True,
+@click.option("--image-resolution", type=click.IntRange(min=1),
               help="Image resolution in dpi from `napl options`.")
+@click.option("--quantity", type=click.IntRange(min=1, max=2147483647), default=1, show_default=True,
+              help="Quantity for each --uuid line; quantities count toward the hourly limit.")
+@click.option("--flight-line-index-map", type=click.Choice(["PDF", "Paper"]), default=None,
+              help="Optional flight-line index-map format for each --uuid line.")
+@click.option("--items-file", type=click.File("r", encoding="utf-8"),
+              help="JSON order body with an items array, for per-line options and quantities.")
 @click.option("--idempotency-key", default=None,
               help="Client key for safely retrying the same order request.")
 @click.option("--username", "username", "-u", required=False, help="EODMS username.")
@@ -2896,9 +3063,12 @@ def napl_options_cmd(aaa_environment: str):
 @handle_service_errors
 def napl_order_cmd(
     item_uuids: Tuple[str, ...],
-    media_type: str,
-    file_format: str,
-    image_resolution: int,
+    media_type: Optional[str],
+    file_format: Optional[str],
+    image_resolution: Optional[int],
+    quantity: int,
+    flight_line_index_map: Optional[str],
+    items_file: Any,
     idempotency_key: Optional[str],
     username: Optional[str],
     password: Optional[str],
@@ -2906,20 +3076,67 @@ def napl_order_cmd(
     yes: bool,
 ):
     """Submit one or more NAPL item UUIDs to the NAPL order service."""
-    uuid_values = [
-        value.strip()
-        for option_value in item_uuids
-        for value in option_value.split(",")
-        if value.strip()
-    ]
-    if not uuid_values:
-        raise click.ClickException("At least one non-empty --uuid value is required.")
-    if len(uuid_values) > 100:
-        raise click.ClickException("A NAPL order can contain at most 100 items.")
+    if items_file is not None:
+        if item_uuids or media_type or file_format or image_resolution is not None or quantity != 1 or flight_line_index_map is not None:
+            raise click.UsageError("Use --items-file without --uuid or shared item-option flags.")
+        try:
+            order_body = json.load(items_file)
+        except (ValueError, UnicodeError) as exc:
+            raise click.ClickException("--items-file must contain a JSON order body.") from exc
+        if not isinstance(order_body, dict):
+            raise click.ClickException("--items-file must contain an object with an items array.")
+        items = order_body.get("items")
+    else:
+        if not item_uuids or not media_type:
+            raise click.UsageError(
+            "Provide --uuid and --media-type (plus applicable format/resolution), or --items-file."
+            )
+        items = [
+            {
+                "unique_identifier": value.strip(), "quantity": quantity,
+                "options": {"media_type": media_type,
+                            **({"file_format": file_format} if file_format is not None else {}),
+                            **({"image_resolution": image_resolution} if image_resolution is not None else {}),
+                            **({"flight_line_index_map": flight_line_index_map} if flight_line_index_map is not None else {})},
+            }
+            for option_value in item_uuids
+            for value in option_value.split(",")
+            if value.strip()
+        ]
+    if not isinstance(items, list) or not 1 <= len(items) <= 100:
+        raise click.ClickException("A NAPL order must contain between 1 and 100 item lines.")
+    normalized_items = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or not isinstance(item.get("unique_identifier"), str) or not item["unique_identifier"].strip():
+            raise click.ClickException(f"items[{index}].unique_identifier is required.")
+        line_quantity = item.get("quantity", 1)
+        if type(line_quantity) is not int or not 1 <= line_quantity <= 2147483647:
+            raise click.ClickException(f"items[{index}].quantity must be a positive integer no greater than 2147483647.")
+        options = item.get("options")
+        if (not isinstance(options, dict)
+                or not isinstance(options.get("media_type"), str) or not options["media_type"]):
+            raise click.ClickException(f"items[{index}].options.media_type is required.")
+        if options["media_type"] in ("Digital", "PaperPrint"):
+            allowed_formats = ("Jpeg", "Tiff") if options["media_type"] == "Digital" else ("ContactPrint", "Enlargement")
+            if options.get("file_format") not in allowed_formats:
+                raise click.ClickException(f"items[{index}].options.file_format must be one of {', '.join(allowed_formats)}.")
+            if options["media_type"] == "Digital" and (type(options.get("image_resolution")) is not int or options["image_resolution"] < 1):
+                raise click.ClickException(f"items[{index}].options.image_resolution must be a positive integer.")
+            if options["media_type"] == "PaperPrint" and "image_resolution" in options:
+                raise click.ClickException(f"items[{index}].options.image_resolution is not accepted for PaperPrint.")
+        elif "file_format" in options or "image_resolution" in options:
+            raise click.ClickException(f"items[{index}].options must omit file_format and image_resolution for this media type.")
+        if "flight_line_index_map" in options and options["flight_line_index_map"] not in ("PDF", "Paper"):
+            raise click.ClickException(f"items[{index}].options.flight_line_index_map must be PDF or Paper.")
+        normalized_items.append({
+            "unique_identifier": item["unique_identifier"].strip(), "quantity": line_quantity,
+            "options": {key: options[key] for key in ("media_type", "file_format", "image_resolution", "flight_line_index_map") if key in options},
+        })
 
     if not yes:
         click.confirm(
-            f"Submit a NAPL order containing {len(uuid_values)} item(s)?",
+            f"Submit a NAPL order containing {len(normalized_items)} line(s), "
+            f"{sum(item['quantity'] for item in normalized_items)} unit(s)?",
             default=False,
             abort=True,
         )
@@ -2944,25 +3161,16 @@ def napl_order_cmd(
         service_domain,
         "orders",
         method="POST",
-        payload={
-            "items": [
-                {
-                    "unique_identifier": item_uuid,
-                    "options": {
-                        "media_type": media_type,
-                        "file_format": file_format,
-                        "image_resolution": image_resolution,
-                    },
-                }
-                for item_uuid in uuid_values
-            ]
-        },
+        payload={"items": normalized_items},
         headers={
             "Authorization": f"Bearer {access_token}",
             "Idempotency-Key": idempotency_key,
         },
     )
     click.echo(f"Idempotency-Key: {idempotency_key}")
+    display_order_id = result.get("order_number") or result.get("order_id")
+    if display_order_id is not None:
+        click.echo(f"Order ID: {display_order_id}")
     click.echo(json.dumps(result, indent=2))
 
 
@@ -2984,10 +3192,12 @@ def napl_order_cmd(
               help="Print queryables for --collection and exit.")
 @click.option("--datetime", "-d", "datetime_range", required=False, default=None,
               help='Temporal filter as ISO 8601 string/range (example: "2023-01-01/2023-12-31").')
+@click.option("--window-days", type=click.IntRange(min=1), default=1, show_default=True,
+              help="Number of days per date window when splitting a search range.")
 @click.option("--bbox", "-b", required=False, default=None,
               help="Bounding box as west,south,east,north")
 @click.option("--limit", "-l", required=False, default=None, type=int,
-              help="Maximum number of items to fetch (default: config.ini [RAPI].max_results, or 1000).")
+              help="Maximum total number of items to fetch (default: all results, queried in date windows).")
 @click.option("--filter", "-f", "filter_text", required=False, default=None,
               help="CQL2 text filter expression.")
 @click.option("--s-intersect", "s_intersect", required=False, default=None,
@@ -3014,6 +3224,7 @@ def search_cmd(
     order_key: Optional[str],
     show_queryables: bool,
     datetime_range: Optional[str],
+    window_days: int,
     bbox: Optional[str],
     limit: Optional[int],
     filter_text: Optional[str],
@@ -3034,10 +3245,6 @@ def search_cmd(
         aaa_api = make_aaa(username, password, env)
 
     bbox_list = parse_bbox(bbox)
-
-    if limit is None:
-        cfg = _load_config_utils()
-        limit = int(cfg.get('RAPI', 'max_results') or '1000')
 
     if list_collections or show_queryables:
         search_api = make_search(aaa_api, env)
@@ -3272,6 +3479,13 @@ def search_cmd(
     if not s_intersect_list:
         s_intersect_list = [{"name": None, "wkt": None}]
 
+    if limit is None:
+        click.echo(
+            "Warning: no --limit specified; all matching results will be retrieved. "
+            "This may take a long time and use substantial memory.",
+            err=True,
+        )
+
     # Set default datetime range if not provided
     if datetime_range is None:
         cfg = _load_config_utils()
@@ -3282,14 +3496,85 @@ def search_cmd(
         click.echo(f"Using default date range ({default_days} days): {datetime_range}")
 
     search_api = make_search(aaa_api, env)
-    items = search_api.search_multiple_geometries(
-        s_intersect_list=s_intersect_list,
-        collection=collection,
-        datetime_range=datetime_range,
-        bbox=bbox_list,
-        limit=limit,
-        filter_text=filter_text,
-    )
+    try:
+        datetime_ranges = _split_datetime_range_by_window(datetime_range, window_days)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if datetime_ranges is None:
+        if limit is None:
+            raise click.ClickException(
+                "An unlimited search requires a bounded --datetime range so it can be split into date windows."
+            )
+        datetime_ranges = [datetime_range]
+
+    items: List[Dict[str, Any]] = []
+    seen_item_ids = set()
+    progress_count = 0
+    progress_total = limit if limit is not None else len(datetime_ranges)
+    progress_label = "Searching"
+    _print_search_progress(0, progress_total, progress_label)
+    try:
+        for range_index, day_range in enumerate(datetime_ranges, start=1):
+            if limit is not None and len(items) >= limit:
+                break
+            range_date = day_range.split("/")[0][:10]
+            progress_label = "Searching"
+            if limit is not None:
+                progress_label = (
+                    f"Searching {range_index}/{len(datetime_ranges)} ({range_date})"
+                )
+            progress_suffix = (
+                f"({range_date}) {progress_count} items" if limit is None else ""
+            )
+            progress_position = range_index if limit is None else progress_count
+            _print_search_progress(
+                progress_position, progress_total, progress_label, progress_suffix
+            )
+
+            for geometry_entry in s_intersect_list:
+                remaining = limit - len(items) if limit is not None else None
+                if remaining == 0:
+                    break
+                composed_filter = search_api.compose_filter(
+                    filter_text=filter_text,
+                    geometry_wkt=geometry_entry.get("wkt"),
+                )
+                item_search = search_api.client.search(
+                    method="GET",
+                    max_items=remaining,
+                    limit=None,
+                    collections=[collection],
+                    datetime=day_range,
+                    bbox=bbox_list,
+                    filter=composed_filter,
+                    filter_lang="cql2-text" if composed_filter else None,
+                )
+                for item in item_search.items_as_dicts():
+                    item_id = item.get("id")
+                    if item_id is not None and item_id in seen_item_ids:
+                        continue
+                    if item_id is not None:
+                        seen_item_ids.add(item_id)
+                    items.append(item)
+                    progress_count += 1
+                    if limit is None:
+                        progress_suffix = f"({range_date}) {progress_count} items"
+                        progress_position = range_index
+                    else:
+                        progress_suffix = ""
+                        progress_position = progress_count
+                    _print_search_progress(
+                        progress_position,
+                        progress_total,
+                        progress_label,
+                        progress_suffix,
+                    )
+                    if limit is not None and len(items) >= limit:
+                        break
+    finally:
+        if limit is not None and progress_count < limit and progress_count:
+            _print_search_progress(progress_count, progress_count, progress_label)
+        print()
 
     if not items:
         click.echo("No items found.")

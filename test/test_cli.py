@@ -4,7 +4,9 @@ import sys
 import csv
 import json
 import tempfile
-from io import BytesIO
+import logging
+from contextlib import redirect_stdout
+from io import BytesIO, StringIO
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -15,7 +17,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts import config_util
 
-from eodms_cli import cli, download_dds_item, _napl_api_request, _search_items_by_filter, _user_api_request
+from eodms_cli import (
+    cli,
+    download_dds_item,
+    eodms_config,
+    _napl_api_request,
+    _search_items_by_filter,
+    _print_search_progress,
+    _split_datetime_range_by_window,
+    _StacRateLimitInfoFilter,
+    _user_api_request,
+)
 
 
 class TestEodmsCli(unittest.TestCase):
@@ -61,6 +73,7 @@ class TestEodmsCli(unittest.TestCase):
                 "--list",
                 "--queryables",
                 "--output",
+                "--window-days",
             ],
         )
 
@@ -69,6 +82,207 @@ class TestEodmsCli(unittest.TestCase):
 
     def test_user_help_lists_commands(self):
         self._assert_help(["user", "--help"], ["get", "update", "change-password"])
+
+    def test_search_datetime_year_range_splits_into_daily_windows(self):
+        day_ranges = _split_datetime_range_by_window("2026/2026")
+
+        self.assertEqual(365, len(day_ranges))
+        self.assertEqual(
+            "2026-01-01T00:00:00.000000Z/2026-01-01T23:59:59.999999Z",
+            day_ranges[0],
+        )
+        self.assertEqual(
+            "2026-12-31T00:00:00.000000Z/2026-12-31T23:59:59.999999Z",
+            day_ranges[-1],
+        )
+
+    def test_search_datetime_range_splits_into_configured_windows(self):
+        date_ranges = _split_datetime_range_by_window("2026-01-01/2026-01-05", window_days=2)
+
+        self.assertEqual(
+            [
+                "2026-01-01T00:00:00.000000Z/2026-01-02T23:59:59.999999Z",
+                "2026-01-03T00:00:00.000000Z/2026-01-04T23:59:59.999999Z",
+                "2026-01-05T00:00:00.000000Z/2026-01-05T23:59:59.999999Z",
+            ],
+            date_ranges,
+        )
+
+    def test_search_datetime_window_cannot_exceed_date_range(self):
+        with self.assertRaisesRegex(ValueError, "--window-days cannot exceed the date range \\(2 day\\(s\\)\\)"):
+            _split_datetime_range_by_window("2026-01-01/2026-01-02", window_days=3)
+
+    def test_search_progress_uses_reports_bar_format(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            _print_search_progress(1, 2, "Searching")
+
+        self.assertEqual(
+            "\rSearching 1/2 [" + "▒" * 20 + "-" * 20 + "] 50%",
+            output.getvalue(),
+        )
+
+    def test_search_without_limit_queries_each_day_with_api_cap_and_deduplicates(self):
+        class FakeSearchApi:
+            class FakeItemSearch:
+                def __init__(self, items):
+                    self.items = items
+
+                def items_as_dicts(self):
+                    return iter(self.items)
+
+            def __init__(self):
+                self.calls = []
+                self.client = self
+
+            def compose_filter(self, filter_text, geometry_wkt):
+                return filter_text
+
+            def search(self, **kwargs):
+                self.calls.append(kwargs)
+                if len(self.calls) == 1:
+                    return self.FakeItemSearch([{"id": "shared"}])
+                return self.FakeItemSearch([{"id": "shared"}, {"id": "second"}])
+
+        fake_search = FakeSearchApi()
+        progress_updates = []
+        with patch("eodms_cli.make_search", return_value=fake_search), patch(
+            "eodms_cli._print_search_progress",
+            side_effect=lambda current, total, label, suffix="": progress_updates.append(
+                (current, total, label, suffix)
+            ),
+        ):
+            result = self.runner.invoke(cli, [
+                "search", "--anonymous", "--collection", "rcm-ard",
+                "--datetime", "2026-01-01/2026-01-02",
+            ])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertIn("Warning: no --limit specified", result.output)
+        self.assertIn("Found 2 item(s).", result.output)
+        self.assertEqual([0, 1, 1, 2, 2], [update[0] for update in progress_updates])
+        self.assertTrue(all(update[1] == 2 for update in progress_updates))
+        self.assertEqual(
+            [
+                "",
+                "(2026-01-01) 0 items",
+                "(2026-01-01) 1 items",
+                "(2026-01-02) 1 items",
+                "(2026-01-02) 2 items",
+            ],
+            [update[3] for update in progress_updates],
+        )
+        self.assertEqual(2, len(fake_search.calls))
+        self.assertEqual([None, None], [call["limit"] for call in fake_search.calls])
+        self.assertEqual([None, None], [call["max_items"] for call in fake_search.calls])
+        self.assertEqual(
+            [
+                "2026-01-01T00:00:00.000000Z/2026-01-01T23:59:59.999999Z",
+                "2026-01-02T00:00:00.000000Z/2026-01-02T23:59:59.999999Z",
+            ],
+            [call["datetime"] for call in fake_search.calls],
+        )
+
+    def test_search_window_days_option_groups_date_range(self):
+        class FakeSearchApi:
+            class FakeItemSearch:
+                def items_as_dicts(self):
+                    return iter([])
+
+            def __init__(self):
+                self.calls = []
+                self.client = self
+
+            def compose_filter(self, filter_text, geometry_wkt):
+                return filter_text
+
+            def search(self, **kwargs):
+                self.calls.append(kwargs)
+                return self.FakeItemSearch()
+
+        fake_search = FakeSearchApi()
+        with patch("eodms_cli.make_search", return_value=fake_search):
+            result = self.runner.invoke(cli, [
+                "search", "--anonymous", "--collection", "rcm-ard",
+                "--datetime", "2026-01-01/2026-01-03", "--window-days", "2",
+            ])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertEqual(
+            [
+                "2026-01-01T00:00:00.000000Z/2026-01-02T23:59:59.999999Z",
+                "2026-01-03T00:00:00.000000Z/2026-01-03T23:59:59.999999Z",
+            ],
+            [call["datetime"] for call in fake_search.calls],
+        )
+
+    def test_search_rejects_window_days_larger_than_date_range(self):
+        result = self.runner.invoke(cli, [
+            "search", "--anonymous", "--collection", "rcm-ard",
+            "--datetime", "2026-01-01/2026-01-02", "--window-days", "3",
+        ])
+
+        self.assertEqual(1, result.exit_code)
+        self.assertIn("--window-days cannot exceed the date range (2 day(s)).", result.output)
+
+    def test_stac_rate_limit_retry_log_is_downgraded_to_info(self):
+        messages = [
+            "STAC request rate limited (429); retry 1/3",
+            "First 429 response evidence for server team: url=https://example.test",
+        ]
+        for message in messages:
+            with self.subTest(message=message):
+                record = logging.LogRecord(
+                    "eodms.search",
+                    logging.WARNING,
+                    "search.py",
+                    1,
+                    message,
+                    (),
+                    None,
+                )
+
+                self.assertTrue(_StacRateLimitInfoFilter().filter(record))
+                self.assertEqual(logging.INFO, record.levelno)
+                self.assertEqual("INFO", record.levelname)
+
+    def test_package_console_logger_uses_configured_info_level(self):
+        from eodms_cli import _setup_package_logger
+
+        package_logger = logging.getLogger("eodms")
+        original_handlers = list(package_logger.handlers)
+        original_level = package_logger.level
+        original_propagate = package_logger.propagate
+        try:
+            for handler in original_handlers:
+                package_logger.removeHandler(handler)
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                _setup_package_logger(os.path.join(temp_dir, "cli.log"), level=logging.INFO)
+                console_handler = next(
+                    handler
+                    for handler in package_logger.handlers
+                    if isinstance(handler, logging.StreamHandler)
+                    and not isinstance(handler, logging.FileHandler)
+                )
+                file_handler = next(
+                    handler
+                    for handler in package_logger.handlers
+                    if isinstance(handler, logging.FileHandler)
+                )
+                self.assertEqual(logging.INFO, console_handler.level)
+                self.assertEqual(logging.INFO, file_handler.level)
+                for handler in list(package_logger.handlers):
+                    package_logger.removeHandler(handler)
+                    handler.close()
+        finally:
+            for handler in list(package_logger.handlers):
+                package_logger.removeHandler(handler)
+                handler.close()
+            for handler in original_handlers:
+                package_logger.addHandler(handler)
+            package_logger.setLevel(original_level)
+            package_logger.propagate = original_propagate
 
     def test_user_change_password_patches_profile_and_updates_matching_config(self):
         class FakeAAA:
@@ -192,7 +406,7 @@ class TestEodmsCli(unittest.TestCase):
 
         self.assertIn("The server did not provide a Retry-After value.", str(error.exception))
 
-    def test_user_get_uses_aaa_token_and_selected_environment(self):
+    def test_user_get_defaults_to_prod_environment(self):
         class FakeAAA:
             def get_access_token(self):
                 return "test-access-token"
@@ -201,7 +415,7 @@ class TestEodmsCli(unittest.TestCase):
              patch("eodms_cli.make_aaa", return_value=FakeAAA()) as make_aaa, \
              patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}) as domain_config, \
              patch("eodms_cli._user_api_request", return_value={"email": "user@example.com"}) as request:
-            result = self.runner.invoke(cli, ["user", "get", "--env", "prod"])
+            result = self.runner.invoke(cli, ["user", "get"])
 
         self.assertEqual(result.exit_code, 0, msg=result.output)
         self.assertIn('"email": "user@example.com"', result.output)
@@ -212,6 +426,37 @@ class TestEodmsCli(unittest.TestCase):
             "user",
             headers={"Authorization": "Bearer test-access-token"},
         )
+
+    def test_user_get_routes_staging_independently_of_staging_domain_env_var(self):
+        from eodms_cli import USER_STAGING_DOMAIN
+
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        configured_domains = []
+
+        def make_staging_aaa(username, password, environment):
+            configured_domains.append(eodms_config.get_domain_config(environment)["domain"])
+            return FakeAAA()
+
+        original_staging_domain = os.environ.get("EODMS_STAGING_DOMAIN")
+        with patch.dict(os.environ, {"EODMS_STAGING_DOMAIN": "https://wrong.example"}), \
+             patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", side_effect=make_staging_aaa) as make_aaa, \
+             patch("eodms_cli.eodms_config.get_domain_config", side_effect=KeyError("EODMS_STAGING_DOMAIN")), \
+             patch("eodms_cli._user_api_request", return_value={"email": "user@example.com"}) as request:
+            result = self.runner.invoke(cli, ["user", "get", "--env", "staging"])
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        self.assertEqual([USER_STAGING_DOMAIN], configured_domains)
+        self.assertEqual([unittest.mock.call("user", "password", "staging")], make_aaa.call_args_list)
+        request.assert_called_once_with(
+            USER_STAGING_DOMAIN,
+            "user",
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+        self.assertEqual(original_staging_domain, os.environ.get("EODMS_STAGING_DOMAIN"))
 
     def test_user_get_writes_json_to_output_file(self):
         class FakeAAA:
@@ -258,6 +503,116 @@ class TestEodmsCli(unittest.TestCase):
             payload=payload,
             headers={"Authorization": "Bearer test-access-token"},
         )
+
+    def test_user_update_patches_only_requested_field_option(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+             patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "update", "--email", "new@example.com", "--env", "staging"],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://www-staging-eodms.aws.nrcan-rncan.cloud",
+            "user",
+            method="PATCH",
+            payload={"email": "new@example.com"},
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_update_parses_address_option_as_json_object(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        address = {
+            "@type": "main",
+            "country": "Canada",
+            "province": "quebec",
+            "postal-code": "k1A 0y7",
+        }
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+             patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "update", "--address", json.dumps(address), "--env", "staging"],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://www-staging-eodms.aws.nrcan-rncan.cloud",
+            "user",
+            method="PATCH",
+            payload={"address": address},
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_update_rejects_plain_text_address_before_api_call(self):
+        with patch("eodms_cli._user_api_request") as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "update", "--address", "580 booth", "--env", "staging"],
+            )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("--address must be a JSON object or a non-empty array of objects", result.output)
+        request.assert_not_called()
+
+    def test_user_update_accepts_multiple_typed_addresses(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
+        addresses = [
+            {"@type": "shipping", "street-address": "584 Booth"},
+            {"@type": "main", "street-address": "580 Booth"},
+            {"@type": "billing", "street-address": "582 Booth"},
+        ]
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+             patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+            result = self.runner.invoke(
+                cli,
+                ["user", "update", "--address", json.dumps(addresses), "--env", "staging"],
+            )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://www-staging-eodms.aws.nrcan-rncan.cloud",
+            "user",
+            method="PATCH",
+            payload={"address": addresses},
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_update_rejects_mixing_payload_file_and_field_options(self):
+        with self.runner.isolated_filesystem():
+            with open("profile.json", "w", encoding="utf-8") as payload_file:
+                json.dump({"language": "English"}, payload_file)
+
+            result = self.runner.invoke(
+                cli,
+                ["user", "update", "--payload-file", "profile.json", "--email", "new@example.com"],
+            )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Use either --payload-file or profile field options, not both.", result.output)
+
+    def test_user_update_requires_a_file_or_at_least_one_field_option(self):
+        result = self.runner.invoke(cli, ["user", "update"])
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Provide --payload-file or at least one profile field option", result.output)
 
     def test_user_update_rejects_unsupported_payload_fields(self):
         with self.runner.isolated_filesystem():
@@ -398,10 +753,12 @@ class TestEodmsCli(unittest.TestCase):
                 "items": [
                     {
                         "unique_identifier": "item-uuid-1",
+                        "quantity": 1,
                             "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800},
                     },
                     {
                         "unique_identifier": "item-uuid-2",
+                        "quantity": 1,
                             "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800},
                     },
                 ]
@@ -411,6 +768,128 @@ class TestEodmsCli(unittest.TestCase):
                 "Idempotency-Key": "request-1",
             },
         )
+
+    def test_napl_order_preserves_repeated_uuids_and_shared_quantity(self):
+        with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+             patch("eodms_cli.make_aaa") as make_aaa, \
+             patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://napl.example"}), \
+             patch("eodms_cli._napl_api_request", return_value={"order_id": "order-1", "order_number": 123, "status": "SUCCESS"}) as request:
+            make_aaa.return_value.get_access_token.return_value = "test-access-token"
+            result = self.runner.invoke(cli, [
+                "napl", "order", "--uuid", "item-1,item-1", "--media-type", "Digital",
+                "--file-format", "Jpeg", "--image-resolution", "300", "--quantity", "2", "--yes",
+                "--flight-line-index-map", "PDF",
+            ])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('"order_number": 123', result.output)
+        self.assertIn("Order ID: 123", result.output)
+        items = request.call_args.kwargs["payload"]["items"]
+        self.assertEqual([item["unique_identifier"] for item in items], ["item-1", "item-1"])
+        self.assertEqual([item["quantity"] for item in items], [2, 2])
+        self.assertEqual([item["options"]["flight_line_index_map"] for item in items], ["PDF", "PDF"])
+
+    def test_napl_items_file_preserves_per_line_options_and_quantities(self):
+        body = {"items": [
+            {"unique_identifier": "item-1", "quantity": 2, "options": {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800, "flight_line_index_map": "PDF"}},
+            {"unique_identifier": "item-1", "options": {"media_type": "PaperPrint", "file_format": "Enlargement", "flight_line_index_map": "Paper"}},
+            {"unique_identifier": "item-1", "options": {"media_type": "Diapositive", "flight_line_index_map": "PDF"}},
+        ]}
+        with self.runner.isolated_filesystem():
+            with open("items.json", "w", encoding="utf-8") as stream:
+                json.dump(body, stream)
+            with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa") as make_aaa, \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://napl.example"}), \
+                 patch("eodms_cli._napl_api_request", return_value={"order_number": 123, "status": "SUCCESS"}) as request:
+                make_aaa.return_value.get_access_token.return_value = "test-access-token"
+                result = self.runner.invoke(cli, ["napl", "order", "--items-file", "items.json", "--yes"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        body["items"][1]["quantity"] = 1
+        body["items"][2]["quantity"] = 1
+        self.assertEqual(request.call_args.kwargs["payload"], body)
+
+    def test_napl_order_rejects_invalid_quantity_before_authentication(self):
+        with patch("eodms_cli.make_aaa") as make_aaa:
+            result = self.runner.invoke(cli, [
+                "napl", "order", "--uuid", "item-1", "--media-type", "Digital",
+                "--file-format", "Jpeg", "--image-resolution", "300", "--quantity", "0", "--yes",
+            ])
+        self.assertNotEqual(result.exit_code, 0)
+        make_aaa.assert_not_called()
+
+    def test_napl_items_file_rejects_invalid_lines_without_submitting(self):
+        options = {"media_type": "Digital", "file_format": "Tiff", "image_resolution": 800}
+        cases = [
+            {"items": []}, {"items": [None]},
+            {"items": [{"unique_identifier": "item-1", "options": options, "quantity": True}]},
+            {"items": [{"unique_identifier": "item-1", "options": options, "quantity": 0}]},
+            {"items": [{"unique_identifier": "item-1", "options": options, "quantity": "2"}]},
+            {"items": [{"unique_identifier": "item-1", "options": options, "quantity": 2147483648}]},
+            {"items": [{"unique_identifier": "item-1", "options": {}}]},
+        ]
+        cases.extend(
+            {"items": [{"unique_identifier": "item-1", "options": {**options, "flight_line_index_map": choice}}]}
+            for choice in ("pdf", "TIFF", "", None, True, [], {})
+        )
+        for body in cases:
+            with self.subTest(body=body), self.runner.isolated_filesystem():
+                with open("items.json", "w", encoding="utf-8") as stream:
+                    json.dump(body, stream)
+                with patch("eodms_cli.make_aaa") as make_aaa, patch("eodms_cli._napl_api_request") as request:
+                    result = self.runner.invoke(cli, ["napl", "order", "--items-file", "items.json", "--yes"])
+                self.assertNotEqual(result.exit_code, 0, result.output)
+                make_aaa.assert_not_called()
+                request.assert_not_called()
+
+    def test_napl_map_flag_cannot_override_items_file(self):
+        with self.runner.isolated_filesystem():
+            with open("items.json", "w", encoding="utf-8") as stream:
+                json.dump({"items": []}, stream)
+            with patch("eodms_cli._napl_api_request") as request:
+                result = self.runner.invoke(cli, [
+                    "napl", "order", "--items-file", "items.json", "--flight-line-index-map", "PDF", "--yes",
+                ])
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("without --uuid or shared item-option flags", result.output)
+        request.assert_not_called()
+
+    def test_napl_media_type_controls_applicable_options(self):
+        cases = [
+            ("Digital", ["--file-format", "Tiff", "--image-resolution", "800"], True),
+            ("PaperPrint", ["--file-format", "ContactPrint"], True),
+            ("PaperPrint", ["--file-format", "Enlargement"], True),
+            ("Diapositive", [], True),
+            ("Digital", ["--file-format", "ContactPrint", "--image-resolution", "800"], False),
+            ("PaperPrint", ["--file-format", "Tiff", "--image-resolution", "800"], False),
+            ("PaperPrint", ["--file-format", "ContactPrint", "--image-resolution", "800"], False),
+            ("Diapositive", ["--file-format", "Tiff"], False),
+            ("Diapositive", ["--image-resolution", "800"], False),
+        ]
+        cases.extend(
+            (media_type, flags, accepted)
+            for media_type in ("Mosaic", "ContactTransparency", "Uncorrected", "TransparencyEnlargement")
+            for flags, accepted in (([], True), (["--file-format", "Tiff"], False), (["--image-resolution", "800"], False))
+        )
+        for media_type, flags, accepted in cases:
+            with self.subTest(media_type=media_type, flags=flags), \
+                 patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa") as make_aaa, \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://napl.example"}), \
+                 patch("eodms_cli._napl_api_request", return_value={"order_number": 123}) as request:
+                make_aaa.return_value.get_access_token.return_value = "fake-token"
+                result = self.runner.invoke(cli, ["napl", "order", "--uuid", "item-1", "--media-type", media_type, *flags, "--yes"])
+                self.assertEqual(result.exit_code == 0, accepted, result.output)
+                if accepted:
+                    options = request.call_args.kwargs["payload"]["items"][0]["options"]
+                    if media_type not in ("Digital", "PaperPrint"):
+                        self.assertEqual(options, {"media_type": media_type})
+                    if media_type == "PaperPrint":
+                        self.assertNotIn("image_resolution", options)
+                else:
+                    make_aaa.assert_not_called()
+                    request.assert_not_called()
 
     def test_search_list_with_collection_shows_queryables(self):
         collection = object()

@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026.09.28
+## 2026.10.20
 
 - Fixed batched `search --uuid2record` lookups returning the first UUID's record ID for every UUID.
 

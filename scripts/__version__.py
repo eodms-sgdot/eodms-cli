@@ -1,7 +1,7 @@
 """Central version values for eodms-cli scripts."""
 
 # Repository release version (used by both entry scripts).
-EODMS_RELEASE_VERSION = "2026.09.28"
+EODMS_RELEASE_VERSION = "2026.10.20"
 
 # Script-facing versions.
 EODMS_CLI_VERSION = EODMS_RELEASE_VERSION
