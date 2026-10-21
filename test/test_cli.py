@@ -21,6 +21,7 @@ from eodms_cli import (
     cli,
     download_dds_item,
     eodms_config,
+    make_aaa,
     _napl_api_request,
     _search_items_by_filter,
     _print_search_progress,
@@ -40,6 +41,23 @@ class TestEodmsCli(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, msg=result.output)
         for token in expected_tokens:
             self.assertIn(token, result.output)
+
+    def test_make_aaa_can_override_only_the_aaa_base_url(self):
+        with patch.dict(os.environ, {"EODMS_AAA_URL": "http://127.0.0.1:5445/"}), \
+             patch("eodms_cli.aaa.AAA_API") as aaa_api_factory:
+            api = make_aaa("user", "password", "staging")
+
+        aaa_api_factory.assert_called_once_with("user", "password", "staging")
+        self.assertIs(api, aaa_api_factory.return_value)
+        self.assertEqual(api.domain, "http://127.0.0.1:5445")
+
+    def test_make_aaa_rejects_non_base_urls(self):
+        with patch.dict(os.environ, {"EODMS_AAA_URL": "http://127.0.0.1:5445/aaa/v1"}), \
+             patch("eodms_cli.aaa.AAA_API") as aaa_api_factory:
+            with self.assertRaisesRegex(ClickException, "EODMS_AAA_URL must be"):
+                make_aaa("user", "password", "staging")
+
+        aaa_api_factory.assert_not_called()
 
     def test_root_help_lists_all_commands(self):
         self._assert_help(
@@ -463,7 +481,7 @@ class TestEodmsCli(unittest.TestCase):
             def get_access_token(self):
                 return "test-access-token"
 
-        profile = {"email": "user@example.com", "language": "English"}
+        profile = {"email": "user@example.com"}
         with self.runner.isolated_filesystem():
             with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
                  patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
@@ -481,7 +499,7 @@ class TestEodmsCli(unittest.TestCase):
             def get_access_token(self):
                 return "test-access-token"
 
-        payload = {"language": "English", "surname": "Example"}
+        payload = {"surname": "Example"}
         with self.runner.isolated_filesystem():
             with open("profile.json", "w", encoding="utf-8") as payload_file:
                 json.dump(payload, payload_file)
@@ -598,7 +616,7 @@ class TestEodmsCli(unittest.TestCase):
     def test_user_update_rejects_mixing_payload_file_and_field_options(self):
         with self.runner.isolated_filesystem():
             with open("profile.json", "w", encoding="utf-8") as payload_file:
-                json.dump({"language": "English"}, payload_file)
+                json.dump({"email": "user@example.com"}, payload_file)
 
             result = self.runner.invoke(
                 cli,
@@ -614,15 +632,15 @@ class TestEodmsCli(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Provide --payload-file or at least one profile field option", result.output)
 
-    def test_user_update_rejects_unsupported_payload_fields(self):
+    def test_user_update_rejects_language_payload_field(self):
         with self.runner.isolated_filesystem():
             with open("profile.json", "w", encoding="utf-8") as payload_file:
-                json.dump({"phone": "555-0100"}, payload_file)
+                json.dump({"language": "English"}, payload_file)
 
             result = self.runner.invoke(cli, ["user", "update", "--payload-file", "profile.json"])
 
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Unsupported profile field(s): phone", result.output)
+        self.assertIn("Unsupported profile field(s): language", result.output)
 
     def test_user_update_accepts_get_profile_output_file(self):
         class FakeAAA:

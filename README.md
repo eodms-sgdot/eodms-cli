@@ -124,6 +124,19 @@ In the config file, you can:
 
 For more in-depth information on the configuration file, see the example template in [config.ini](config.ini).
 
+For local AAA development, set `EODMS_AAA_URL` to the local proxy's base URL,
+for example `http://127.0.0.1:5445`. This overrides only the AAA endpoint;
+Search, DDS, and Processing continue using the selected `--env`. Use the
+matching environment (such as `--env staging`) so AAA tokens are used with the
+corresponding EODMS services. Keep the SSM tunnel open while using the CLI, and
+clear the variable when finished. For Windows Command Prompt:
+
+```bat
+set EODMS_AAA_URL=http://127.0.0.1:5445
+py eodms_cli.py search --env staging --list
+set EODMS_AAA_URL=
+```
+
 ## Beta User Profile API
 
 The beta user profile API endpoint is:
@@ -132,7 +145,7 @@ The beta user profile API endpoint is:
 https://<eodms-host>/aaa/v1/users/USERNAME
 ```
 
-Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` with the account username. A `GET` request to this endpoint returns the user's profile. A `PATCH` request updates profile fields using a JSON request body. The currently supported keys are `language`, `address`, `email`, `surname`, `given_name` and `password`. Multiple fields can be updated in one request.
+Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` with the account username. A `GET` request to this endpoint returns the user's profile. A `PATCH` request updates profile fields using a JSON request body. The CLI supports updating `address`, `email`, `surname`, and `given_name`. Multiple fields can be updated in one request.
 
 The CLI provides `user get` to retrieve the profile, `user update` to apply a JSON patch, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
 
@@ -145,15 +158,9 @@ py eodms_cli.py user update --payload-file profile-update.json --username USERNA
 py eodms_cli.py user change-password --username USERNAME --env prod
 ```
 
-Use `--language`, `--email`, `--surname`, and `--given-name` to PATCH only the specified fields. `--address` takes a JSON object or an array of address objects, not plain text. Alternatively, provide a partial JSON object with `--payload-file`; the two input styles cannot be mixed. A full profile file saved by `user get` is accepted, but will PATCH every supported non-null field in it, so field options or a partial file are preferable when changing only selected values. Use `--payload-file -` to read JSON from standard input. Passwords are not accepted in profile update inputs.
+Use `--email`, `--surname`, and `--given-name` to PATCH only the specified fields. `--address` takes a JSON object or an array of address objects, not plain text. Alternatively, provide a partial JSON object with `--payload-file`; the two input styles cannot be mixed. A full profile file saved by `user get` is accepted, but will PATCH every supported non-null field in it, so field options or a partial file are preferable when changing only selected values. Use `--payload-file -` to read JSON from standard input. Passwords are not accepted in profile update inputs.
 
 The password command prompts for the new password twice without displaying it. EODMS requires passwords to be at least 15 characters long. After a successful change, the command updates the local configured password when the changed account matches the configured username.
-
-For example, update the language:
-
-```json
-{"language": "English"}
-```
 
 Update the address:
 

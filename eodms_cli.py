@@ -74,7 +74,7 @@ _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
-USER_PROFILE_FIELDS = {"language", "address", "email", "surname", "given_name"}
+USER_PROFILE_FIELDS = {"address", "email", "surname", "given_name"}
 USER_STAGING_DOMAIN = "https://www-staging-eodms.aws.nrcan-rncan.cloud"
 MINIMUM_EODMS_PASSWORD_LENGTH = 15
 
@@ -955,7 +955,29 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
 
 def make_aaa(username: Optional[str], password: Optional[str], environment: str):
     if username and password:
-        return aaa.AAA_API(username, password, environment)
+        aaa_url = os.environ.get("EODMS_AAA_URL", "").strip()
+        if aaa_url:
+            try:
+                parsed_url = urlsplit(aaa_url)
+                valid_url = (
+                    parsed_url.scheme in ("http", "https")
+                    and bool(parsed_url.netloc)
+                    and parsed_url.path in ("", "/")
+                    and not parsed_url.query
+                    and not parsed_url.fragment
+                    and (parsed_url.port is None or 1 <= parsed_url.port <= 65535)
+                )
+            except ValueError:
+                valid_url = False
+            if not valid_url:
+                raise click.ClickException(
+                    "EODMS_AAA_URL must be an HTTP(S) base URL without a path, query, or fragment."
+                )
+
+        aaa_api = aaa.AAA_API(username, password, environment)
+        if aaa_url:
+            aaa_api.domain = aaa_url.rstrip("/")
+        return aaa_api
     return None
 
 
@@ -2904,7 +2926,6 @@ def user_get_cmd(username: Optional[str], password: Optional[str], output: Optio
 @user_cmd.command("update")
 @click.option("--payload-file", default=None, type=click.File("r", encoding="utf-8"),
               help="Optional partial JSON object; use '-' to read from stdin.")
-@click.option("--language", default=None, help="Set the profile language.")
 @click.option("--address", default=None,
               help="Set the profile address as a JSON object or array.")
 @click.option("--email", default=None, help="Set the profile email address.")
@@ -2915,7 +2936,7 @@ def user_get_cmd(username: Optional[str], password: Optional[str], output: Optio
 @click.option("--env", "aaa_environment", default="prod",
               type=click.Choice(["prod", "staging"], case_sensitive=False),
               help="EODMS environment used for AAA and the user profile API (default: prod).")
-def user_update_cmd(payload_file: Any, language: Optional[str], address: Optional[str], email: Optional[str],
+def user_update_cmd(payload_file: Any, address: Optional[str], email: Optional[str],
                     surname: Optional[str], given_name: Optional[str], username: Optional[str],
                     password: Optional[str], aaa_environment: str):
     """Update profile fields from options or a partial JSON file."""
@@ -2938,7 +2959,6 @@ def user_update_cmd(payload_file: Any, language: Optional[str], address: Optiona
     option_payload = {
         field: value
         for field, value in {
-            "language": language,
             "address": address_value,
             "email": email,
             "surname": surname,
