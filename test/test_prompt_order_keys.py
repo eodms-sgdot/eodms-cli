@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eodms_prompt import Prompter
+from eodms_prompt import Prompter, cli
 from eodms_rapi import QueryError
 from scripts.utils import EodmsUtils, EodmsProcess
 from scripts.sar import SARToolbox
@@ -367,14 +367,43 @@ class TestSarToolboxNoSubmit(unittest.TestCase):
                 self.assertFalse(kwargs["default"])
                 return False
 
+            params = {
+                "process": "order_st",
+                "input_val": {"collection_id": "RCMImageProducts", "record_ids": ["12345"]},
+            }
             with patch("scripts.utils.click.confirm", side_effect=decline) as confirm:
-                EodmsProcess.order_st(eod, toolbox, {
-                    "input_val": {"collection_id": "RCMImageProducts", "record_ids": ["12345"]},
-                })
+                EodmsProcess.order_st(eod, toolbox, params)
             confirm.assert_called_once()
             eod.eodms_rapi.order_json.assert_not_called()
             eod._download_items.assert_not_called()
             self.assertTrue(os.path.isfile(path))
+            self.assertTrue(params["no_order"])
+            self.assertEqual(params["st_request"], path)
+            self.assertIsNone(params["input_val"])
+            prompter = Prompter(eod, Mock(), params)
+            with cli.make_context("prompt", []):
+                syntax = prompter.build_syntax()
+            self.assertIn(f"-st {path}", syntax)
+            self.assertIn("-nord", syntax)
+            self.assertNotIn("-i ", syntax)
+
+    def test_rerun_with_saved_path_spaces_and_submission_enabled(self):
+        prompter = Prompter(Mock(), Mock(), {
+            "process": "order_st", "st_request": r"C:\my requests\request.json",
+            "input_val": {"record_ids": ["stale"]}, "no_order": False,
+        })
+        with cli.make_context("prompt", []):
+            syntax = prompter.build_syntax()
+        self.assertIn('-st "C:\\my requests\\request.json"', syntax)
+        self.assertNotIn("-nord", syntax)
+        self.assertNotIn("-i ", syntax)
+
+    def test_unsaved_request_warns_instead_of_printing_incomplete_command(self):
+        prompter = Prompter(Mock(), Mock(), {"process": "order_st"})
+        with patch("eodms_prompt.print") as print_message:
+            prompter.print_syntax()
+        self.assertEqual(prompter.cli_syntax, "")
+        self.assertIn("not saved", print_message.call_args.args[0])
 
     def test_confirming_submission_continues_to_order(self):
         eod, toolbox = self.make_request("request.json")

@@ -1331,6 +1331,9 @@ class Prompter:
         for p, pv in self.params.items():
             if pv is None or pv == '':
                 continue
+            if self.params.get('process') == 'order_st' and \
+                    self.params.get('st_request') and p == 'input_val':
+                continue
             if p == 'session':
                 continue
             if p == 'eodms_rapi':
@@ -1526,6 +1529,15 @@ class Prompter:
         Prints the command-line syntax for the script.
         """
 
+        if self.params.get('process') == 'order_st' and \
+                not self.params.get('st_request'):
+            self.cli_syntax = ''
+            msg = "Exact SAR Toolbox re-run syntax is unavailable because " \
+                  "the request JSON was not saved. Save the JSON request " \
+                  "to replay the same processing options."
+            print(msg, level=logging.WARNING)
+            return
+
         print("\nUse this command-line syntax to run the same parameters:")
         self.cli_syntax = self.build_syntax()
         print(f"{self.eod.path_colour}{self.cli_syntax}{self.eod.reset_colour}")
@@ -1558,6 +1570,7 @@ class Prompter:
         orderitems = self.params.get('orderitems')
         no_order = self.params.get('no_order')
         downloads = self.params.get('downloads')
+        priority = self.params.get('priority')
         st_request = self.params.get('st_request')
         uuid = self.params.get('uuid')
         collection = self.params.get('collection')
@@ -1890,12 +1903,8 @@ class Prompter:
                 sar_tb = self.ask_st()
 
             self.params['no_order'] = no_order
+            self.params['priority'] = priority
 
-            # self.params['st_request'] = sar_tb.out_fn
-            # Print command-line syntax for future processes
-            self.print_syntax()
-
-            # Run the order_csv process
             self.eod.order_st(sar_tb, self.params)
 
         else:

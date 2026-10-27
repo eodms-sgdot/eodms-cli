@@ -107,6 +107,9 @@ save the JSON request without submitting an order or starting downloads. Enter
 the desired JSON path at the save prompt. In interactive mode, a saved or loaded
 request also prompts for submission confirmation; the default is **No**.
 Silent runs do not prompt and still submit unless `--no-submit` is supplied.
+The final re-run command references the saved/loaded JSON and preserves your
+submission decision. Without saved JSON, an exact replay command is unavailable
+and a warning is shown instead.
 For example, to inspect an existing request without submitting:
 
 ```bash

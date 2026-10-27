@@ -2959,11 +2959,15 @@ class EodmsProcess(EodmsUtils):
         self.logger.info(f"Process start time: {start_str}")
 
         st_json = sar_toolbox.get_request()
+        if sar_toolbox.out_fn:
+            params['st_request'] = sar_toolbox.out_fn
+            params['input_val'] = None
 
         no_order = params.get('no_order')
         if no_order is None and sar_toolbox.out_fn and not self.silent:
             no_order = not click.confirm(
                 "SAR Toolbox request saved/loaded. Submit it now?", default=False)
+        params['no_order'] = bool(no_order)
         if no_order:
             msg = "SAR Toolbox request prepared. No order submitted or downloads started."
             self.logger.info(msg)
