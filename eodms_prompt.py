@@ -1112,7 +1112,8 @@ class Prompter:
                 
                 msg = f"\nEnter a single or set of Record IDs or enter a " \
                     f"single or set of Order Keys separated by a pipe. " \
-                    f"Include the Collection Id at the beginning of the set." \
+                    f"Include the Collection Id at the beginning of the set, " \
+                    f"or use --collection (otherwise you will be prompted)." \
                     f" (Ex: {self.eod.var_colour}" \
                     f"RCMImageProducts:7625368|25654750" \
                     f"{self.eod.reset_colour} or {self.eod.var_colour}" \
@@ -1845,13 +1846,29 @@ class Prompter:
                 print(f"inputs: {inputs}")
 
                 inputs_dict = self.is_json_dict(inputs)
-                if inputs_dict:
+                if isinstance(inputs_dict, dict):
                     self.params['input_val'] = inputs_dict
                 else:
-                    coll_id, ids = inputs.split(':')
+                    coll_id, separator, ids = inputs.strip().partition(':')
+                    if not separator:
+                        ids = coll_id
+                        selected_collections = self.ask_collection(
+                            collection or None, coll_dict)
+                        coll_id = ','.join(selected_collections)
+
+                    coll_id = coll_id.strip()
+                    image_ids = [value.strip() for value in ids.split('|')]
+                    if (not coll_id or ',' in coll_id or ':' in ids
+                            or not all(image_ids)):
+                        err_msg = "Specify exactly one collection and one or " \
+                                  "more Record IDs or Order Keys separated by a pipe."
+                        self.logger.error(err_msg)
+                        self.eod.print_msg(err_msg, heading='error')
+                        self.eod.exit_cli(1)
+
                     # If Order Keys are entered, check if they exist
-                    if inputs.find("_") > -1:
-                        ord_keys = ids.split('|')
+                    if any('_' in value for value in image_ids):
+                        ord_keys = image_ids
                         rec_ids = self.eod.get_record_ids(coll_id, ord_keys)
 
                         if len(rec_ids) == 0:
@@ -1862,7 +1879,7 @@ class Prompter:
                             self.eod.print_msg(err_msg, heading='error')
                             self.eod.exit_cli(1)
                     else:
-                        rec_ids = ids.split('|')
+                        rec_ids = image_ids
 
                     print(f"\nSubmitting images with Record Ids: " \
                         f"{', '.join(rec_ids)}")
@@ -1871,6 +1888,8 @@ class Prompter:
                                                 "record_ids": rec_ids}
 
                 sar_tb = self.ask_st()
+
+            self.params['no_order'] = no_order
 
             # self.params['st_request'] = sar_tb.out_fn
             # Print command-line syntax for future processes
@@ -2127,8 +2146,9 @@ eodmsrapi_recent = get_latest_version()
               help="For Process 4, a set of Order IDs and/or Order Item IDs. "
                    "This example specifies Order IDs and Order Item IDs: "
                    "'order:151873,151872|item:1706113,1706111'")
-@click.option('--no_order', '-nord', is_flag=True, default=None,
-              help='If set, no ordering and downloading will occur.')
+@click.option('--no_order', '-nord', '--no-submit', is_flag=True, default=None,
+              help='If set, no ordering and downloading will occur. For SAR '
+                   'Toolbox, generate/save the request without submitting it.')
 @click.option('--downloads', '-dn', default=None,
               help='The path where the images will be downloaded. Overrides '
                    'the downloads parameter in the configuration file.')

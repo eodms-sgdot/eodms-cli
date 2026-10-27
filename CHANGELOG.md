@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.27
+
+- Support single Order Keys and Record IDs for SAR Toolbox input, using a collection prefix, `--collection`, or interactive collection selection.
+- Resolve Order Keys through STAC acquisition timestamps and time-bounded RAPI record-ID lookups, retaining results across multiple keys.
+- Use the configured maximum result count when no explicit STAC search limit is supplied.
+- Honor `--no_order` / `-nord` for SAR Toolbox, add the `--no-submit` alias, and confirm submission of saved or loaded requests in interactive mode.
+
 ## 2026.10.20
 
 - Fixed batched `search --uuid2record` lookups returning the first UUID's record ID for every UUID.

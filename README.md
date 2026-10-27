@@ -89,6 +89,30 @@ Supported prompt process values for `--process` / `-r` are:
 - `order_st`: Submit a SAR Toolbox order from a JSON request file.
 - `download_available`: Download SAR Toolbox items that are ready with `AVAILABLE_FOR_DOWNLOAD`.
 
+For interactive `order_st` input, enter a single Order Key or Record ID, or
+separate multiple values with `|`. Prefix the values with `CollectionID:`,
+provide `--collection` / `-c`, or select a collection when prompted. Exactly
+one collection is required. For example, with `-c RCMImageProducts`, enter
+`RCM2_OK1373330_PK1530425_1_16M12_20210326_111202_HH_HV_GRD` directly.
+In `--silent` mode, include the collection prefix or supply `--collection`.
+Order-key lookups first query STAC using `order_key`, then use the returned
+acquisition timestamps to time-bound the RAPI lookup for the legacy record IDs
+required by SAR Toolbox. Start/end timestamps are used when available; a lone
+timestamp defines a one-day window, matching the UUID-to-record workflow.
+Missing or invalid timestamps stop the lookup rather than trigger an unbounded
+RAPI search. The configured `RAPI.max_results` limit applies (1,000 by default).
+
+For `order_st`, use `--no-submit` (also `--no_order` / `-nord`) to generate and
+save the JSON request without submitting an order or starting downloads. Enter
+the desired JSON path at the save prompt. In interactive mode, a saved or loaded
+request also prompts for submission confirmation; the default is **No**.
+Silent runs do not prompt and still submit unless `--no-submit` is supplied.
+For example, to inspect an existing request without submitting:
+
+```bash
+> python eodms_prompt.py -r order_st -st my.json --no-submit --silent
+```
+
 For non-interactive runs, combine the needed arguments with `--silent`.
 
 Order a known UUID from a collection:

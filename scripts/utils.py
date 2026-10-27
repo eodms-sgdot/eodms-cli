@@ -13,6 +13,7 @@
 import sys
 import os
 import requests
+import click
 import re
 import textwrap
 from colorama import Fore, Back, Style
@@ -46,6 +47,7 @@ from . import csv_util
 from . import image
 from . import spatial
 from . import field
+from .date_util import _build_rapi_dates_from_stac_item
 
 
 def _stac_feature_to_bbox(features):
@@ -1188,12 +1190,12 @@ class EodmsUtils:
 
     def _search_stac(self, coll_id, filters=None, features=None, dates=None,
                      max_results=None):
-        """Runs a STAC search and returns normalized records."""
+        """Runs a STAC search, defaulting to the configured maximum results."""
         search_api = self._get_search_api()
 
         bbox = _stac_feature_to_bbox(features)
         datetime_str = _parse_dates_to_stac(dates)
-        limit = int(max_results) if max_results else None
+        limit = int(max_results) if max_results else self.max_results
 
         cql2_filter = filters.strip() if isinstance(filters, str) \
             and filters.strip() else None
@@ -1531,16 +1533,54 @@ class EodmsUtils:
         return eod_csv.import_csv(True)
 
     def get_record_ids(self, coll_id, order_keys):
+        """Resolve Order Keys to the RAPI record IDs required by SAR Toolbox."""
 
         if not isinstance(order_keys, list):
             order_keys = [order_keys]
         
         record_ids = []
         for ok in order_keys:
-            filters = f"\"Order Key\" = '{ok}'"
-            res = self._search_stac(coll_id, filters=filters)
-            if len(res) > 0:
-                record_ids = [r.get('recordId') for r in res]
+            escaped_key = ok.replace("'", "''")
+            items = self._search_stac(
+                coll_id, filters=f"order_key = '{escaped_key}'")
+            if not items:
+                continue
+
+            date_ranges = []
+            for item in items:
+                dates = _build_rapi_dates_from_stac_item(item)
+                if not dates:
+                    raise RuntimeError(
+                        f"Order Key lookup for '{ok}' returned no valid STAC acquisition timestamp.")
+                date_ranges.extend(dates)
+            dates = [{
+                'start': min(date['start'] for date in date_ranges),
+                'end': max(date['end'] for date in date_ranges),
+            }]
+
+            self.eodms_rapi.clear_results()
+            result = self.eodms_rapi.search(
+                coll_id,
+                filters={"ARCHIVE_IMAGE.ORDER_KEY": ("=", [ok])},
+                dates=dates,
+                max_results=self.max_results,
+            )
+            if isinstance(result, QueryError):
+                raise RuntimeError(
+                    f"Order Key lookup failed for '{ok}': {result.get_msgs(True)}")
+            res = self.eodms_rapi.get_results('brief', show_progress=False)
+            if res is None:
+                raise RuntimeError(f"Order Key lookup failed for '{ok}': no response.")
+            for record in res:
+                if record.get('errors'):
+                    raise RuntimeError(
+                        f"Order Key lookup failed for '{ok}': {record['errors']}")
+                record_id = (record.get('recordId') or record.get('record_id')
+                             or record.get('RECORD_ID'))
+                if record_id is None or not str(record_id).strip():
+                    raise RuntimeError(
+                        f"Order Key lookup for '{ok}' returned a record without a record ID.")
+                record_ids.append(str(record_id))
 
         return record_ids
 
@@ -2919,6 +2959,16 @@ class EodmsProcess(EodmsUtils):
         self.logger.info(f"Process start time: {start_str}")
 
         st_json = sar_toolbox.get_request()
+
+        no_order = params.get('no_order')
+        if no_order is None and sar_toolbox.out_fn and not self.silent:
+            no_order = not click.confirm(
+                "SAR Toolbox request saved/loaded. Submit it now?", default=False)
+        if no_order:
+            msg = "SAR Toolbox request prepared. No order submitted or downloads started."
+            self.logger.info(msg)
+            self.print_msg(msg, heading='note')
+            return
 
         all_items = []
         for item in st_json.get('items'):
