@@ -6,7 +6,7 @@ flows:
 - `process`: OGC Processes list/inspect/submit/job workflows.
 - `download`: STAC asset, DDS UUID, and legacy RAPI order-item downloads.
 - `napl`: NAPL order options and order submission through the NAPL service.
-- `user`: authenticated EODMS user profile retrieval and updates.
+- `user`: create new accounts and manage authenticated EODMS user profiles.
 
 Legacy prompt-driven workflows are implemented separately in eodms_prompt.py.
 """
@@ -2980,6 +2980,300 @@ def user_change_password_cmd(username: Optional[str], password: Optional[str], a
         click.echo(f"Password changed successfully. Updated credentials in {os.path.abspath(cfg_path)}")
     else:
         click.echo("Password changed successfully.")
+
+
+def _validate_username(username: str) -> None:
+    """Validate username is not empty.
+    
+    :param username: The username to validate
+    :raises click.ClickException: If validation fails
+    """
+    if not username or not isinstance(username, str):
+        raise click.ClickException("Username is required.")
+    
+    username = username.strip()
+    if not username:
+        raise click.ClickException("Username cannot be empty.")
+
+
+def _validate_password(password: str) -> None:
+    """Validate password meets minimum length requirement.
+    
+    :param password: The password to validate
+    :raises click.ClickException: If validation fails
+    """
+    if not password or not isinstance(password, str):
+        raise click.ClickException("Password is required.")
+    
+    byte_length = len(password.encode("utf-8"))
+    if byte_length < MINIMUM_EODMS_PASSWORD_LENGTH:
+        raise click.ClickException(
+            f"Password must be at least {MINIMUM_EODMS_PASSWORD_LENGTH} characters long."
+        )
+
+
+def _validate_email(email: str) -> None:
+    """Validate email has basic format (contains @ and domain).
+    
+    :param email: The email address to validate
+    :raises click.ClickException: If validation fails
+    """
+    if not email or not isinstance(email, str):
+        raise click.ClickException("Email is required.")
+    
+    email = email.strip()
+    if not email:
+        raise click.ClickException("Email cannot be empty.")
+    
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise click.ClickException("Email must be in a valid format (e.g., user@example.com).")
+
+
+def _validate_name(name: str, field_name: str) -> None:
+    """Validate name is not empty.
+    
+    :param name: The name to validate
+    :param field_name: Field name for error messages (e.g., "Given name" or "Surname")
+    :raises click.ClickException: If validation fails
+    """
+    if not name or not isinstance(name, str):
+        raise click.ClickException(f"{field_name} is required.")
+    
+    name = name.strip()
+    if not name:
+        raise click.ClickException(f"{field_name} cannot be empty.")
+
+
+def _validate_language(language: str) -> None:
+    """Validate language is one of the supported options.
+    
+    :param language: The language to validate
+    :raises click.ClickException: If validation fails
+    """
+    if not language or not isinstance(language, str):
+        raise click.ClickException("Language is required.")
+    
+    language = language.strip()
+    valid_languages = ["English", "French"]
+    if language not in valid_languages:
+        raise click.ClickException(
+            f"Language must be one of: {', '.join(valid_languages)}."
+        )
+
+
+def _validate_address(address_data: Any, field_name: str = "Address") -> Dict[str, Any]:
+    """Validate and parse address data. Ensures @type is present.
+    
+    :param address_data: The address to validate (JSON string or dict)
+    :param field_name: Field name for error messages
+    :returns: Parsed address dict
+    :raises click.ClickException: If validation fails
+    """
+    if isinstance(address_data, str):
+        try:
+            address_dict = json.loads(address_data)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(
+                f"{field_name} must be valid JSON: {exc}"
+            ) from exc
+    elif isinstance(address_data, dict):
+        address_dict = address_data
+    else:
+        raise click.ClickException(f"{field_name} must be a JSON object or string.")
+    
+    if not isinstance(address_dict, dict):
+        raise click.ClickException(f"{field_name} must be a JSON object.")
+    
+    if not address_dict:
+        raise click.ClickException(f"{field_name} cannot be empty.")
+    
+    address_type = address_dict.get("@type")
+    if not address_type:
+        raise click.ClickException(f'{field_name} must include "@type" field.')
+    
+    return address_dict
+
+
+@user_cmd.command("create")
+@click.option("--username", "-u", required=True, prompt="Username",
+              help="The username for the new account.")
+@click.option("--password", "-p", required=False, default=None,
+              help="The password for the new account (will prompt if not provided).")
+@click.option("--given-name", required=True, prompt="Given name",
+              help="The given name of the account holder.")
+@click.option("--surname", required=True, prompt="Surname",
+              help="The surname of the account holder.")
+@click.option("--email", required=True, prompt="Email address",
+              help="The email address for the account.")
+@click.option("--language", default="English",
+              type=click.Choice(["English", "French"], case_sensitive=True),
+              help="Preferred language (default: English).")
+@click.option("--address", default=None,
+              help='Optional main address as JSON object with @type="main". '
+                   'E.g.: \'{"@type":"main","country":"Canada","province":"Ontario","postal-code":"K1A 0Y7"}\'')
+@click.option("--shipping-address", default=None,
+              help='Optional shipping address as JSON object with @type="shipping". '
+                   'E.g.: \'{"@type":"shipping","country":"Canada","province":"Quebec"}\'')
+@click.option("--billing-address", default=None,
+              help='Optional billing address as JSON object with @type="billing". '
+                   'E.g.: \'{"@type":"billing","country":"USA","province":"California"}\'')
+@click.option("--env", "aaa_environment", default="prod",
+              type=click.Choice(["prod", "staging"], case_sensitive=False),
+              help="EODMS environment for account creation (default: prod).")
+def user_create_cmd(
+    username: str,
+    password: Optional[str],
+    given_name: str,
+    surname: str,
+    email: str,
+    language: str,
+    address: Optional[str],
+    shipping_address: Optional[str],
+    billing_address: Optional[str],
+    aaa_environment: str,
+):
+    """Create a new EODMS user account."""
+    
+    username = username.strip() if username else ""
+    _validate_username(username)
+    
+    if password is None:
+        password = click.prompt(
+            "Password",
+            hide_input=True,
+            confirmation_prompt="Confirm password",
+        )
+    else:
+        password = password.strip()
+    
+    _validate_password(password)
+    
+    given_name = given_name.strip() if given_name else ""
+    _validate_name(given_name, "Given name")
+    
+    surname = surname.strip() if surname else ""
+    _validate_name(surname, "Surname")
+    
+    email = email.strip() if email else ""
+    _validate_email(email)
+    
+    _validate_language(language)
+    
+    address_dict = None
+    if address:
+        address_dict = _validate_address(address, "Address")
+    
+    shipping_address_dict = None
+    if shipping_address:
+        shipping_address_dict = _validate_address(shipping_address, "Shipping address")
+    
+    billing_address_dict = None
+    if billing_address:
+        billing_address_dict = _validate_address(billing_address, "Billing address")
+    
+    payload = {
+        "username": username,
+        "password": password,
+        "given_name": given_name,
+        "surname": surname,
+        "email": email,
+        "language": language,
+    }
+    
+    if address_dict is not None:
+        payload["address"] = address_dict
+    if shipping_address_dict is not None:
+        payload["shipping_address"] = shipping_address_dict
+    if billing_address_dict is not None:
+        payload["billing_address"] = billing_address_dict
+    
+    service_domain = _get_user_service_domain(aaa_environment.lower())
+    
+    click.echo("Creating new EODMS account...")
+    logger = logging.getLogger("eodms_cli")
+    logger.info(f"Sending account creation request for username: {username}")
+    
+    # Log environment proxy settings
+    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]:
+        proxy_value = os.environ.get(proxy_var)
+        if proxy_value:
+            logger.info(f"Environment proxy setting: {proxy_var}={proxy_value}")
+    
+    try:
+        request_headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        body = json.dumps(payload).encode("utf-8")
+        
+        url = f"{service_domain.rstrip('/')}/aaa/v1/users"
+        logger.info(f"POST {url}")
+        logger.debug(f"Request headers: {request_headers}")
+        
+        request = Request(
+            url,
+            data=body,
+            headers=request_headers,
+            method="POST",
+        )
+        
+        try:
+            with urlopen(request, timeout=35) as response:
+                response_body = response.read()
+                result = json.loads(response_body.decode("utf-8")) if response_body else {}
+                
+                # Log response details including any request ID or tracing info
+                logger.info(f"Account creation response HTTP {response.status}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+                if hasattr(response, 'headers'):
+                    request_id = response.headers.get("X-Request-ID") or response.headers.get("Request-ID")
+                    if request_id:
+                        logger.info(f"API Request-ID: {request_id}")
+                logger.info(f"Response message: {result.get('message', 'No message')}")
+        except HTTPError as exc:
+            status = exc.code
+            response_body = exc.read()
+            try:
+                response_data = json.loads(response_body.decode("utf-8")) if response_body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                response_data = response_body.decode("utf-8", errors="replace")
+            
+            logger.error(f"Account creation failed with HTTP {status}")
+            if exc.headers:
+                logger.info(f"Error response headers: {dict(exc.headers)}")
+                request_id = exc.headers.get("X-Request-ID") or exc.headers.get("Request-ID") or exc.headers.get("x-request-id")
+                if request_id:
+                    logger.info(f"API Request-ID: {request_id}")
+                retry_after = exc.headers.get("retry-after") or exc.headers.get("Retry-After") or exc.headers.get("x-ratelimit-after")
+                if retry_after:
+                    logger.info(f"Retry-After: {retry_after} seconds")
+            logger.info(f"Error response body: {response_data}")
+            
+            if isinstance(response_data, dict):
+                # Try error field first (more specific), then message, then detail
+                message = response_data.get("error") or response_data.get("message") or response_data.get("detail")
+            else:
+                message = None
+            message = message or json.dumps(response_data)
+            
+            # Add retry-after hint to 429 errors
+            if status == 429 and exc.headers:
+                retry_after = exc.headers.get("retry-after") or exc.headers.get("Retry-After") or exc.headers.get("x-ratelimit-after")
+                if retry_after:
+                    try:
+                        seconds = int(retry_after)
+                        minutes = seconds // 60
+                        message = f"{message} (retry after {minutes} minute{'s' if minutes != 1 else ''})"
+                    except (ValueError, TypeError):
+                        pass
+            
+            raise click.ClickException(f"User profile API returned HTTP {status}: {message}")
+        except URLError as exc:
+            raise click.ClickException(f"Could not reach the user profile API: {exc.reason}") from exc
+        
+        click.echo("Account created successfully!")
+        click.echo(json.dumps(result, indent=2) if isinstance(result, (dict, list)) else result)
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(f"Failed to create account: {exc}") from exc
 
 
 @napl_cmd.command("options")

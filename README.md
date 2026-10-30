@@ -166,13 +166,62 @@ set EODMS_AAA_URL=
 
 ## Beta User Profile API
 
-The beta user profile API endpoint is:
+> **⚠️ Note:** User commands are not yet available in production and are still in beta testing.
+
+The beta user profile API endpoints are:
 
 ```text
-https://<eodms-host>/aaa/v1/users/USERNAME
+POST https://<eodms-host>/aaa/v1/users                    (create account)
+GET  https://<eodms-host>/aaa/v1/users/USERNAME           (get profile)
+PATCH https://<eodms-host>/aaa/v1/users/USERNAME          (update profile)
 ```
 
-Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` with the account username. A `GET` request to this endpoint returns the user's profile. A `PATCH` request updates profile fields using a JSON request body. The CLI supports updating `address`, `email`, `surname`, and `given_name`. Multiple fields can be updated in one request.
+Replace `<eodms-host>` with the host for the EODMS environment and `USERNAME` with the account username.
+
+### Create Account
+
+Use `user create` to register a new EODMS account:
+
+```bash
+python eodms_cli.py user create \
+  -u USERNAME \
+  -p PASSWORD \
+  --given-name "First Name" \
+  --surname "Last Name" \
+  --email user@example.com \
+  --env staging
+```
+
+**Required options:**
+- `-u, --username`: Account username (letters, numbers, dots, underscores, hyphens)
+- `-p, --password`: Account password (minimum 15 characters)
+- `--given-name`: First name
+- `--surname`: Last name
+- `--email`: Email address
+
+**Optional options:**
+- `--address`: Main address as JSON object with `@type="main"` (see address format below)
+- `--shipping-address`: Shipping address with `@type="shipping"`
+- `--billing-address`: Billing address with `@type="billing"`
+- `--language`: Preferred language: `English` or `French` (default: English)
+- `--env`: Target environment: `prod` or `staging` (default: prod)
+
+**Example with address:**
+
+```bash
+python eodms_cli.py user create \
+  -u "john_doe" \
+  -p "SecurePassword12345" \
+  --given-name "John" \
+  --surname "Doe" \
+  --email "john.doe@example.com" \
+  --address '{"@type":"main","street-address":"123 Main St","city":"Ottawa","province":"Ontario","country":"Canada","postal-code":"K1A 0Y7"}' \
+  --env staging
+```
+
+After successful account creation, check your email to verify your account.
+
+### Get Profile
 
 The CLI provides `user get` to retrieve the profile, `user update` to apply a JSON patch, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
 
@@ -219,6 +268,28 @@ Other profile fields can be updated in the same way:
 ```
 
 Change the account password with `user change-password` rather than adding it to a JSON file.
+
+### Account Creation Logging and Error Handling
+
+The `user create` command logs detailed request/response information to `log/eodms_cli.log`, including:
+- HTTP request URL and headers
+- HTTP response status and headers
+- API Request-ID (for tracing duplicate processing issues)
+- Environment proxy settings (if configured)
+- Retry-After timing for rate-limited requests
+
+This is useful for debugging issues. Each `user create` invocation should produce exactly one log entry for the POST request and one for the response.
+
+**Common Errors:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `username exists` | Username already registered | Choose a different username |
+| `password is too short` | Password less than 15 characters | Use a longer password |
+| `429 Too Many Requests` | Rate limit exceeded | Wait for the time shown in error message |
+| `400 Bad Request` (no specific error) | Invalid data format | Check parameter values and formats |
+
+The CLI will display the specific error from the API (e.g., "username exists" or "password is too short") so you know exactly what to fix.
 
 ## Updating
 
