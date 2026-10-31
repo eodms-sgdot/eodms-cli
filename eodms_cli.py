@@ -79,7 +79,7 @@ _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
-USER_PROFILE_FIELDS = {"address", "email", "surname", "given_name"}
+USER_PROFILE_FIELDS = {"address", "email", "surname", "given_name", "shipping_address", "billing_address"}
 USER_STAGING_DOMAIN = "https://www-staging-eodms.aws.nrcan-rncan.cloud"
 MINIMUM_EODMS_PASSWORD_LENGTH = 15
 
@@ -1093,13 +1093,20 @@ def _user_api_request(service_domain: str, username: str, method: str = "GET",
     if status < 200 or status >= 300:
         if isinstance(response_data, dict):
             message = response_data.get("message") or response_data.get("error") or response_data.get("detail")
+            # If no standard error fields, include full response for debugging
+            if not message:
+                message = json.dumps(response_data)
         else:
-            message = None
-        message = message or json.dumps(response_data)
+            message = response_data
         if status == 429:
             retry_hint = _format_retry_after(retry_after)
             message = f"{message}. {retry_hint or 'The server did not provide a Retry-After value.'}"
-        raise click.ClickException(f"User profile API returned HTTP {status}: {message}")
+        # Always include full response data for debugging
+        full_response = f"Full response: {json.dumps(response_data)}" if isinstance(response_data, dict) else ""
+        error_msg = f"User profile API returned HTTP {status}: {message}"
+        if full_response:
+            error_msg += f"\n{full_response}"
+        raise click.ClickException(error_msg)
     return response_data
 
 
@@ -2787,7 +2794,7 @@ def napl_cmd():
 
 @cli.group("user")
 def user_cmd():
-    """Retrieve or update the authenticated EODMS user profile."""
+    """Create accounts, retrieve or update user profiles, and change passwords."""
 
 
 def _get_user_access_token(username: Optional[str], password: Optional[str], environment: str) -> Tuple[str, str]:

@@ -1,6 +1,77 @@
 # User Profile API Notes
 
-Notes copied from developer-provided test examples.
+Notes from the OpenAPI specification at https://www-staging-eodms.aws.nrcan-rncan.cloud/aaa/v1/api-docs/openapi.json
+
+## Address Type Constraints
+
+The address type is **inferred from the field name**, not from an `@type` property:
+- Field `address` → address type `main` 
+- Field `shipping_address` → address type `shipping`
+- Field `billing_address` → address type `billing`
+
+The `@type` field appears in **API responses only** to identify which type each address is.
+
+### For Account Creation (POST)
+Use separate fields: `address`, `shipping_address`, `billing_address`. Each requires all fields:
+- `street-address` (required)
+- `city` (required)
+- `province` (required)
+- `country` (required)
+- `postal-code` (required)
+
+**Note:** Do NOT include `@type` in create payloads.
+
+### For Account Update (PATCH)
+Use the same separate fields: `address`, `shipping_address`, `billing_address`. All fields are required when updating an address:
+- `street-address` (required)
+- `city` (required)
+- `province` (required)
+- `country` (required)
+- `postal-code` (required)
+
+**Important:** Do NOT include `@type` in update payloads. The server infers the type from the field name.
+
+## Examples
+
+**Update main address only:**
+```json
+{
+  "address": {
+    "street-address": "999 Updated Street",
+    "city": "Vancouver",
+    "province": "British Columbia",
+    "country": "Canada",
+    "postal-code": "V6B 4X8"
+  }
+}
+```
+
+**Update all three address types:**
+```json
+{
+  "address": {
+    "street-address": "123 Main St",
+    "city": "Ottawa",
+    "province": "Ontario",
+    "country": "Canada",
+    "postal-code": "K1A 0Y7"
+  },
+  "shipping_address": {
+    "street-address": "456 Shipping Ave",
+    "city": "Toronto",
+    "province": "Ontario",
+    "country": "Canada",
+    "postal-code": "M5V 3A9"
+  },
+  "billing_address": {
+    "street-address": "789 Billing Blvd",
+    "city": "Montreal",
+    "province": "Quebec",
+    "country": "Canada",
+    "postal-code": "H1A 1A1"
+  }
+}
+```
 
 ## Endpoint
 
@@ -10,37 +81,6 @@ Send a `PATCH` request to:
 /aaa/v1/users/USERNAME
 ```
 
-The request body is JSON. The original notes list these payload keys: `language`, `address`, `email`, `surname`, `given_name`, and `password`. Multiple fields can be updated in one request. The examples below preserve the noted shapes, with personal values replaced by placeholders.
+The request body is JSON with optional fields: `language`, `address`, `email`, `surname`, `given_name`, `shipping_address`, `billing_address`.
 
-```json
-{"language": "English"}
-```
-
-```json
-{
-  "address": {
-    "@type": "main",
-    "country": "Canada",
-    "province": "quebec",
-    "postal-code": "a1a 1a1"
-  }
-}
-```
-
-```json
-{"email": "user@example.com"}
-```
-
-```json
-{"surname": "Smith"}
-```
-
-```json
-{"password": "MyNewPassword123!@"}
-```
-
-A `GET` request to the same endpoint returns the user's profile.
-
-## Current CLI Note
-
-The current `user update` CLI does not accept `language` as an update field or `password` in a profile payload. Use `user change-password` to change a password. The API notes above record the original developer examples and should not be treated as confirmation that every payload is accepted by the current CLI or staging API.
+A `GET` request to the same endpoint returns the user's profile (which includes `@type` for addresses in the response).

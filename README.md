@@ -5,23 +5,25 @@ EODMS Command-line Interface (EODMS-CLI)
 
 The **EODMS-CLI** is used to search, process and download imagery from the EODMS using API interfaces.
 
-## eodms-py Integration Contract
+## How eodms-py and eodms-cli Fit Together
 
-This wrapper follows the recommended integration contract for external CLI packages that use `eodms-py`:
+`eodms-cli` lets you search, process, and download EODMS imagery by running commands. You can use it without knowing Python or using `eodms-py` directly. It includes guided steps and clear messages, and can also handle simple repeatable tasks.
 
-1. Logging remains package-level in `eodms-py` (`debug/info/warning/error`) without forcing handlers.
-2. End-user wording and CLI-facing error messages are defined in this wrapper CLI.
-3. Typed service exceptions from `eodms-py` are caught at the wrapper boundary and mapped to CLI exit policy.
-4. Logging integration is caller-controlled:
-  - If a caller does nothing, it keeps default/root behavior.
-  - If a caller configures root logging, `eodms.*` logs flow into that pipeline.
-  - If a caller invokes `eodms-py` logging setup helpers, it explicitly opts into package handler setup.
+`eodms-py` is for people building Python programs that repeat EODMS tasks or connect EODMS to other tools. The CLI uses it for some of its work, but the CLI also handles the parts meant for people, such as prompts, confirmations, local settings, and output.
+
+Some tasks are kept in the CLI because they are occasional or call for human judgment. NAPL orders can trigger email notifications, and profile changes are usually made only once in a while.
+
+### A Note for Developers
+
+When the CLI uses `eodms-py`, the CLI chooses the messages people see and turns package errors into command-line errors. The CLI handles errors separately for tasks that call their services directly.
+
+`eodms-py` does not take over your application's logging by default. If you set up logging for your application, you can include messages from `eodms-py`; its optional logging helpers can set up package logging when you choose to use them.
 
 ## Requirements
 
 ### Python
 
-The EODMS-CLI was designed using **Python 3.10**.
+The intended Python version range is **3.10 through 3.14**. Compatibility has not yet been verified across every version in this range.
 
 ### Python Packages
 
@@ -206,6 +208,14 @@ python eodms_cli.py user create \
 - `--language`: Preferred language: `English` or `French` (default: English)
 - `--env`: Target environment: `prod` or `staging` (default: prod)
 
+**Address format:** Each address is a JSON object with these fields (all required for creation):
+- `@type`: One of `main`, `shipping`, `billing` (required for creation)
+- `street-address`: Street address
+- `city`: City
+- `province`: Province/state
+- `country`: Country
+- `postal-code`: Postal code
+
 **Example with address:**
 
 ```bash
@@ -223,7 +233,7 @@ After successful account creation, check your email to verify your account.
 
 ### Get Profile
 
-The CLI provides `user get` to retrieve the profile, `user update` to apply a JSON patch, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
+The CLI provides `user create` to register an account, `user get` to retrieve the profile, `user update` to apply profile changes, and `user change-password` to change the account password. Authentication uses the credentials configured for the CLI or supplied with `--username` and `--password`. The environment can be selected with `--env`.
 
 User commands default to production. Use `--env staging` to route both AAA authentication and profile requests to `https://www-staging-eodms.aws.nrcan-rncan.cloud`; user commands ignore `EODMS_STAGING_DOMAIN` for routing.
 
@@ -234,26 +244,43 @@ py eodms_cli.py user update --payload-file profile-update.json --username USERNA
 py eodms_cli.py user change-password --username USERNAME --env prod
 ```
 
-Use `--email`, `--surname`, and `--given-name` to PATCH only the specified fields. `--address` takes a JSON object or an array of address objects, not plain text. Alternatively, provide a partial JSON object with `--payload-file`; the two input styles cannot be mixed. A full profile file saved by `user get` is accepted, but will PATCH every supported non-null field in it, so field options or a partial file are preferable when changing only selected values. Use `--payload-file -` to read JSON from standard input. Passwords are not accepted in profile update inputs.
+Use `--email`, `--surname`, and `--given-name` to PATCH only the specified fields. For addresses, use `--payload-file` with separate address fields. The two input styles cannot be mixed. A full profile file saved by `user get` is accepted, but will PATCH every supported non-null field in it, so field options or a partial file are preferable when changing only selected values. Use `--payload-file -` to read JSON from standard input. Passwords are not accepted in profile update inputs.
 
 The password command prompts for the new password twice without displaying it. EODMS requires passwords to be at least 15 characters long. After a successful change, the command updates the local configured password when the changed account matches the configured username.
 
-Update the address:
+#### Update Addresses
+
+Use `address`, `shipping_address`, or `billing_address` for the main, shipping, or billing address; include only the addresses you want to change, provide all five fields, and omit `@type`.
 
 ```json
 {
   "address": {
-    "@type": "main",
+    "street-address": "999 Updated Street",
+    "city": "Vancouver",
+    "province": "British Columbia",
     "country": "Canada",
-    "province": "quebec",
-    "postal-code": "k1A 0y7"
+    "postal-code": "V6B 4X8"
+  },
+  "shipping_address": {
+    "street-address": "888 Delivery Rd",
+    "city": "Seattle",
+    "province": "Washington",
+    "country": "United States",
+    "postal-code": "98101"
+  },
+  "billing_address": {
+    "street-address": "777 Invoice Ave",
+    "city": "Portland",
+    "province": "Oregon",
+    "country": "United States",
+    "postal-code": "97201"
   }
 }
 ```
 
-Pass an address object or address array directly with `--address` (quote/escape it for your shell), or put the partial object above in a JSON file and use `--payload-file`.
+Save the payload as `profile-update.json` and run `py eodms_cli.py user update --payload-file profile-update.json`.
 
-Other profile fields can be updated in the same way:
+#### Update Other Profile Fields
 
 ```json
 {"email": "joe.public@faker.pizza"}
