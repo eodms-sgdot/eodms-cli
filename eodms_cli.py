@@ -933,8 +933,17 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
         if not order_key_chunk:
             continue
 
+        like_patterns = {
+            order_key: re.compile(''.join(
+                '.*' if char == '%' else '.' if char == '_' else re.escape(char)
+                for char in order_key
+            ))
+            for order_key in order_key_chunk
+            if '%' in order_key
+        }
         chunk_filter = " OR ".join(
-            f"order_key = {_quote_cql2_text_string(order_key)}"
+            f"order_key {'LIKE' if '%' in order_key else '='} "
+            f"{_quote_cql2_text_string(order_key)}"
             for order_key in order_key_chunk
         )
         if additional_filter:
@@ -951,9 +960,14 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
             found_order_key = _extract_order_key(item)
             if not found_order_key:
                 continue
-            if found_order_key not in matched_items:
-                matched_items[found_order_key] = []
-            matched_items[found_order_key].append(item)
+            for order_key in order_key_chunk:
+                pattern = like_patterns.get(order_key)
+                matches = (
+                    pattern.fullmatch(found_order_key) is not None
+                    if pattern is not None else found_order_key == order_key
+                )
+                if matches:
+                    matched_items.setdefault(order_key, []).append(item)
 
     return matched_items
 

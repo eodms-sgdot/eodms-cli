@@ -24,6 +24,7 @@ from eodms_cli import (
     make_aaa,
     _napl_api_request,
     _search_items_by_filter,
+    _search_items_by_order_keys,
     _print_search_progress,
     _split_datetime_range_by_window,
     _StacRateLimitInfoFilter,
@@ -35,6 +36,20 @@ class TestEodmsCli(unittest.TestCase):
 
     def setUp(self):
         self.runner = CliRunner()
+
+    def test_input_order_keys_use_like_for_percent_patterns(self):
+        wildcard_item = {"properties": {"order_key": "RR2682-V_685"}}
+        exact_item = {"properties": {"order_key": "A10070_010"}}
+        with patch("eodms_cli._search_items_by_filter", return_value=[wildcard_item, exact_item]) as search:
+            matched = _search_items_by_order_keys(
+                object(), "collection", ["RR2682-V%_685", "A10070_010"]
+            )
+
+        filter_text = search.call_args.args[2]
+        self.assertIn("order_key LIKE 'RR2682-V%_685'", filter_text)
+        self.assertIn("order_key = 'A10070_010'", filter_text)
+        self.assertEqual(matched["RR2682-V%_685"], [wildcard_item])
+        self.assertEqual(matched["A10070_010"], [exact_item])
 
     def _assert_help(self, args, expected_tokens):
         result = self.runner.invoke(cli, args)
