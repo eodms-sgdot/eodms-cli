@@ -610,7 +610,15 @@ Radarsat1CEOSL1SLC (v0.0.1): Generate Radarsat-1 L1 product in CEOS SLC (16-bit)
 SAR_Toolbox (vX.X): Filters, Ortho-rectification and mosaic Radiometry, Polarimetry, Interferometry, Analysis Ready Data. Support for RADARSAT-2, RCMImageProducts.
 ```
 
-Ok, `Analysis Ready Data` looks good. How is it called?
+#### Processor: RADARSAT-1 Level 1
+
+```bash
+py eodms_cli.py process -pi Radarsat1CEOSL1SLC --inputs_json test\radarsat1_input.json -u %EODMS_USER% -p %EODMS_PASSWORD% --submit
+```
+
+This submits a processing request; edit radarsat1_input.json to set the scene UUID and time range you need.
+
+#### Processor: RCM/RADARSAT-2 CEOS ARD
 
 At the moment `SAR_Toolbox` and `Processing Service` have separate submission structures (they will all be under `OGC API - Processes` based Processing Service in future). `SAR_Toolbox`'s `items` block takes `recordId` not `uuid`, which we don't have for our 3m image. Let us look it up using `uuid` from above:
 
