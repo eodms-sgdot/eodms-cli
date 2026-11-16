@@ -81,6 +81,10 @@ Send a `PATCH` request to:
 /aaa/v1/users/USERNAME
 ```
 
-The request body is JSON with optional fields: `language`, `address`, `email`, `surname`, `given_name`, `shipping_address`, `billing_address`.
+The deployed service requires the username in the PATCH path, even though the
+OpenAPI specification currently lists `/aaa/v1/users`. The authenticated user's
+token authorizes the update. The request
+body is JSON with optional fields: `language`, `address`, `email`, `surname`,
+`given_name`, `shipping_address`, `billing_address`.
 
 A `GET` request to the same endpoint returns the user's profile (which includes `@type` for addresses in the response).

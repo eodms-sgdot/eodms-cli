@@ -79,7 +79,15 @@ _CLI_UA_VERSION_ENV_VAR = "EODMS_CLI_UA_VERSION"
 _CLI_UA_VERSION = EODMS_CLI_VERSION
 _SPINNER_WRITE_LOCK = threading.Lock()
 SAR_TOOLBOX_SCHEMA_URL = "https://eodms-sgdot.nrcan-rncan.gc.ca/schemas/st/sar-toolbox-schema.json"
-USER_PROFILE_FIELDS = {"address", "email", "surname", "given_name", "shipping_address", "billing_address"}
+USER_PROFILE_FIELDS = {
+    "address",
+    "email",
+    "surname",
+    "given_name",
+    "shipping_address",
+    "billing_address",
+    "language",
+}
 USER_STAGING_DOMAIN = "https://www-staging-eodms.aws.nrcan-rncan.cloud"
 MINIMUM_EODMS_PASSWORD_LENGTH = 15
 
@@ -974,29 +982,7 @@ def _search_items_by_order_keys(search_api, collection: str, order_keys: List[st
 
 def make_aaa(username: Optional[str], password: Optional[str], environment: str):
     if username and password:
-        aaa_url = os.environ.get("EODMS_AAA_URL", "").strip()
-        if aaa_url:
-            try:
-                parsed_url = urlsplit(aaa_url)
-                valid_url = (
-                    parsed_url.scheme in ("http", "https")
-                    and bool(parsed_url.netloc)
-                    and parsed_url.path in ("", "/")
-                    and not parsed_url.query
-                    and not parsed_url.fragment
-                    and (parsed_url.port is None or 1 <= parsed_url.port <= 65535)
-                )
-            except ValueError:
-                valid_url = False
-            if not valid_url:
-                raise click.ClickException(
-                    "EODMS_AAA_URL must be an HTTP(S) base URL without a path, query, or fragment."
-                )
-
-        aaa_api = aaa.AAA_API(username, password, environment)
-        if aaa_url:
-            aaa_api.domain = aaa_url.rstrip("/")
-        return aaa_api
+        return aaa.AAA_API(username, password, environment)
     return None
 
 
@@ -1079,8 +1065,12 @@ def _user_api_request(service_domain: str, username: str, method: str = "GET",
         request_headers["Content-Type"] = "application/json"
         body = json.dumps(payload).encode("utf-8")
 
+    profile_path = f"/aaa/v1/users/{quote(username, safe='')}"
+    endpoint = f"{service_domain.rstrip('/')}{profile_path}"
+    if method.upper() == "PATCH":
+        click.echo(f"Update Profile - PATCH {profile_path}")
     request = Request(
-        f"{service_domain.rstrip('/')}/aaa/v1/users/{quote(username, safe='')}",
+        endpoint,
         data=body,
         headers=request_headers,
         method=method,
@@ -1186,6 +1176,10 @@ def _prepare_user_profile_patch(payload: Dict[str, Any]) -> Dict[str, Any]:
             value = contact_information.get(field)
             if value is not None:
                 patch[field] = value
+
+    environment = payload.get("environment")
+    if isinstance(environment, dict) and environment.get("language") is not None:
+        patch["language"] = environment["language"]
 
     if not patch:
         raise click.ClickException("The profile file contains no supported fields to update.")
@@ -2950,6 +2944,9 @@ def user_update_cmd(payload_file: Any, address: Optional[str], email: Optional[s
             f"Unsupported profile field(s): {', '.join(unsupported_fields)}. "
             f"Supported fields: {', '.join(sorted(USER_PROFILE_FIELDS))}."
         )
+    if payload.get("language") is not None:
+        _validate_language(payload["language"])
+        payload["language"] = payload["language"].strip()
 
     resolved_username, access_token = _get_user_access_token(username, password, aaa_environment.lower())
     service_domain = _get_user_service_domain(aaa_environment.lower())

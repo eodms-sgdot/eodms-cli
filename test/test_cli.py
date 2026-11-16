@@ -57,23 +57,6 @@ class TestEodmsCli(unittest.TestCase):
         for token in expected_tokens:
             self.assertIn(token, result.output)
 
-    def test_make_aaa_can_override_only_the_aaa_base_url(self):
-        with patch.dict(os.environ, {"EODMS_AAA_URL": "http://127.0.0.1:5445/"}), \
-             patch("eodms_cli.aaa.AAA_API") as aaa_api_factory:
-            api = make_aaa("user", "password", "staging")
-
-        aaa_api_factory.assert_called_once_with("user", "password", "staging")
-        self.assertIs(api, aaa_api_factory.return_value)
-        self.assertEqual(api.domain, "http://127.0.0.1:5445")
-
-    def test_make_aaa_rejects_non_base_urls(self):
-        with patch.dict(os.environ, {"EODMS_AAA_URL": "http://127.0.0.1:5445/aaa/v1"}), \
-             patch("eodms_cli.aaa.AAA_API") as aaa_api_factory:
-            with self.assertRaisesRegex(ClickException, "EODMS_AAA_URL must be"):
-                make_aaa("user", "password", "staging")
-
-        aaa_api_factory.assert_not_called()
-
     def test_root_help_lists_all_commands(self):
         self._assert_help(
             ["--help"],
@@ -387,8 +370,9 @@ class TestEodmsCli(unittest.TestCase):
             def read(self):
                 return b'{"updated": true}'
 
-        payload = {"email": "new@example.com"}
-        with patch("eodms_cli.urlopen", return_value=FakeResponse()) as urlopen:
+        payload = {"language": "English"}
+        with patch("eodms_cli.urlopen", return_value=FakeResponse()) as urlopen, \
+             patch("eodms_cli.click.echo") as echo:
             response = _user_api_request(
                 "https://profile.example/",
                 "first.last@example.com",
@@ -398,6 +382,7 @@ class TestEodmsCli(unittest.TestCase):
             )
 
         self.assertEqual(response, {"updated": True})
+        echo.assert_called_once_with("Update Profile - PATCH /aaa/v1/users/first.last%40example.com")
         request = urlopen.call_args.args[0]
         self.assertEqual(request.full_url, "https://profile.example/aaa/v1/users/first.last%40example.com")
         self.assertEqual(request.get_method(), "PATCH")
@@ -647,15 +632,42 @@ class TestEodmsCli(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Provide --payload-file or at least one profile field option", result.output)
 
-    def test_user_update_rejects_language_payload_field(self):
+    def test_user_update_patches_language_payload_field(self):
+        class FakeAAA:
+            def get_access_token(self):
+                return "test-access-token"
+
         with self.runner.isolated_filesystem():
             with open("profile.json", "w", encoding="utf-8") as payload_file:
                 json.dump({"language": "English"}, payload_file)
 
+            with patch("eodms_cli.resolve_credentials", return_value=("user", "password")), \
+                 patch("eodms_cli.make_aaa", return_value=FakeAAA()), \
+                 patch("eodms_cli.eodms_config.get_domain_config", return_value={"domain": "https://profile.example"}), \
+                 patch("eodms_cli._user_api_request", return_value={"updated": True}) as request:
+                result = self.runner.invoke(
+                    cli,
+                    ["user", "update", "--payload-file", "profile.json", "--env", "staging"],
+                )
+
+        self.assertEqual(result.exit_code, 0, msg=result.output)
+        request.assert_called_once_with(
+            "https://www-staging-eodms.aws.nrcan-rncan.cloud",
+            "user",
+            method="PATCH",
+            payload={"language": "English"},
+            headers={"Authorization": "Bearer test-access-token"},
+        )
+
+    def test_user_update_rejects_unsupported_language_payload_value(self):
+        with self.runner.isolated_filesystem():
+            with open("profile.json", "w", encoding="utf-8") as payload_file:
+                json.dump({"language": "German"}, payload_file)
+
             result = self.runner.invoke(cli, ["user", "update", "--payload-file", "profile.json"])
 
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Unsupported profile field(s): language", result.output)
+        self.assertIn("Language must be one of: English, French.", result.output)
 
     def test_user_update_accepts_get_profile_output_file(self):
         class FakeAAA:
@@ -668,13 +680,14 @@ class TestEodmsCli(unittest.TestCase):
                 "identification": {"name": {"given-name": "Will", "surname": "Updated"}},
                 "contact-information": {"address": None, "email": "will@example.com"},
             },
-            "environment": None,
+            "environment": {"language": "English"},
             "organization": {"identification": {"organization-name": None}},
         }
         expected_patch = {
             "email": "will@example.com",
             "given_name": "Will",
             "surname": "Updated",
+            "language": "English",
         }
         with self.runner.isolated_filesystem():
             with open("wm.json", "w", encoding="utf-8") as payload_file:
