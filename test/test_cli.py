@@ -1087,7 +1087,7 @@ class TestEodmsCli(unittest.TestCase):
                             },
                         },
                         {
-                            "id": "8c30662a-ffbb-5e25-8654-9d7d078eea76",
+                            "id": "8c30662a-ffbb-5e25-8654-9d7d078eea75",
                             "geometry": {"type": "Polygon", "coordinates": [[[1, 1]]]},
                             "properties": {
                                 "order_key": "CA74_069",
@@ -1116,7 +1116,7 @@ class TestEodmsCli(unittest.TestCase):
                 rows = list(csv.DictReader(out_f))
             self.assertEqual(1, len(rows))
             self.assertEqual(
-                "8c30662a-ffbb-5e25-8654-9d7d078eea75;8c30662a-ffbb-5e25-8654-9d7d078eea76",
+                "8c30662a-ffbb-5e25-8654-9d7d078eea75;8c30662a-ffbb-5e25-8654-9d7d078eea75",
                 rows[0]["uuids"],
             )
             self.assertEqual("800;2032", rows[0]["spatial_resolution"])
